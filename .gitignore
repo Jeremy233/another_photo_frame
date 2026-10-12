@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Secrets / credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+*.cer
+secrets/
+credentials*
+
+# Personal photos & exports (keep test fixtures in a dedicated, reviewed folder)
+*.jpg
+*.jpeg
+*.heic
+*.heif
+*.png
+*.tif
+*.tiff
+*.dng
+*.cr2
+*.cr3
+*.nef
+*.arw
+*.raf
+*.photoframe
+!**/fixtures/**
+!**/Assets.xcassets/**
+
+# Xcode / Swift build output and per-user state
+build/
+DerivedData/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+
+# Local Claude Code settings
+.claude/settings.local.json
