@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="910" viewBox="0 0 1600 910" role="img" aria-labelledby="title desc">
+<title id="title">任务生命周期与安全落盘</title><desc id="desc">一个任务绑定源图与预设快照；真实进度、可取消、可重试、输出可追踪</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
+<rect width="1600" height="910" fill="#FAFAF8"/>
+<text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
+<text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 07</text>
+<text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">任务生命周期与安全落盘</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">一个任务绑定源图与预设快照；真实进度、可取消、可重试、输出可追踪</text>
+<line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="64" y1="846" x2="1536" y2="846" stroke="#D8E0D9" stroke-width="2"/>
+<text x="64" y="879" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">概念示意 · 具体参数与实现状态以正文为准</text>
+<text x="1536" y="879" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
+<rect x="64" y="226" width="188" height="121" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="158" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="middle">queued</text>
+<text x="158" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">排队</text>
+<line x1="252" y1="287" x2="273" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="278" y="226" width="188" height="121" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="372" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="middle">validating</text>
+<text x="372" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">校验</text>
+<line x1="466" y1="287" x2="487" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="492" y="226" width="188" height="121" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="586" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="middle">decoding</text>
+<text x="586" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">解码</text>
+<line x1="680" y1="287" x2="701" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="706" y="226" width="188" height="121" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="800" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#356D62" text-anchor="middle">rendering</text>
+<text x="800" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">渲染</text>
+<line x1="894" y1="287" x2="915" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="920" y="226" width="188" height="121" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1014" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="middle">encoding</text>
+<text x="1014" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">编码</text>
+<line x1="1108" y1="287" x2="1129" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1134" y="226" width="188" height="121" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1228" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="middle">writing</text>
+<text x="1228" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">写文件</text>
+<line x1="1322" y1="287" x2="1343" y2="287" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1348" y="226" width="188" height="121" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1442" y="270" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#356D62" text-anchor="middle">completed</text>
+<text x="1442" y="310" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="middle">完成</text>
+<text x="64" y="191" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="600" fill="#356D62" text-anchor="start">正常路径</text>
+<line x1="372" y1="347" x2="372" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="586" y1="347" x2="586" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="800" y1="347" x2="800" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="1014" y1="347" x2="1014" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="1228" y1="347" x2="1228" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="372" y1="395" x2="1228" y2="395" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="800" y1="395" x2="800" y2="425" stroke="#D8E0D9" stroke-width="2"/>
+<path d="M 800 425 H 520 V 464" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 800 425 H 1080 V 464" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="342" y="468" width="356" height="101" rx="14" fill="#EFE6D6" stroke="#EFE6D6" stroke-width="1.5"/>
+<text x="520" y="507" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="25" font-weight="600" fill="#9D713B" text-anchor="middle">failed  /  失败</text>
+<text x="520" y="545" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="middle">保存错误与可修复提示</text>
+<rect x="902" y="468" width="356" height="101" rx="14" fill="#F1E9E4" stroke="#F1E9E4" stroke-width="1.5"/>
+<text x="1080" y="507" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="25" font-weight="600" fill="#9E655B" text-anchor="middle">canceled  /  已取消</text>
+<text x="1080" y="545" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="middle">停止后续处理，清理自己的临时文件</text>
+<path d="M 342 520 H 89 V 381 H 158 V 350" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)" stroke-dasharray="6 6"/>
+<text x="107" y="417" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#356D62" text-anchor="start">重试：新 Attempt ID</text>
+<text x="107" y="447" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">保留原 Job 历史</text>
+<rect x="64" y="624" width="189" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="158.5" y="647" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">writing 阶段</text>
+<rect x="64" y="682" width="326" height="112" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="88" y="722" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">临时目录</text>
+<text x="88" y="762" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="start">仅写入本次任务文件</text>
+<line x1="391" y1="739" x2="440" y2="739" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="446" y="682" width="326" height="112" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="470" y="722" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">校验结果</text>
+<text x="470" y="762" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="start">检查尺寸、编码与文件完整性</text>
+<line x1="773" y1="739" x2="822" y2="739" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="828" y="682" width="326" height="112" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="852" y="722" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">原子发布</text>
+<text x="852" y="762" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="start">移入已授权的目标目录</text>
+<line x1="1155" y1="739" x2="1204" y2="739" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1210" y="682" width="326" height="112" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1234" y="722" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">结果清单</text>
+<text x="1234" y="762" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="start">路径 / 尺寸 / ICC / 警告</text>
+</svg>

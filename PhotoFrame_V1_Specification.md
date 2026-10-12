@@ -122,6 +122,10 @@
 5. 切片之间不各自套边框，保证滑动时几何连续。
 6. 如开启签名、EXIF 或相机贴图，默认只出现在封面；连续切片不重复叠加。
 
+![图 1：同一张后期完成的原图应用多个预设，形成独立任务，分别输出完整封面或全景轮播切片。](docs/illustrations/01-publishing-workflow.png)
+
+*图 1 · 发布工作流：同一原图可生成多种平台成品；每个任务保留自己的参数。风景为 AI 生成的示例素材。*
+
 ### 3.3 共享预设
 
 A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布局，其中 `camera.badge`、`photographer.signature` 是**占位符**。B 从自己的本地 Asset Library 为占位符选择图片，或保留空白；不依赖 A 的本地路径，也不需要复制 A 的机型线稿。
@@ -137,6 +141,10 @@ A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布�
 ## 4. 应用界面与交互规范
 
 ### 4.1 三栏 Compressor 布局
+
+![图 2：PhotoFrame 三栏工作台概念图，左侧预设和素材，中间源图与任务，右侧预览和 Inspector；A、B、C 标注可拖动分隔线。](docs/illustrations/02-three-column-workbench.png)
+
+*图 2 · 界面概念示意：A / B 调整三栏宽度，C 调整预览与设置区高度；示意不代表已实现界面。*
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────┐
@@ -209,6 +217,10 @@ originY = (H - imageHeight) / 2
 
 取整必须采用明确的边缘坐标与一致的舍入策略（避免左右出现 1px 不对称或隐性裁切）。不同原图纵横比产生的剩余留白可大于 `m`。
 
+![图 3：同一张完整全景照片居中放入 3:4、1:1、9:16 画布，虚线表示最小 60 px 边距内框，上下剩余留白随画布比例增加。](docs/illustrations/03-fit-and-minimum-margins.png)
+
+*图 3 · 封面 Fit：照片等比完整嵌入，虚线是最小安全边距内框；说明标记不写入导出文件。*
+
 ### 5.3 全景模式：Cover + Seamless Slides
 
 **核心规则【已确定】：**
@@ -244,6 +256,10 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 | 65:24 ≈ 2.7083:1 | IG 1080×1440 | 4 | 3900px | 210 / 210 |
 | 3:1 | XHS 1080×1080 | 3 | 3240px | 0 / 0 |
 | 65:24 ≈ 2.7083:1 | XHS 1080×1080 | 3 | 2925px | 157.5 / 157.5（栅格时需一致舍入） |
+
+![图 4：65:24 全景按高度缩放到 3900×1440，放入 4320×1440 的总画布，左右各补 210 px，再按全局坐标分成四张 1080×1440 切片；Cover 独立使用完整图 Fit。](docs/illustrations/04-seamless-panorama.png)
+
+*图 4 · 65:24 → IG 数值算例：只有长卷最外侧补背景，内部接缝不加单页白边；虚线、尺寸线及文字仅用于说明。*
 
 **关键边界：**
 
@@ -308,6 +324,10 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
   ↓ (Embed CORRECT output ICC and sanitized metadata)
 [File + structured rendering report]
 ```
+
+![图 5：从源 ICC 解码、高精度工作空间、排版与线性光合成，到输出颜色转换、预览和编码的共享管线；背景与素材进入同一工作空间，HDR 需受控映射或拒绝。](docs/illustrations/05-managed-color-pipeline.png)
+
+*图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；具体工作空间及 HDR 策略仍待验证。*
 
 **建议的后端显式类型：**
 
@@ -488,6 +508,10 @@ Preset.assetSlots[]  --slotId-->  AssetBinding (user/this job/device)
 - 安全导入：验证类型、大小、尺寸、编码有效性；导出和分享时不泄露机器用户名、隐私路径、云令牌。
 - 用户可选择「本任务绑定」「保存到此预设的本地绑定」「设为本用户默认绑定」。
 
+![图 6：可分享预设只保存布局和 Slot，本地 Binding 把 Slot 绑定到 Asset Library 中的素材，再供 Renderer 使用；可选素材缺失时警告并跳过，必需素材缺失时阻止输出。](docs/illustrations/06-preset-and-local-assets.png)
+
+*图 6 · 预设与素材分离：布局可以分享，私人素材和真实本地路径留在接收者自己的环境中。*
+
 ### 8.3 导入／导出／兼容
 
 - 导入前预览预设内容：尺寸、图层、slots、目标格式、schema 版本及可能不可用的能力。
@@ -543,6 +567,10 @@ Source (原图)
 
 **【建议】** 永不覆盖原图；输出冲突默认自动加版本后缀（或由用户显式确认覆盖）；先写临时文件、校验成功后原子移动到目的地，降低半成品风险。
 
+![图 7：任务从 queued 依次进入 validating、decoding、rendering、encoding、writing 和 completed；处理中可以失败或取消，失败重试创建新 Attempt，写出经过临时目录、校验、原子发布和结果清单。](docs/illustrations/07-job-lifecycle-and-atomic-export.png)
+
+*图 7 · 任务与落盘：处理中可失败或取消；重试保留历史，取消只清理本任务临时文件，成品校验成功后再发布。*
+
 ### 9.3 视频输出（V1 规划）
 
 - 1080×1920、9:16、SDR H.264 MP4（建议 30fps）。
@@ -584,6 +612,10 @@ Source (原图)
 - `PhotoFrameApplication` 管理预设快照、任务、取消、进度、输出清单、权限策略。
 - GUI 的实时预览通过**同一 Renderer** 的 preview mode 完成。
 - 【建议】每个功能提供独立可测试 Swift Package；错误类型使用稳定 code + human-readable message + recoverable hint。
+
+![图 8：macOS GUI、CLI 和本地 stdio MCP 通过稳定接口调用 PhotoFrameApplication，后者使用 Core、Rendering 和 Adapters 模块及本地存储。](docs/illustrations/08-shared-backend-architecture.png)
+
+*图 8 · 共享后端模块：三入口复用核心服务与渲染实现；这不表示 V1 已要求跨进程共享实时队列。*
 
 ### 10.2 建议目录
 

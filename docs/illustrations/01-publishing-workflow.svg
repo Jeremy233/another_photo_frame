@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="860" viewBox="0 0 1600 860" role="img" aria-labelledby="title desc">
+<title id="title">一次创建，多种发布成品</title><desc id="desc">完成后期的原图 → 应用预设 → 独立任务 → 本地导出</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
+<rect width="1600" height="860" fill="#FAFAF8"/>
+<text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
+<text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 01</text>
+<text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">一次创建，多种发布成品</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">完成后期的原图 → 应用预设 → 独立任务 → 本地导出</text>
+<line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="64" y1="796" x2="1536" y2="796" stroke="#D8E0D9" stroke-width="2"/>
+<text x="64" y="829" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">概念示意 · 具体参数与实现状态以正文为准</text>
+<text x="1536" y="829" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
+<rect x="64" y="190" width="190" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="159.0" y="213" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">01  导入原图</text>
+<rect x="64" y="252" width="354" height="342" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="88" y="295" width="306" height="113" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="88" y="452" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#283B36" text-anchor="start">Badlands_panorama.tif</text>
+<text x="88" y="492" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">已完成后期 · 保留输入 ICC</text>
+<text x="88" y="524" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">原图只读 · EXIF 方向校正</text>
+<line x1="418" y1="423" x2="498" y2="423" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="500" y="190" width="190" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="595.0" y="213" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">02  应用预设</text>
+<rect x="500" y="268" width="328" height="134" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="524" y="308" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#283B36" text-anchor="start">Instagram Panorama</text>
+<text x="524" y="344" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">1080 × 1440  /  3:4</text>
+<text x="524" y="372" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">完整封面 + 4 张连续切片</text>
+<rect x="500" y="448" width="328" height="134" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="524" y="488" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#283B36" text-anchor="start">XHS Standard</text>
+<text x="524" y="524" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">1080 × 1080  /  1:1</text>
+<text x="524" y="552" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">完整原图 + 最小 60 px 留白</text>
+<path d="M 828 335 H 875 V 315 H 916" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 828 515 H 875 V 565 H 916" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="918" y="190" width="190" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="1013.0" y="213" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">03  任务与成品</text>
+<rect x="918" y="252" width="618" height="232" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="942" y="287" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="600" fill="#283B36" text-anchor="start">Job A · Instagram</text>
+<rect x="948" y="316" width="90" height="120" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="953.0" y="361.2307692307692" width="80.0" height="29.53846153846154" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="993" y="461" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">Cover</text>
+<svg x="1068" y="316" width="90" height="120" viewBox="0 0 1080 1440" overflow="hidden">
+<rect x="0" y="0" width="4320" height="1440" rx="0" fill="#FAFAF8" stroke="none" stroke-width="0"/>
+<image x="210" y="0" width="3900" height="1440" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+</svg>
+<rect x="1068" y="316" width="90" height="120" rx="0" fill="none" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1113" y="461" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">Slide 1</text>
+<svg x="1176" y="316" width="90" height="120" viewBox="1080 0 1080 1440" overflow="hidden">
+<rect x="0" y="0" width="4320" height="1440" rx="0" fill="#FAFAF8" stroke="none" stroke-width="0"/>
+<image x="210" y="0" width="3900" height="1440" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+</svg>
+<rect x="1176" y="316" width="90" height="120" rx="0" fill="none" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1221" y="461" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">Slide 2</text>
+<svg x="1284" y="316" width="90" height="120" viewBox="2160 0 1080 1440" overflow="hidden">
+<rect x="0" y="0" width="4320" height="1440" rx="0" fill="#FAFAF8" stroke="none" stroke-width="0"/>
+<image x="210" y="0" width="3900" height="1440" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+</svg>
+<rect x="1284" y="316" width="90" height="120" rx="0" fill="none" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1329" y="461" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">Slide 3</text>
+<svg x="1392" y="316" width="90" height="120" viewBox="3240 0 1080 1440" overflow="hidden">
+<rect x="0" y="0" width="4320" height="1440" rx="0" fill="#FAFAF8" stroke="none" stroke-width="0"/>
+<image x="210" y="0" width="3900" height="1440" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+</svg>
+<rect x="1392" y="316" width="90" height="120" rx="0" fill="none" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1437" y="461" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">Slide 4</text>
+<rect x="918" y="506" width="618" height="164" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="948" y="528" width="120" height="120" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="954.6666666666666" y="568.3076923076923" width="106.66666666666666" height="39.38461538461539" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="1094" y="557" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="600" fill="#283B36" text-anchor="start">Job B · 小红书</text>
+<text x="1094" y="596" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">00_Cover.jpg</text>
+<text x="1094" y="628" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">原图相同，任务参数各自保存</text>
+<rect x="64" y="708" width="1472" height="60" rx="12" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="1.5"/>
+<text x="88" y="747" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#356D62" text-anchor="start">修改某个任务不会自动改写共享预设；GUI、CLI、MCP 都调用同一渲染核心。</text>
+</svg>

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="1060" viewBox="0 0 1600 1060" role="img" aria-labelledby="title desc">
+<title id="title">有明确颜色语义的共享渲染管线</title><desc id="desc">读取源 ICC → 高精度工作空间 → 排版与合成 → 输出转换与编码</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
+<rect width="1600" height="1060" fill="#FAFAF8"/>
+<text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
+<text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 05</text>
+<text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">有明确颜色语义的共享渲染管线</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">读取源 ICC → 高精度工作空间 → 排版与合成 → 输出转换与编码</text>
+<line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="64" y1="996" x2="1536" y2="996" stroke="#D8E0D9" stroke-width="2"/>
+<text x="64" y="1029" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">管线为建议方案 · 工作空间、像素格式与 HDR 映射策略仍需 PoC / Golden Images 验证</text>
+<text x="1536" y="1029" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
+<rect x="64" y="202" width="286" height="155" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="88" y="242" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">编码输入</text>
+<text x="88" y="278" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">JPEG / TIFF / PNG / HEIC</text>
+<text x="88" y="306" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">ICC · 位深 · Alpha · HDR</text>
+<text x="88" y="334" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">EXIF Orientation</text>
+<line x1="350" y1="279" x2="402" y2="279" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="404" y="202" width="306" height="155" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="428" y="242" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">解码与解释</text>
+<text x="428" y="278" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">正确识别源色彩空间</text>
+<text x="428" y="306" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">方向只校正一次</text>
+<text x="428" y="334" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">无 ICC：警告 + 可覆盖</text>
+<line x1="710" y1="279" x2="761" y2="279" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="764" y="202" width="322" height="155" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="788" y="242" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">高精度工作图像</text>
+<text x="788" y="278" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">受管理的工作空间转换</text>
+<text x="788" y="306" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">线性光 · 高精度缓冲</text>
+<text x="788" y="334" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">宽色域不提前夹断</text>
+<line x1="1086" y1="279" x2="1137" y2="279" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1140" y="202" width="396" height="155" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1164" y="242" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">Layout + Composite</text>
+<text x="1164" y="278" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">Fit / 全局全景变换 / 重采样</text>
+<text x="1164" y="306" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">背景 + 素材 + 字形 / 元数据</text>
+<text x="1164" y="334" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">在线性光域处理透明合成</text>
+<rect x="64" y="423" width="647" height="206" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="88" y="447" width="327" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="251.5" y="470" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">图层颜色也进入同一工作空间</text>
+<rect x="92" y="509" width="57" height="57" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="170" y="530" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">背景 #FAFAF8 = sRGB 编码 (250, 250, 248)</text>
+<text x="170" y="563" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">文字 / PNG 素材保留明确的颜色与 Alpha 语义</text>
+<path d="M 711 528 H 728 V 389 H 1200 V 359" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 1338 357 V 426" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="1140" y="428" width="396" height="166" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1164" y="468" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">输出颜色转换</text>
+<text x="1164" y="504" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">工作空间 → 请求的输出空间</text>
+<text x="1164" y="532" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">sRGB 默认；主动色域映射</text>
+<text x="1164" y="560" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">按输出格式执行量化</text>
+<path d="M 1140 511 H 1089" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="764" y="428" width="322" height="166" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="788" y="468" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">输出预览</text>
+<text x="788" y="504" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">相同排版与颜色策略</text>
+<text x="788" y="532" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">按预览分辨率采样</text>
+<text x="788" y="560" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">经显示器 ICC 显示</text>
+<line x1="1338" y1="594" x2="1338" y2="659" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1140" y="662" width="396" height="149" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1164" y="702" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">编码与发布成品</text>
+<text x="1164" y="738" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">JPEG / PNG / HEIC / SDR 视频</text>
+<text x="1164" y="766" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">正确输出 ICC 或视频颜色标签</text>
+<text x="1164" y="794" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">清理敏感元数据 + 渲染报告</text>
+<rect x="64" y="677" width="1022" height="134" rx="14" fill="#EFE6D6" stroke="#EFE6D6" stroke-width="1.5"/>
+<text x="88" y="714" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="23" font-weight="600" fill="#9D713B" text-anchor="start">HDR 源的受控分支</text>
+<text x="88" y="754" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="start">仅在启用并通过测试时进行 HDR → SDR tone mapping。</text>
+<text x="88" y="786" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="start">未实现映射时明确拒绝；不静默剪裁高光。</text>
+<rect x="64" y="869" width="1472" height="91" rx="14" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="1.5"/>
+<text x="88" y="904" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#356D62" text-anchor="start">每个任务记录 Source / Working / Output Profile 与转换、量化及警告信息。</text>
+<text x="88" y="939" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#356D62" text-anchor="start">预览与导出共用计算链路；预览尺度、显示路径和最终编码可以不同。</text>
+</svg>

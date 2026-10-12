@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
+<title id="title">分享布局，素材留在用户本地</title><desc id="desc">Preset 定义 Slot；Asset Binding 解析本地 Asset ID；Renderer 使用已解析的素材</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
+<rect width="1600" height="980" fill="#FAFAF8"/>
+<text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
+<text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 06</text>
+<text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">分享布局，素材留在用户本地</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">Preset 定义 Slot；Asset Binding 解析本地 Asset ID；Renderer 使用已解析的素材</text>
+<line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="64" y1="916" x2="1536" y2="916" stroke="#D8E0D9" stroke-width="2"/>
+<text x="64" y="949" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">概念示意 · 具体参数与实现状态以正文为准</text>
+<text x="1536" y="949" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
+<rect x="64" y="190" width="215" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="171.5" y="213" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">可分享的预设包</text>
+<rect x="64" y="254" width="418" height="454" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="91" y="296" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="25" font-weight="600" fill="#283B36" text-anchor="start">Minimal.photoframe</text>
+<text x="91" y="333" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">manifest.json  /  schemaVersion</text>
+<line x1="91" y1="361" x2="455" y2="361" stroke="#D8E0D9" stroke-width="2"/>
+<text x="91" y="402" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="start">画布 · 全景规则 · 图层位置</text>
+<text x="91" y="443" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="start">Slot: camera.badge</text>
+<text x="91" y="484" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#283B36" text-anchor="start">Slot: photographer.signature</text>
+<rect x="88" y="536" width="369" height="136" rx="12" fill="#EFE6D6" stroke="#EFE6D6" stroke-width="1.5"/>
+<text x="110" y="574" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#9D713B" text-anchor="start">默认只含占位符</text>
+<text x="110" y="611" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#283B36" text-anchor="start">不含私人签名、品牌贴图</text>
+<text x="110" y="641" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#283B36" text-anchor="start">不含用户本地绝对路径</text>
+<line x1="482" y1="461" x2="569" y2="461" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="572" y="254" width="964" height="454" rx="14" fill="#F2F5F0" stroke="#D8E0D9" stroke-width="1.5" stroke-dasharray="8 7"/>
+<rect x="596" y="276" width="240" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="716.0" y="299" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">用户 B 的本地环境</text>
+<rect x="598" y="339" width="402" height="182" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="622" y="379" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">Asset Binding</text>
+<text x="622" y="415" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">camera.badge → localAssetId</text>
+<text x="622" y="443" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">单任务 / 本地预设 / 用户默认</text>
+<text x="622" y="471" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">按已配置的优先级解析</text>
+<line x1="1000" y1="430" x2="1083" y2="430" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="1086" y="339" width="424" height="182" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1110" y="379" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">Local Asset Library</text>
+<text x="1110" y="415" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">assetId → 实际本地文件</text>
+<text x="1110" y="443" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">自选 PNG / 签名 / 相机线稿</text>
+<text x="1110" y="471" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">真实路径由 Library 管理</text>
+<path d="M 1298 521 V 568 H 1154" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="808" y="555" width="346" height="125" rx="14" fill="#EAF1ED" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="832" y="595" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="23" font-weight="600" fill="#283B36" text-anchor="start">Renderer</text>
+<text x="832" y="631" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">读取已解析的素材与几何参数</text>
+<text x="832" y="659" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">按 visibleOn 决定显示页面</text>
+<path d="M 799 521 V 607 H 806" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="64" y="761" width="717" height="114" rx="14" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="1.5"/>
+<text x="88" y="801" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="23" font-weight="600" fill="#356D62" text-anchor="start">可选 Slot 缺失  /  required = false</text>
+<text x="88" y="842" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">显示警告，跳过该图层，允许继续输出。</text>
+<rect x="819" y="761" width="717" height="114" rx="14" fill="#EFE6D6" stroke="#EFE6D6" stroke-width="1.5"/>
+<text x="843" y="801" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="23" font-weight="600" fill="#9D713B" text-anchor="start">必需 Slot 缺失  /  required = true</text>
+<text x="843" y="842" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">阻止输出，提示绑定本地素材后重试。</text>
+</svg>
