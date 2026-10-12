@@ -34,6 +34,9 @@ credentials*
 !**/fixtures/**
 !**/Assets.xcassets/**
 
+# Documentation illustrations and their shared synthetic sample
+!docs/illustrations/**/*.png
+
 # Xcode / Swift build output and per-user state
 build/
 DerivedData/

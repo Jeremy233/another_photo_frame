@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
+<title id="title">Fit：完整照片与最小安全边距</title><desc id="desc">相同原图等比居中；60 px 是最小值，剩余留白随画布比例变化</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
+<rect width="1600" height="980" fill="#FAFAF8"/>
+<text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
+<text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 03</text>
+<text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">Fit：完整照片与最小安全边距</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">相同原图等比居中；60 px 是最小值，剩余留白随画布比例变化</text>
+<line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
+<line x1="64" y1="916" x2="1536" y2="916" stroke="#D8E0D9" stroke-width="2"/>
+<text x="64" y="949" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">概念示意 · 具体参数与实现状态以正文为准</text>
+<text x="1536" y="949" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
+<text x="188" y="207" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="middle">Instagram</text>
+<text x="188" y="241" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">1080 × 1440  /  3:4</text>
+<rect x="64" y="331.16666666666663" width="248" height="330.6666666666667" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="77.77777777777779" y="455.8025641025641" width="220.44444444444443" height="81.39487179487179" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<rect x="77.77777777777777" y="344.9444444444444" width="220.44444444444446" height="303.11111111111114" rx="0" fill="none" stroke="#356D62" stroke-width="1.4" stroke-dasharray="6 6"/>
+<line x1="188.0" y1="353.9444444444444" x2="188.0" y2="446.8025641025641" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="188" y="756" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="middle">左右 ≥ 60 px</text>
+<text x="188" y="788" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">上下留白可大于 60 px</text>
+<text x="511" y="207" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="middle">XHS</text>
+<text x="511" y="241" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">1080 × 1080  /  1:1</text>
+<rect x="387" y="372.5" width="248" height="248.0" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="400.77777777777777" y="455.80256410256413" width="220.44444444444443" height="81.39487179487179" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<rect x="400.77777777777777" y="386.27777777777777" width="220.44444444444446" height="220.44444444444446" rx="0" fill="none" stroke="#356D62" stroke-width="1.4" stroke-dasharray="6 6"/>
+<line x1="511.0" y1="395.27777777777777" x2="511.0" y2="446.80256410256413" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="511" y="756" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="middle">左右 ≥ 60 px</text>
+<text x="511" y="788" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">上下留白可大于 60 px</text>
+<text x="834" y="207" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="middle">Douyin</text>
+<text x="834" y="241" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">1080 × 1920  /  9:16</text>
+<rect x="710" y="276.05555555555554" width="248" height="440.8888888888889" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="723.7777777777778" y="455.80256410256413" width="220.44444444444443" height="81.39487179487179" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<rect x="723.7777777777778" y="289.8333333333333" width="220.44444444444446" height="413.33333333333337" rx="0" fill="none" stroke="#356D62" stroke-width="1.4" stroke-dasharray="6 6"/>
+<line x1="834.0" y1="298.8333333333333" x2="834.0" y2="446.80256410256413" stroke="#356D62" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="834" y="756" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="middle">左右 ≥ 60 px</text>
+<text x="834" y="788" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="middle">上下留白可大于 60 px</text>
+<rect x="1050" y="190" width="486" height="603" rx="14" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="1078" y="215" width="192" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="1174.0" y="238" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">统一几何规则</text>
+<text x="1078" y="297" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">availableWidth  = W − 2m</text>
+<text x="1078" y="337" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="24" font-weight="600" fill="#283B36" text-anchor="start">availableHeight = H − 2m</text>
+<line x1="1078" y1="372" x2="1508" y2="372" stroke="#D8E0D9" stroke-width="2"/>
+<text x="1078" y="415" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">scale = min(</text>
+<text x="1078" y="452" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">  availableWidth / sourceWidth,</text>
+<text x="1078" y="489" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">  availableHeight / sourceHeight</text>
+<text x="1078" y="526" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#283B36" text-anchor="start">)</text>
+<text x="1078" y="597" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#356D62" text-anchor="start">照片中心 = 画布中心</text>
+<text x="1078" y="640" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#356D62" text-anchor="start">保持原图比例与构图</text>
+<text x="1078" y="683" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="22" font-weight="600" fill="#356D62" text-anchor="start">源图像素的方向先完成校正</text>
+<line x1="1078" y1="725" x2="1128" y2="725" stroke="#356D62" stroke-width="2" stroke-dasharray="6 6"/>
+<text x="1142" y="732" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">虚线 = 最小边距内框</text>
+<rect x="64" y="839" width="1472" height="55" rx="10" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="1.5"/>
+<text x="88" y="874" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="400" fill="#356D62" text-anchor="start">这里是封面 Fit；全景细节切片使用另一套全局坐标规则，见下一图。</text>
+</svg>
