@@ -96,3 +96,41 @@ func compareSDR(_ a: URL, _ b: URL) {
     let s = Stats(de), l = Stats(dl)
     print("\(a.lastPathComponent) vs \(b.lastPathComponent)：ΔE 中位 \(f2(s.median)) / P95 \(f2(s.p95)) / max \(f2(s.max))；ΔL* 中位 \(f2(l.median))")
 }
+
+// MARK: - sdr-state：HDR 文件在屏幕 headroom 不足时可能走的几种解码路径（sRGB 8-bit，长边 1032）
+
+func sdrStatePaths(_ urls: [URL]) {
+    let p = Pipeline(WorkingSpace.all[2])
+    func render(_ img: CIImage) -> FImage {
+        let e = img.extent, s = 1032 / e.width
+        let r = CGRect(x: 0, y: 0, width: (e.width * s).rounded(.down), height: (e.height * s).rounded(.down))
+        return p.renderRGBA8(img.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY).scaledBy(x: s, y: s)), rect: r)
+    }
+    for url in urls {
+        let src = CGImageSourceCreateWithURL(url as CFURL, nil)!
+        print("== \(url.lastPathComponent)")
+        var paths: [(String, CIImage)] = [("SDR 底图（默认解码）", CIImage(cgImage: CGImageSourceCreateImageAtIndex(src, 0, nil)!))]
+        if let c = CGImageSourceCreateImageAtIndex(src, 0, [kCGImageSourceDecodeRequest: kCGImageSourceDecodeToSDR] as CFDictionary) {
+            paths.append(("ImageIO DecodeToSDR", CIImage(cgImage: c)))
+        }
+        if let c = CGImageSourceCreateImageAtIndex(src, 0, [kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR] as CFDictionary) {
+            print("   DecodeToHDR 颜色空间：\(c.colorSpace.map { "\($0)" } ?? "nil")")
+            paths.append(("ImageIO DecodeToHDR → 直接画到 SDR（自适应增益曲线）", CIImage(cgImage: c)))
+        }
+        paths.append(("CI expandToHDR → 直接画到 SDR", p.load(url)))
+        paths.append(("CI expandToHDR + toneMapHDRtoSDR", CIImage(contentsOf: url, options: [.expandToHDR: true, .toneMapHDRtoSDR: true])!))
+        let base = render(paths[0].1)
+        for (name, img) in paths {
+            let f = render(img)
+            var clip = 0, dl = 0.0, dc = 0.0
+            for y in 0..<f.h { for x in 0..<f.w {
+                let a = f.rgb(x, y), b = base.rgb(x, y)
+                if a.max() >= 254.5 / 255 { clip += 1 }
+                let la = lab(fromXYZ: Spaces.srgb.xyz(fromEncoded: a)), lb = lab(fromXYZ: Spaces.srgb.xyz(fromEncoded: b))
+                dl += la.x - lb.x; dc += hypot(la.y, la.z) - hypot(lb.y, lb.z)
+            } }
+            let n = Double(f.w * f.h)
+            print("   \(name)：有通道 = 255 \(String(format: "%.2f%%", 100 * Double(clip) / n))，相对底图 平均 ΔL* \(String(format: "%+.2f", dl / n))，平均 Δ彩度 \(String(format: "%+.2f", dc / n))")
+        }
+    }
+}

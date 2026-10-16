@@ -24,6 +24,8 @@ case "compare" where args.count == 3:
 case "gainmap-tiff" where args.count >= 2:
     try runGainMapTIFF(URL(fileURLWithPath: args[1]), truth: option("--truth").map { URL(fileURLWithPath: $0) },
                        reference: option("--jpeg").map { URL(fileURLWithPath: $0) }, full: args.contains("--full"), env: env)
+case "sdr-state":
+    sdrStatePaths(args.dropFirst().map { URL(fileURLWithPath: $0) })
 case "inspect":
     inspect(args.dropFirst().map { URL(fileURLWithPath: $0) })
 case "run":
@@ -57,6 +59,7 @@ default:
       colorpoc compare <a> <b>          两张图都按 SDR 读取，比较 ΔE2000（长边 1200）
       colorpoc gainmap-tiff <tif> [--truth <纯 HDR tif>] [--jpeg <LR HDR jpg>] [--full]
                                         读取 Lightroom Maximize Compatibility TIFF 里的 gain map 并还原 HDR
+      colorpoc sdr-state <HDR jpg>...    屏幕 headroom 不足时 HDR 文件的几种解码路径对比
       colorpoc tonemap <HDR TIFF>...     生成 HDR→SDR 几种曲线的并排对比（同目录同名 .jpg 作为 Lightroom 参照）
       colorpoc run [--only a,b] [--real <dir>]
                                         跑全部实验（probes,chart,wide,gradient,alpha,orientation,hdr），
