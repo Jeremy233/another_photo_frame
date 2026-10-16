@@ -71,6 +71,7 @@ public struct PresetSummary: Hashable, Sendable, Codable {
     public var dynamicRange: OutputSettings.DynamicRange
     public var keepShootingInfo: Bool
     public var keepGps: Bool
+    public var keepAuthorAndCopyright: Bool
     /// 各层 `x-` 扩展字段的总数。
     public var extensionFieldCount: Int
 
@@ -92,6 +93,7 @@ public struct PresetSummary: Hashable, Sendable, Codable {
         dynamicRange = p.output.dynamicRange
         keepShootingInfo = p.output.metadata.keepShootingInfo
         keepGps = p.output.metadata.keepGps
+        keepAuthorAndCopyright = p.output.metadata.keepAuthorAndCopyright
         extensionFieldCount = Self.countExtensions(p)
     }
 

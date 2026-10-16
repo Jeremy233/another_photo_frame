@@ -51,7 +51,7 @@ struct OverlayTests {
     @Test("metadataText：EXIF 占位符与手动覆盖")
     func metadataText() async throws {
         #expect(MetadataText.fill("{camera} · {aperture} · {lens}", values: ["camera": "Z 8", "aperture": "f/8"])
-            == ("Z 8 · f/8 · ", ["lens"]))
+            == ("Z 8 · f/8", ["lens"]))
         let values = MetadataText.values(from: [
             kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "NIKON CORPORATION", kCGImagePropertyTIFFModel: "NIKON Z 8"],
             kCGImagePropertyExifDictionary: [kCGImagePropertyExifFNumber: 8.0, kCGImagePropertyExifExposureTime: 0.004,
@@ -69,6 +69,34 @@ struct OverlayTests {
                                  text: TextStyle(template: "{camera} · {aperture}", fontSizePx: 18))
         let result = try await render(try Self.photo(dir), makePreset(layers: [layer]), overrides: ["camera": "Film"])
         #expect(result.warnings.contains { $0.code == "overlay.metadata_missing" && $0.layerId == "exif" })
+    }
+
+    @Test("EXIF 文字：缺失字段连同多余分隔符一起去掉（D-64）", arguments: [
+        ("{focalLength} · {lens} · {shutter}", "35mm · 1/250s"),
+        ("{lens} · {focalLength} · {shutter}", "35mm · 1/250s"),
+        ("{focalLength} · {shutter} · {lens}", "35mm · 1/250s"),
+        ("{lens} | {iso}", ""),
+        ("Shot on {camera} ({lens})", "Shot on Z 8"),
+        ("({lens})", ""),
+        ("© 2026\n{lens} · {iso}\n{focalLength}", "© 2026\n35mm"),
+        ("{focalLength}{shutter}", "35mm1/250s"),
+    ])
+    func metadataSeparators(_ c: (String, String)) {
+        let values = ["focalLength": "35mm", "shutter": "1/250s", "camera": "Z 8"]
+        #expect(MetadataText.fill(c.0, values: values).text == c.1)
+    }
+
+    @Test("EXIF 文字全部缺失：不画图层，仍给警告")
+    func metadataAllMissing() async throws {
+        let dir = try makeTempDirectory()
+        let layer = OverlayLayer(layerId: "exif", type: .metadataText, anchor: .bottomLeft, offset: OverlayOffset(x: 0, y: 16),
+                                 maxBoundsPx: PixelSize(width: 600, height: 48),
+                                 text: TextStyle(template: "{lens} · {iso}", fontSizePx: 18))
+        let result = try await render(try Self.photo(dir), makePreset(layers: [layer]))
+        #expect(result.warnings.contains { $0.code == "overlay.metadata_missing" && $0.layerId == "exif" })
+        #expect(result.outputs[0].layers.isEmpty)
+        let plain = try await render(try Self.photo(dir), makePreset())
+        #expect(try readSRGB8(result.outputs[0].fileURL).bytes == readSRGB8(plain.outputs[0].fileURL).bytes)
     }
 
     @Test("受限 SVG：路径、圆弧、变换可以渲染")
@@ -150,7 +178,10 @@ struct MetadataOutputTests {
         let img = makeImage8(width: 200, height: 100) { x, _ in (UInt8(x), 120, 80) }
         try writeImage(img, to: url, type: .jpeg, properties: [
             kCGImagePropertyOrientation: 1,
-            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "TestMake", kCGImagePropertyTIFFModel: "TestModel"],
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "TestMake", kCGImagePropertyTIFFModel: "TestModel",
+                                             kCGImagePropertyTIFFArtist: "Test Author", kCGImagePropertyTIFFCopyright: "© Test"],
+            kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCByline: ["Test Author"],
+                                             kCGImagePropertyIPTCCopyrightNotice: "© Test"],
             kCGImagePropertyExifDictionary: [kCGImagePropertyExifFNumber: 5.6, kCGImagePropertyExifBodySerialNumber: "SN123",
                                              kCGImagePropertyExifUserComment: "private"],
             kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 43.7, kCGImagePropertyGPSLatitudeRef: "N",
@@ -193,6 +224,50 @@ struct MetadataOutputTests {
         let g = Self.properties(gps.outputs[0].fileURL)
         #expect(g[kCGImagePropertyGPSDictionary] != nil)
         #expect((g[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFMake] == nil)
+    }
+}
+
+extension MetadataOutputTests {
+    /// 读回作者与版权。ImageIO 写出时把 TIFF Artist 存成 XMP dc:creator，所以三处一起看。
+    static func author(_ url: URL) -> AuthorInfo {
+        let src = CGImageSourceCreateWithURL(url as CFURL, nil)!
+        return AuthorInfo(properties: CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as! [CFString: Any],
+                          xmp: CGImageSourceCopyMetadataAtIndex(src, 0, nil))
+    }
+
+    @Test("「保留作者和版权」默认关闭，与拍摄参数分开（D-63）", arguments: [OutputSettings.Format.jpeg, .png])
+    func authorAndCopyright(_ format: OutputSettings.Format) async throws {
+        let dir = try makeTempDirectory()
+        let src = try Self.sourceWithExif(dir)
+        let off = try await render(src, makePreset(width: 400, height: 400, output: OutputSettings(
+            format: format, metadata: .init(keepShootingInfo: true))))
+        #expect(Self.author(off.outputs[0].fileURL) == AuthorInfo(properties: [:], xmp: nil))
+
+        let on = try await render(src, makePreset(width: 400, height: 400, output: OutputSettings(
+            format: format, metadata: .init(keepAuthorAndCopyright: true))))
+        let p = Self.properties(on.outputs[0].fileURL)
+        let b = Self.author(on.outputs[0].fileURL)
+        #expect(b.author == "Test Author" && b.copyright == "© Test")
+        #expect((p[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFMake] == nil, "拍摄参数仍关闭")
+        #expect(p[kCGImagePropertyGPSDictionary] == nil)
+    }
+
+    @Test("作者和版权也从 XMP（dc:creator、dc:rights）读取")
+    func authorFromXMP() async throws {
+        let dir = try makeTempDirectory()
+        let src = dir.appendingPathComponent("xmp.jpg")
+        let meta = CGImageMetadataCreateMutable()
+        #expect(CGImageMetadataSetValueWithPath(meta, nil, "dc:creator" as CFString, ["XMP Author"] as CFArray))
+        #expect(CGImageMetadataSetValueWithPath(meta, nil, "dc:rights" as CFString, "XMP Rights" as CFString))
+        let dest = CGImageDestinationCreateWithURL(src as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImageAndMetadata(dest, makeImage8(width: 100, height: 100) { _, _ in (90, 90, 90) }, meta, nil)
+        #expect(CGImageDestinationFinalize(dest))
+
+        let out = try await render(src, makePreset(width: 300, height: 300, output: OutputSettings(
+            format: .jpeg, metadata: .init(keepAuthorAndCopyright: true))))
+        let a = Self.author(out.outputs[0].fileURL)
+        #expect(a.author == "XMP Author")
+        #expect(a.copyright == "XMP Rights")
     }
 }
 

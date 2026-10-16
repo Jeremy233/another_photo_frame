@@ -86,16 +86,22 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
 
         // 4. 照片：SDR 版本与（需要时）HDR 版本
         let wantsHDR = output.dynamicRange == .hdr
-        let writesHDR = wantsHDR && source.hdr != nil
-        if wantsHDR && !writesHDR {
+        let hasHeadroom = (source.headroom ?? 1) > SourceDecoder.sdrWhiteTolerance
+        let writesHDR = wantsHDR && source.hdr != nil && hasHeadroom
+        if wantsHDR && source.hdr == nil {
             warnings.append(RenderWarning(code: "output.hdr_source_not_hdr", message: "源图不是 HDR，按 SDR 输出"))
+        } else if wantsHDR && !writesHDR {
+            warnings.append(RenderWarning(code: "output.hdr_no_headroom",
+                                          message: "源图标为 HDR，但画面没有超过 SDR 白的内容（headroom = 1），按 SDR 输出"))
         }
         let sdrMethod: SDRRenditionMethod
         switch source.hdrKind {
         case .none: sdrMethod = .none
         case .gainMap, .gainMapTIFF: sdrMethod = .sourceRendition
         case .transferFunction, .floatLinear:
-            sdrMethod = .toneMapHeadroom(sourceHeadroom: source.headroom ?? 1, targetHeadroom: 1)
+            // 标为 HDR 但 headroom = 1 时解码器已把它本身作为 SDR 版本，不做 tone map。
+            sdrMethod = source.sdr != nil ? .none
+                : .toneMapHeadroom(sourceHeadroom: source.headroom ?? 1, targetHeadroom: 1)
         }
         switch sdrMethod {
         case .none: break
@@ -126,7 +132,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             overlays[layerId] = try planned.content.render(size: planned.size, alignment: planned.alignment)
         }
         let encoder = OutputEncoder(context: context)
-        let metadata = OutputMetadata.properties(from: source.properties, policy: output.metadata)
+        let metadata = OutputMetadata.properties(from: source.properties, author: source.author, policy: output.metadata)
         let ext = output.format == .jpeg ? "jpg" : "png"
 
         var outputs: [RenderedOutput] = []

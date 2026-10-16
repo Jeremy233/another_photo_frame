@@ -151,6 +151,7 @@
     }
   ],
   "preset" : "Douyin Standard",
+  "recordedOn" : "macOS 27.0.1",
   "scenario" : "douyin-standard-orientation6",
   "sdrMethod" : "none",
   "sourceProfileOrigin" : "assumedSRGB",

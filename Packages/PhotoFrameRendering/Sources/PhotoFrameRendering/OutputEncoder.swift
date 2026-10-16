@@ -132,7 +132,8 @@ struct OutputEncoder {
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out as CFMutableData, type, 1, nil) else { return nil }
         let meta = CGImageMetadataCreateMutable()
-        for dict in [kCGImagePropertyExifDictionary, kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary] {
+        for dict in [kCGImagePropertyExifDictionary, kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary,
+                     kCGImagePropertyIPTCDictionary] {
             guard let values = metadata[dict] as? [CFString: Any] else { continue }
             for (k, v) in values { _ = CGImageMetadataSetValueMatchingImageProperty(meta, dict, k, v as CFTypeRef) }
         }

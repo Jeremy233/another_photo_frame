@@ -25,6 +25,8 @@ struct DecodedSource {
     var headroom: Double?
     /// ImageIO 读出的属性（EXIF、GPS、TIFF 字典），用于元数据文字和可选的元数据输出。
     var properties: [CFString: Any]
+    /// 作者与版权（含 XMP），只在「保留作者和版权」打开时写出。
+    var author: AuthorInfo
     var transformSteps: [String]
     var warnings: [RenderWarning]
 
@@ -34,6 +36,9 @@ struct DecodedSource {
 /// 源图解码（规范 §6.2、§6.3 第一段）。
 struct SourceDecoder {
     var context: CIContext
+
+    /// 峰值不超过它就视为没有超过 SDR 白（浮点噪声容差）。
+    static let sdrWhiteTolerance = 1.0001
 
     /// - Parameter neededSize: 输出中照片需要的最大像素尺寸（显示方向）。解码时降采样到不小于它的两倍，
     ///   既控制内存（D-18），又给 Lanczos 留出足够的源像素。
@@ -60,6 +65,7 @@ struct SourceDecoder {
             hasAlpha: props[kCGImagePropertyHasAlpha] as? Bool ?? false,
             hasEmbeddedProfile: embedded, sourceProfile: "", sourceProfileOrigin: "embedded",
             sdr: nil, hdr: nil, hdrKind: .none, headroom: nil, properties: props,
+            author: AuthorInfo(properties: props, xmp: CGImageSourceCopyMetadataAtIndex(src, 0, nil)),
             transformSteps: [], warnings: [])
 
         let display = out.displaySize
@@ -112,18 +118,27 @@ struct SourceDecoder {
             return out
         }
 
-        if let space = cg.colorSpace, CGColorSpaceUsesITUR_2100TF(space) {
+        // 「明确是 HDR」的判定（D-62）：文件本身带 HDR 标记，或浮点数据里有超过 SDR 白的值。
+        // 标记：gain map（上面两种）、ICC / cICP 使用 PQ / HLG 传递函数（ImageIO 把 PNG 的 cICP 也映射成颜色空间）。
+        // 没有标记的整数图一律按 SDR；没有标记、峰值 ≤ 1 的浮点图也按 SDR。
+        if let space = cg.colorSpace, CGColorSpaceUsesITUR_2100TF(space) || space.isHDR() {
             // PQ / HLG：没有 SDR 版本，SDR 输出时按画面实测峰值 tone map（§6.7 第 2 条）。
             out.hdr = image
             out.hdrKind = .transferFunction
             out.headroom = estimatePeak(image)
             out.transformSteps.append("PQ/HLG：画面峰值 \(fmt(out.headroom!))（不用元数据默认 headroom）")
+            if out.headroom! <= Self.sdrWhiteTolerance {
+                // 标为 HDR 但没有超过 SDR 白的内容：仍记为 HDR 源，headroom = 1；SDR 版本就是它本身，
+                // 不做 tone map（曲线在 headroom 1 时没有意义）；请求 HDR 输出时改写 SDR 并警告。
+                out.sdr = image
+                out.transformSteps.append("标为 HDR，但画面峰值 ≤ SDR 白：headroom 取 1，SDR 输出不做 tone map")
+            }
             return out
         }
 
         if out.isFloat {
             let peak = estimatePeak(image)
-            if peak > 1.0001 {
+            if peak > Self.sdrWhiteTolerance {
                 out.hdr = image
                 out.hdrKind = .floatLinear
                 out.headroom = peak

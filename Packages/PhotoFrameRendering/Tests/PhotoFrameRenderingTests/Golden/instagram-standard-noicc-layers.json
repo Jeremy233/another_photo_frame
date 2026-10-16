@@ -11,7 +11,7 @@
       "hasExif" : false,
       "hasGPS" : false,
       "layers" : {
-        "exif" : [
+        "signature" : [
           60,
           1056,
           400,
@@ -162,11 +162,11 @@
     }
   ],
   "preset" : "Instagram Standard",
+  "recordedOn" : "macOS 27.0.1",
   "scenario" : "instagram-standard-noicc-layers",
   "sdrMethod" : "none",
   "sourceProfileOrigin" : "assumedSRGB",
   "warnings" : [
-    "overlay.metadata_missing",
     "source.profile_missing"
   ]
 }
