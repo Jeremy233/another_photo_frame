@@ -1,7 +1,7 @@
 # PhotoFrameApplication
 
 任务队列、原子导出和 `PhotoFrameService`（规范 §9、§10.3、§11.1–11.2、§12.2）。
-依赖 `PhotoFrameCore`、`PhotoFrameStorage`、`PhotoFrameRendering`。GUI、CLI、MCP 都用 `LocalPhotoFrameService.makeDefault()` 取服务。
+依赖 `PhotoFrameCore`、`PhotoFrameStorage`、`PhotoFrameRendering`（D-70：不另建组装包）。GUI、CLI、MCP 都用 `LocalPhotoFrameService.makeDefault()` 取服务。
 队列只通过 `JobRenderer` 协议渲染、服务只通过 `ImageAnalyzer` 协议检查 / 预估 / 预览，正常实现是 `RenderingBackend`（用 PhotoFrameRendering）；
 测试换成假的渲染器。
 
@@ -121,11 +121,11 @@ PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageA
 |---|---|
 | `listPresets()` | 预设库（内置、用户保存、导入）+ 本服务读过的 `.photoframe` 文件，加上读库时的警告 |
 | `resolvePreset(_:)` | `PresetReference`：`.library(文本)` 交给 `PresetLibrary.find`（presetId、完整名称、短名，D-76）；`.file(URL)` 只读取、不放进库 |
-| `importPreset` / `exportPreset` / `duplicatePreset` / `renamePreset` / `deletePreset` | 预设库操作（D-39、D-79、D-80、D-84、D-37）；导出目标已存在时只有 `overwrite` 才替换（`preset.export_exists`） |
-| `listAssets` / `resolveAsset` / `importAsset` / `renameAsset` / `deleteAsset` | 素材库操作（D-83、D-85、D-88）；素材引用是 assetId 或唯一的显示名称 |
+| `importPreset` / `exportPreset` / `duplicatePreset` / `renamePreset` / `movePreset` / `deletePreset` | 预设库操作（D-39、D-79、D-80、D-84、D-37、D-94）；导出目标已存在时只有 `overwrite` 才替换（`preset.export_exists`）；内置预设不能移动、改名、删除（`library.builtin_read_only`） |
+| `listAssets` / `resolveAsset` / `importAsset` / `renameAsset` / `setAssetCategory` / `deleteAsset` | 素材库操作（D-83、D-85、D-88、D-95）；素材引用是 assetId 或唯一的显示名称 |
 | `bindAsset` / `listBindings` | 持久绑定：预设本地或用户默认（D-14、D-90）；`assetId` 为 nil 时清除 |
 | `addSource(_:)` / `sources()` | 登记源图（只检查存在与扩展名，D-02） |
-| `ExportRequest.sourceColorOverride` / `JobSpec.sourceColorOverride` | 没有 ICC 的源图按什么色彩空间解释（D-04）；源图自带 ICC 时渲染层忽略并警告 `source.override_ignored` |
+| `ExportRequest.sourceColorOverride` / `JobSpec.sourceColorOverride` | 没有 ICC 的源图按什么色彩空间解释（D-04、D-75）；源图自带 ICC 时渲染层忽略并警告 `source.override_ignored` |
 | `inspectSource(_:)` | 格式、尺寸、方向、ICC、HDR 判定、EXIF 摘要；GPS 与作者只报告有无 |
 | `validate(_:)` | 不渲染、不写文件：每个任务的源图、预设与平台、输出目录（不存在时只检查能否创建）、素材槽、预估输出（文件名与尺寸）、推算的作品目录（版本后缀；覆盖时检查能否替换、同一请求是否有两个任务指向同一目录 `request.duplicate_output`） |
 | `renderPreview(_:)` | 与导出同一条管线，返回 sRGB PNG |

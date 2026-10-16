@@ -110,6 +110,14 @@ struct PresetCatalogTests {
         await #expect { try await service.renamePreset(.library("xhs-standard"), to: "X") } throws: { code($0) == "library.builtin_read_only" }
         await #expect { try await service.deletePreset(.file(file)) } throws: { code($0) == "library.preset_not_in_library" }
 
+        // 分组移动（D-81、D-94）：内置预设不能移动；文件预设不在库里。
+        let moved = try await service.movePreset(.library("square"), to: .imported)
+        #expect(moved.origin == .imported && moved.presetId == dup.presetId)
+        #expect(try await service.movePreset(.library("square"), to: .user).origin == .user)
+        await #expect { try await service.movePreset(.library("xhs-standard"), to: .user) } throws: { code($0) == "library.builtin_read_only" }
+        await #expect { try await service.movePreset(.library("square"), to: .builtIn) } throws: { code($0) == "library.builtin_read_only" }
+        await #expect { try await service.movePreset(.file(file), to: .user) } throws: { code($0) == "library.preset_not_in_library" }
+
         let names = try await service.listPresets().presets.map(\.name)
         #expect(names.contains("Square") && names.contains("My Landscape") && names.contains("My Landscape Copy"))
         try await service.deletePreset(.library("square"))
@@ -156,6 +164,11 @@ struct PresetCatalogTests {
         let svg = box.root.appending(path: "Bad.svg")
         try Data(#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script/></svg>"#.utf8).write(to: svg)
         await #expect { try await service.importAsset(from: svg, category: .watermark, name: nil) } throws: { code($0) == "asset.svg_rejected" }
+
+        let recategorized = try await service.setAssetCategory(imported.asset.assetId, to: .watermark)
+        #expect(recategorized.category == .watermark)
+        #expect(await service.listAssets(category: .watermark).assets.map(\.assetId) == [imported.asset.assetId])
+        await #expect { try await service.setAssetCategory(UUID(), to: .signature) } throws: { code($0) == "asset.not_found" }
 
         try await service.bindAsset(imported.asset.assetId, slotId: "signature", preset: nil)
         let dup = try await service.duplicatePreset(.library("instagram-standard"), name: "Signed")

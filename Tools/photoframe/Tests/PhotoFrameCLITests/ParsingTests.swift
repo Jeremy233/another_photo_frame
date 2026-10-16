@@ -71,9 +71,9 @@ struct ParsingTests {
 
         #expect(root.stdout.value.contains("asset"))
         let preset = await runCLI(["preset", "--help"], in: box.root)
-        for name in ["list", "import", "export", "duplicate", "rename", "delete"] { #expect(preset.stdout.value.contains(name)) }
+        for name in ["list", "import", "export", "duplicate", "rename", "move", "delete"] { #expect(preset.stdout.value.contains(name)) }
         let asset = await runCLI(["asset", "--help"], in: box.root)
-        for name in ["list", "import", "rename", "delete", "bind", "unbind", "bindings"] { #expect(asset.stdout.value.contains(name)) }
+        for name in ["list", "import", "rename", "set-category", "delete", "bind", "unbind", "bindings"] { #expect(asset.stdout.value.contains(name)) }
 
         let version = await runCLI(["--version"], in: box.root)
         #expect(version.status == 0 && version.stdout.value.contains(PhotoFrameCLI.version))

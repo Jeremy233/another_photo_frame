@@ -82,6 +82,17 @@ struct LibraryCommandTests {
         #expect(await runCLI(["preset", "export", "signed-portrait", "-o", "out", "--overwrite"], in: box.root).status == 0)
         #expect(await runCLI(["preset", "export", "xhs-standard", "-o", "out/xhs.photoframe"], in: box.root).status == 0)
 
+        // 分组移动（D-94）。
+        let moved = try await runCLI(["preset", "move", "signed-portrait-copy", "--to", "user", "--json"], in: box.root).stdout.json()
+        #expect((moved["preset"] as? [String: Any])?["origin"] as? String == "user")
+        let back = await runCLI(["preset", "move", "signed-portrait-copy", "--to", "imported"], in: box.root)
+        #expect(back.status == 0 && back.stdout.value.contains("Signed Portrait Copy"))
+        let builtInMove = await runCLI(["preset", "move", "xhs-standard", "--to", "user", "--json"], in: box.root)
+        #expect(builtInMove.status == PhotoFrameExitCode.invalidInput.rawValue)
+        #expect((try builtInMove.stdout.json()["error"] as? [String: Any])?["code"] as? String == "library.builtin_read_only")
+        #expect(await runCLI(["preset", "move", "signed-portrait-copy", "--to", "builtIn"], in: box.root).status == PhotoFrameExitCode.usage.rawValue)
+        #expect(await runCLI(["preset", "move", "Signed.photoframe", "--to", "user"], in: box.root).status == PhotoFrameExitCode.invalidInput.rawValue)
+
         let dup = await runCLI(["preset", "duplicate", "xhs-standard", "--name", "Square White"], in: box.root)
         #expect(dup.status == 0 && dup.stdout.value.contains("Square White"))
         #expect(await runCLI(["preset", "rename", "square-white", "Square Gray"], in: box.root).status == 0)
@@ -127,6 +138,12 @@ struct LibraryCommandTests {
         #expect(await runCLI(["asset", "list"], in: box.root).stdout.lines.count == 3)
 
         #expect(await runCLI(["asset", "rename", "green sig", "Signature"], in: box.root).status == 0)
+        // 改分组（D-95）。
+        let recat = try await runCLI(["asset", "set-category", "Signature", "watermark", "--json"], in: box.root).stdout.json()
+        #expect((recat["asset"] as? [String: Any])?["category"] as? String == "watermark")
+        #expect(await runCLI(["asset", "list", "--category", "watermark"], in: box.root).stdout.lines.count == 1)
+        #expect(await runCLI(["asset", "set-category", "Signature", "logo"], in: box.root).status == PhotoFrameExitCode.usage.rawValue)
+        #expect(await runCLI(["asset", "set-category", "nope", "watermark"], in: box.root).status == PhotoFrameExitCode.notFound.rawValue)
         #expect(await runCLI(["asset", "bind", "Signature", "--slot", "signature"], in: box.root).status == 0)
         let badSlot = await runCLI(["asset", "bind", "Signature", "--slot", "signature", "--preset", "xhs-standard"], in: box.root)
         #expect(badSlot.status == PhotoFrameExitCode.invalidInput.rawValue && badSlot.stderr.value.contains("binding.unknown_slot"))

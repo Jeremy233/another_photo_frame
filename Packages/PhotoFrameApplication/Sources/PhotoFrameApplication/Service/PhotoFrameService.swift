@@ -45,6 +45,8 @@ public protocol PhotoFrameService: Sendable {
     func renamePreset(_ reference: PresetReference, to name: String) async throws(ApplicationError) -> CatalogPresetSummary
     /// 删除用户预设及其本地绑定；内置预设不能删除。
     func deletePreset(_ reference: PresetReference) async throws(ApplicationError)
+    /// 在「用户保存」和「导入」两组之间移动（D-81、D-94）；内容和时间不变。内置预设不能移动（`library.builtin_read_only`）。
+    func movePreset(_ reference: PresetReference, to group: PresetOrigin) async throws(ApplicationError) -> CatalogPresetSummary
 
     // 素材库与绑定（§8.2、D-14）
 
@@ -53,6 +55,8 @@ public protocol PhotoFrameService: Sendable {
     func resolveAsset(_ reference: String) async throws(ApplicationError) -> AssetInfo
     func importAsset(from fileURL: URL, category: AssetCategory, name: String?) async throws(ApplicationError) -> CatalogAssetImport
     func renameAsset(_ id: UUID, to name: String) async throws(ApplicationError) -> AssetInfo
+    /// 改素材分组（D-89、D-95）：只用于整理，不影响绑定。
+    func setAssetCategory(_ id: UUID, to category: AssetCategory) async throws(ApplicationError) -> AssetInfo
     /// 删除素材；指向它的绑定保留（D-83），返回这些绑定。
     func deleteAsset(_ id: UUID) async throws(ApplicationError) -> [PersistedBinding]
     /// 持久绑定：`preset` 为 nil 时是用户默认绑定，否则是该预设的本地绑定。`assetId` 为 nil 时清除。
@@ -278,6 +282,15 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         }
     }
 
+    public func movePreset(_ reference: PresetReference, to group: PresetOrigin) async throws(ApplicationError) -> CatalogPresetSummary {
+        let id = try libraryId(reference)
+        do {
+            return summary(try library.presets.move(id, to: group))
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
     // MARK: - 素材与绑定
 
     public func listAssets(category: AssetCategory?) async -> CatalogAssetList {
@@ -312,6 +325,14 @@ public actor LocalPhotoFrameService: PhotoFrameService {
     public func renameAsset(_ id: UUID, to name: String) async throws(ApplicationError) -> AssetInfo {
         do {
             return try library.assets.rename(id, to: name)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func setAssetCategory(_ id: UUID, to category: AssetCategory) async throws(ApplicationError) -> AssetInfo {
+        do {
+            return try library.assets.setCategory(id, to: category)
         } catch {
             throw ApplicationError(error)
         }
