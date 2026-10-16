@@ -254,6 +254,22 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 | `extLinear2020/hdr/hdr_pq2020_203nit_hdr_gainmap_CI.jpg` | 合成图：第一行灰块从第 5 块起应逐级变亮；背景不发光 |
 | `extLinear2020/hdr/hdr_pq2020_203nit_hdr_gainmap_ImageIO.jpg` | 对照：ImageIO 路线的 SDR 底图里背景偏暗（坑 4） |
 
+### 8.5 HDR→SDR tone map 对比（三张 16 位 PQ TIFF）
+
+用 `colorpoc tonemap` 生成。参照是同一张照片的 Lightroom SDR 底图，也就是摄影师认可的 SDR 版本。对比图在 `Experiments/ColorPoC/out/tonemap/<名字>_compare.jpg`，完整指标见 [`results/tonemap.md`](../Experiments/ColorPoC/results/tonemap.md)。所有方法的峰值都按画面估算：取 sRGB 线性分量最大值的 P99.95，不用 PQ 元数据的默认值 4.93。
+
+| 方法 | 与 Lightroom SDR 底图的 ΔE 中位 / P95（cannon_beach · aurora1 · grand_teton） | 有通道截断到 255 的像素 |
+|---|---|---|
+| 直接截断 | 6.5 / 12.5 · 3.4 / 15.6 · 2.4 / 14.8 | 3.7% · 11.4% · 27.6% |
+| `CIToneMapHeadroom`（headroom = 画面峰值） | **1.7 / 8.0 · 2.1 / 8.2 · 2.2 / 6.3** | **0.2% · 0.7% · 7.3%** |
+| Apple 软肩（`.toneMapHDRtoSDR`） | 6.5 / 12.1 · 3.4 / 13.9 · 2.4 / 11.1 | 3.3% · 6.4% · 26.8% |
+| BT.2390 EETF（maxRGB） | 6.5 / 11.0 · 3.4 / 13.8 · 2.4 / 9.3 | 2.9% · 7.7% · 26.2% |
+| Reinhard（亮度） | 3.7 / 6.5 · 2.3 / 7.2 · 2.4 / 6.0 | 0.2% · 0.8% · 16.4% |
+
+- 按画面峰值设置 headroom 后，`CIToneMapHeadroom` 在三张照片上都最接近 Lightroom 的 SDR 版本，截断也最少，只是暗部比 Lightroom 暗约 2 个 L*。坑 6 里"太暗"的问题，原因是用了 PQ 默认 headroom 4.93，而不是曲线本身。
+- Apple 软肩和 BT.2390 都基本不动中间调，所以比 Lightroom 的 SDR 版本亮（中间调 ΔL* 约 +5 到 +11），高光截断也多。
+- 没有任何全局曲线能完全复现 Lightroom 的 SDR 版本（P95 仍有 6–8）。Lightroom 的 SDR 底图是单独调过的。
+
 ## 9. 对规范其它部分的影响（只列出，不改）
 
 - §6.7 / D-05：HDR→SDR 的 tone map 需要选定并记录。建议：gain map 源直接用它自带的 SDR 底图（摄影师在 Lightroom 里的 SDR 版本）；PQ/HLG/float 源用显式选定的曲线（候选见坑 6）。

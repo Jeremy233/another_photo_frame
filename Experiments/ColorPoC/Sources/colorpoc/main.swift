@@ -17,6 +17,8 @@ case "fixtures":
     for f in try FileManager.default.contentsOfDirectory(at: fixtures.dir, includingPropertiesForKeys: nil).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
         if let i = fileInfo(f) { print(String(data: try enc.encode(i), encoding: .utf8)!) }
     }
+case "tonemap":
+    try runTonemap(args.dropFirst().map { URL(fileURLWithPath: $0) }, env: env)
 case "inspect":
     inspect(args.dropFirst().map { URL(fileURLWithPath: $0) })
 case "run":
@@ -47,6 +49,7 @@ default:
     usage:
       colorpoc fixtures                 生成 fixtures/ 下的测试图
       colorpoc inspect <文件或目录>...   检查导出的样本（ICC、gain map、headroom、色域）
+      colorpoc tonemap <HDR TIFF>...     生成 HDR→SDR 几种曲线的并排对比（同目录同名 .jpg 作为 Lightroom 参照）
       colorpoc run [--only a,b] [--real <dir>]
                                         跑全部实验（probes,chart,wide,gradient,alpha,orientation,hdr），
                                         结果写到 out/results*.md|json；--real 额外跑本地真实照片目录（不入库）
