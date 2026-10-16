@@ -14,6 +14,8 @@ enum WorkingColor {
     /// V1 唯一的输出空间（§6.8）。
     static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
     static let sRGBProfileName = "sRGB IEC61966-2.1"
+    /// 显示用预览（`PreviewColorMode.extendedRange`）：与 sRGB 同一编码，但不截断 > 1 与色域外的值。
+    static let extendedSRGB = CGColorSpace(name: CGColorSpace.extendedSRGB)!
     /// HDR → SDR 峰值估算用的线性 sRGB（§6.7：「线性 sRGB 分量最大值的 99.95 分位」）。
     static let extendedLinearSRGB = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
 

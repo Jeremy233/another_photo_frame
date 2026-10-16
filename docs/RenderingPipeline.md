@@ -29,6 +29,22 @@ result.warnings     // [RenderWarning]：稳定 code + 中文 message + 页码 /
 - 取消：在阶段之间和每一页之前检查 `Task.isCancelled`；取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
 - 错误：`RenderError(code, message, hint)`，code 稳定（`render.*`，几何与图层错误沿用 Core 的 `geometry.*`、`overlay.*`）。
 
+预览（§11.2 `renderPreview`，详见 2.7）：
+
+```swift
+let preview = try await renderer.renderPreview(PreviewRequest(
+    sourceURL: source, preset: presetSnapshot,
+    size: .maxLongEdge(1200),                // 或 .scale(0.25)；不大于导出尺寸
+    assets: assets, skippedLayerIds: skipped,
+    pages: [0],                              // 只渲染封面；nil = 全部
+    color: .sRGB                             // 或 .extendedRange（HDR 显示）
+))                                           // 也可 PreviewRequest(job: renderJob, size:)
+
+preview.pages     // [PreviewPage]：角色、CGImage、预览／导出尺寸、照片矩形、图层矩形（预览与导出两套坐标）
+preview.roles     // 导出会写出的全部页，供 [Cover] [Slide 1] … 切换
+preview.scaleX / scaleY, preview.diagnostics, preview.warnings
+```
+
 ## 2. 流程
 
 ```text
@@ -92,6 +108,20 @@ probe（读属性：尺寸、方向）
 - ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
 - 元数据默认全部不写出；方向不写（像素已校正）。「保留拍摄参数」只复制 Make、Model 与曝光／镜头相关的 EXIF 键；「保留 GPS」复制 GPS 字典。序列号、机主、MakerNote、用户注释、XMP / IPTC、缩略图从不复制。HDR 文件在不丢 gain map 的前提下无损合并元数据，做不到时省略并警告。
 
+### 2.7 预览模式（§6.1 第 3 条、§6.6、§11.2、D-18）
+
+预览与导出共用前半段 `prepare`：校验 → `PageLayout` → `SourceDecoder` → `OverlayPlanner` → HDR 决策，之后才分开。只有采样分辨率与输出方式不同，颜色规则完全相同。
+
+- **版式**：在导出分辨率上由 PhotoFrameCore 计算（与导出逐项相同），再映射到预览像素。预览画布 = 导出画布 × 缩放后四舍五入到整像素，每个方向的缩放是有理数「预览边长 / 导出边长」（两者相差不到半个像素）。
+  矩形的四条边分别用整数运算映射、四舍五入（.5 向上），所以每条边与「导出坐标 × 缩放」相差 ≤ 0.5 px，相邻的矩形仍然相邻；全景切片原点 kW 正好映射到 k × 预览宽度。
+- **解码**：按「导出所需尺寸 × 缩放」的 2 倍降采样（D-18 的同一条规则），不按原图分辨率渲染预览。
+- **照片**：同一个 Lanczos 缩放（`PageComposer.scaledPhoto`），目标直接是映射后的预览矩形，不先合成大图再缩小。
+- **图层**：排版仍按导出像素（字号、内边距不变，D-45），绘制时把整个图层框缩放进预览矩形：文字、SVG 按矢量重画，PNG 从原图一次缩放。
+- **颜色**：`.sRGB`（默认，§6.6 的输出预览）与 SDR 导出编码前的像素相同；HDR 输出时是文件里的 SDR 底图。`.extendedRange` 是 extended sRGB 半浮点，输出写 HDR 时为 HDR 页面并带 content headroom，否则是同一 SDR 页面但不截断色域外颜色（不能用来软打样 SDR 文件）。
+- **一致性**：缩放系数为 1 时，`.sRGB` 预览与 PNG 导出逐像素相同（测试验证）。
+- **取消**：在阶段之间和每一页之前检查，抛出 `CancellationError`；不写任何文件。参数变化时 GUI 取消旧的预览任务即可。
+- 错误：预览尺寸无效（≤ 0、NaN）报 `render.invalid_preview_size`；其余与导出相同。
+
 ## 3. 测试（Swift Testing）
 
 ```bash
@@ -108,12 +138,15 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
 | `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
+| `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 
 更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。黄金文件是在 macOS 27 上记录的；CI 是 macOS 26，若编码器差异超出容差，需要在 26 上重录（与 D-19 的基线问题相同）。
 
 ## 4. 尚未实现
 
-- 预览模式（§11.2 `renderPreview`：低分辨率、同一管线）。
+- 预览缓存（§12.1「缩略图缓存」）：每次 `renderPreview` 都重新解码源图。只改图层或背景时可以复用解码结果，留给 GUI／Application 层按需要加。
+- gain map JPEG 的 HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样。
+- PQ / HLG / 浮点源的画面峰值在降采样后的解码图上统计，预览很小时峰值可能略低于导出，tone map 后的 SDR 预览会稍有差别。
 - 超出 sRGB 色域的感知映射（目前逐通道截断，§6.9、坑 11）。
 - 压缩的「最大化兼容性」TIFF（需要 LZW / ZIP 解压）。
 - 16 位输出（届时按任务改用 RGBAf，D-03）。

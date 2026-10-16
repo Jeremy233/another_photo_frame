@@ -66,6 +66,25 @@ public struct RenderJob: Sendable {
     }
 }
 
+/// 导出任务与预览请求共有的输入：管线前半段（版式、解码、图层）只看这些。
+struct RenderInputs {
+    var sourceURL: URL
+    var preset: ExportPreset
+    var assets: [String: RenderAsset]
+    var skippedLayerIds: Set<String>
+    var sourceColorOverride: SourceColorOverride?
+    var maxCarouselItems: Int?
+    var metadataOverrides: [String: String]
+}
+
+extension RenderJob {
+    var inputs: RenderInputs {
+        RenderInputs(sourceURL: sourceURL, preset: preset, assets: assets, skippedLayerIds: skippedLayerIds,
+                     sourceColorOverride: sourceColorOverride, maxCarouselItems: maxCarouselItems,
+                     metadataOverrides: metadataOverrides)
+    }
+}
+
 extension RenderJob {
     /// 由 `SlotResolver` 的结果组装素材表：`fileURL` 把素材库记录换成本地文件（素材库负责路径）。
     /// 找不到文件的素材不放进表里，对应图层渲染时会警告并跳过。

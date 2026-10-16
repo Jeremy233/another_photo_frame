@@ -132,39 +132,47 @@ struct PageLayout {
     }
 }
 
-/// 图层：解析内容、计算尺寸与位置、绘制成 CIImage（§7.1、§8.2）。
+/// 一个已放进版式的图层：内容与它在导出页面上的尺寸（所有页相同）。绘制留给导出或预览，各自按需要的像素尺寸画。
+struct PlannedOverlay {
+    var content: OverlayContent
+    var size: PixelSize
+    var alignment: OverlayAlignment
+}
+
+/// 图层：解析内容、计算尺寸与位置（§7.1、§8.2）。
 enum OverlayPlanner {
-    /// 把图层放进 `layout.pages`，返回 layerId → 绘制好的图层图像。
+    /// 把图层放进 `layout.pages`，返回 layerId → 图层内容与尺寸。
     static func plan(
-        job: RenderJob, layout: inout PageLayout, properties: [CFString: Any], warnings: inout [RenderWarning]
-    ) throws(RenderError) -> [String: CIImage] {
-        let metadataValues = MetadataText.values(from: properties).merging(job.metadataOverrides) { $1 }
-        let layers = job.preset.layers.enumerated()
-            .filter { $0.element.enabled && !job.skippedLayerIds.contains($0.element.layerId) }
+        inputs: RenderInputs, layout: inout PageLayout, properties: [CFString: Any], warnings: inout [RenderWarning]
+    ) throws(RenderError) -> [String: PlannedOverlay] {
+        let metadataValues = MetadataText.values(from: properties).merging(inputs.metadataOverrides) { $1 }
+        let layers = inputs.preset.layers.enumerated()
+            .filter { $0.element.enabled && !inputs.skippedLayerIds.contains($0.element.layerId) }
             .sorted { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }
             .map(\.element)
 
-        var images: [String: CIImage] = [:]
+        var planned: [String: PlannedOverlay] = [:]
         for layer in layers {
-            guard let content = try content(for: layer, job: job, values: metadataValues, warnings: &warnings) else { continue }
+            guard let content = try content(for: layer, assets: inputs.assets, values: metadataValues, warnings: &warnings)
+            else { continue }
             let geometry: OverlayGeometry
             do { geometry = try layer.geometry(contentSize: content.naturalSize) } catch {
                 throw .overlay(error, layerId: layer.layerId)
             }
             let placements = try layout.placements(for: layer, geometry: geometry, warnings: &warnings)
             guard let size = placements.values.first?.size else { continue }
-            images[layer.layerId] = try content.render(size: size, alignment: layer.anchor.horizontal)
+            planned[layer.layerId] = PlannedOverlay(content: content, size: size, alignment: layer.anchor.horizontal)
             for i in layout.pages.indices {
                 if let p = placements[layout.pages[i].role.page] {
                     layout.pages[i].overlays.append((layer, p.rect))
                 }
             }
         }
-        return images
+        return planned
     }
 
     static func content(
-        for layer: OverlayLayer, job: RenderJob, values: [String: String], warnings: inout [RenderWarning]
+        for layer: OverlayLayer, assets: [String: RenderAsset], values: [String: String], warnings: inout [RenderWarning]
     ) throws(RenderError) -> OverlayContent? {
         switch layer.type {
         case .text, .metadataText:
@@ -195,7 +203,7 @@ enum OverlayPlanner {
             warnings += notes.map { RenderWarning(code: "overlay.font_missing", message: $0, layerId: layer.layerId) }
             return .text(block)
         case .asset, .cameraBadge:
-            guard let slotId = layer.slotId, let asset = job.assets[slotId] else {
+            guard let slotId = layer.slotId, let asset = assets[slotId] else {
                 warnings.append(RenderWarning(code: "overlay.asset_missing", message: "素材槽 \(layer.slotId ?? "?") 没有可用素材，已跳过",
                                               layerId: layer.layerId))
                 return nil

@@ -51,21 +51,32 @@ enum OverlayContent {
 
     // MARK: - 绘制
 
-    func render(size: PixelSize, alignment: OverlayAlignment) throws(RenderError) -> CIImage {
+    /// - Parameters:
+    ///   - size: 图层框在导出页面上的像素尺寸（Core 解析出的最终尺寸）。排版只看它。
+    ///   - pixels: 实际输出的像素尺寸，默认等于 `size`。预览时是映射到预览页面后的图层框：同一份排版整体缩放进去，
+    ///     文字与 SVG 按矢量重画，不先画大图再缩小。
+    func render(size: PixelSize, alignment: OverlayAlignment, pixels: PixelSize? = nil) throws(RenderError) -> CIImage {
+        let target = pixels ?? size
+        let sx = Double(target.width) / Double(size.width), sy = Double(target.height) / Double(size.height)
         switch self {
         case .text(let block):
-            return try Self.draw(size: size) { ctx in block.draw(in: ctx, box: size, alignment: alignment) }
+            return try Self.draw(size: target) { ctx in
+                if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
+                block.draw(in: ctx, box: size, alignment: alignment)
+            }
         case .vector(let svg):
-            return try Self.draw(size: size) { ctx in
+            return try Self.draw(size: target) { ctx in
+                if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
                 svg.draw(in: ctx, box: CGRect(x: 0, y: 0, width: size.width, height: size.height))
             }
         case .bitmap(let full, let source):
             // 等比放进图层框并居中，不变形。缩小超过一半时先用 ImageIO 降采样，避免双线性混叠。
             let s = min(Double(size.width) / Double(full.width), Double(size.height) / Double(full.height))
+            let effective = s * min(sx, sy)
             var img = full
-            if s < 0.5, let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            if effective < 0.5, let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: Int((Double(max(full.width, full.height)) * s * 2).rounded(.up)),
+                kCGImageSourceThumbnailMaxPixelSize: Int((Double(max(full.width, full.height)) * effective * 2).rounded(.up)),
             ] as CFDictionary) {
                 img = thumb
             }
@@ -77,9 +88,11 @@ enum OverlayContent {
             let premultiplied = try Self.draw(size: PixelSize(width: img.width, height: img.height)) { ctx in
                 ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
             }
+            var transform = CGAffineTransform(scaleX: k, y: k).concatenating(CGAffineTransform(translationX: dx, y: dy))
+            if pixels != nil { transform = transform.concatenating(CGAffineTransform(scaleX: sx, y: sy)) }
             return premultiplied
-                .transformed(by: CGAffineTransform(scaleX: k, y: k).concatenating(CGAffineTransform(translationX: dx, y: dy)))
-                .cropped(to: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+                .transformed(by: transform)
+                .cropped(to: CGRect(x: 0, y: 0, width: target.width, height: target.height))
         }
     }
 
