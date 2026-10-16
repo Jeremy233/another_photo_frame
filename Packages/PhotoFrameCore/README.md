@@ -73,3 +73,11 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 5. **不适合切片的警告**：`R ≤ 1` 报 `notLandscape`（`panorama.not_landscape`）；`R > 1` 但自动张数 ≤ 2（即 `R ≤ 2·W/(H−2v)`）报 `notWideEnough`（`panorama.not_wide_enough`，取代原来的 `fitsSingleSlide`）。两者都只是提示，布局照常计算。
 6. **比例裁切保留最小边距**：默认比例取内框比例 (W − 2m) : (H − 2m)，`anchor` 取 0…1，表示裁切框在可移动范围内的相对位置。
 7. **自动张数容差**：0.01 px。
+
+## 预设模型
+
+`Sources/PhotoFrameCore/Preset/` 定义可分享预设的数据模型（规范 §7.1、§8.1、§11.1）：
+`ExportPreset`（画布、全景、图层、素材槽、输出）、`OverlayLayer`、`AssetSlot`、`OutputSettings`、`PlatformProfile`。
+全部是 `Codable`、`Sendable` 的纯数据。读写 JSON 用 `PresetSchema`（版本检查、迁移、不认识字段的登记），
+内容校验用 `ExportPreset.validate()`。`.photoframe` 打包、导入检查和素材绑定在 `PhotoFrameStorage`，
+字段命名的待确认项见 `PhotoFrameStorage/README.md`。
