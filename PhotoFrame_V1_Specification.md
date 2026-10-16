@@ -318,6 +318,11 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 | HDR：gain map JPEG、PQ/HLG PNG、PQ/HLG/float TIFF | **必须**（D-05） | 保留 HDR 动态范围进入工作空间；按输出设置导出 HDR 或经 tone map 输出 SDR，不可简单剪裁/静默降级 |
 | 相机 RAW（NEF/CR3/DNG 等） | 【V1 不做】 | 用户先在其他软件显影导出 TIFF/JPEG |
 
+**HDR TIFF 补充【已确定 2026-10-16，依据色彩 PoC】：**
+
+- Lightroom 勾选"最大化兼容性"导出的 HDR TIFF，结构是 SDR 主图加 SubIFD 里的 ISO 21496-1 gain map。Apple ImageIO 读不到其中的 HDR，V1 自己解析 SubIFD 还原 HDR。暂时无法解析时（例如压缩的 TIFF），按 SDR 读入，并提示"HDR 部分未读取"。
+- 32 位浮点 TIFF：支持，读入后先转成 `RGBAh` 再交给渲染引擎。
+
 **无 ICC 策略【建议】：** 默认解释为 sRGB，并在 Inspector / 日志显示 `Source profile missing — assumed sRGB`；用户可针对**源文件或任务**显式选择另一个输入色彩空间。不得把“无 profile”默默标记为准确的 sRGB 摄影数据。扫描照片尤其需要人工检查。
 
 ### 6.3 推荐处理管线（具体 API 实现待验证）
@@ -342,7 +347,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ![图 5：从源 ICC 解码、高精度工作空间、排版与线性光合成，到输出颜色转换、预览和编码的共享管线；背景与素材进入同一工作空间，HDR 需受控映射或拒绝。](docs/illustrations/05-managed-color-pipeline.png)
 
-*图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；工作空间见 D-03，HDR→SDR 的具体策略仍待确定。*
+*图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；工作空间见 D-03，HDR→SDR 策略见 §6.7。*
 
 **建议的后端显式类型：**
 
@@ -385,7 +390,11 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 - 输入：在文件识别阶段检测 gain map、PQ/HLG 转移函数、float 数据等 HDR 指示，标记 `isHDR` 与 headroom，全程以 extended-range 浮点保留高光，不在 `[0,1]` 截断。
 - 输出：HDR 是**可选导出项**。平台配置（§5.4）声明该平台支持的 HDR 输出格式（例如带 ISO 21496-1 gain map 的 JPEG，SDR 底图 + gain map，不支持 HDR 的设备自动退回 SDR）；用户选择 HDR 时按平台配置导出对应格式。
-- SDR 输出：HDR 源选择 SDR 输出时，使用选定并记录参数的 tone mapping 算法，**不能无声地把高亮直接 clip 到白色**。
+- SDR 输出（也用作 HDR 输出里的 SDR 底图）【已确定 2026-10-16，依据色彩 PoC】：
+  1. **源文件自带 SDR 版本时直接使用**：gain map JPEG 的底图，以及 Lightroom"最大化兼容性"TIFF 的主图。这是摄影师在后期软件里确认过的 SDR 版本，不再做 tone map。
+  2. **源文件没有 SDR 版本时**（PQ / HLG、纯 HDR 浮点 TIFF），用 Core Image `CIToneMapHeadroom` 做 tone map：`sourceHeadroom` 取画面实际峰值（线性 sRGB 分量最大值的 99.95 分位），`targetHeadroom` = 1。不得使用 PQ / HLG 元数据里的默认 headroom（例如 4.93）。所用方法和参数写入渲染报告。
+  3. 背景、水印、文字等 SDR 元素不参与 tone map。
+  4. 任何情况下都**不能无声地把高亮直接 clip 到白色**。
 - 合成：背景、水印、文字等 SDR 元素在 HDR 输出中按参考白（SDR 白点）放置，不随 headroom 一起变亮。
 - 视频：V1 不做视频输出（D-16）。
 
@@ -410,9 +419,10 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 - [ ] 预览与导出的像素／颜色计算保持一致；明确允许预览缩放及 JPEG 编码误差。
 - [ ] 对 P3 屏幕与普通 sRGB 显示器观察同一 sRGB 输出，行为符合 macOS 色彩管理预期。
 - [ ] HDR 源（gain map JPEG、PQ/HLG PNG、float TIFF）保留动态范围；HDR 输出在 HDR 屏幕正确显示、在 SDR 设备正确回退；SDR 输出经 tone map，不发生无提示高光剪裁。
+- [ ] HDR 输出在**部分 headroom 的屏幕状态**下检查，例如 MacBook 接上外接显示器、或屏幕亮度较高，系统只给出部分 HDR 余量时。这种状态下显示效果不得比 SDR 版本明显过曝或过饱和。（macOS 此时按文件 gain map 元数据生成的自适应曲线压缩 HDR，不同写法的同一张图会显示得不一样；见色彩 PoC 报告坑 21。）
 - [ ] 输出 JPEG 嵌入 sRGB ICC，文件再次在 Photoshop/Preview 中打开不出现系统性色偏。
 
-> **【待确认】** 色差门槛（如 CIEDE2000 的样本分位数阈值）、对照标准图集、不同系统版本基线、HDR→SDR 策略；须在核心 PoC 阶段确定，不宜在没有样本的情况下声称具体数值已可达成。
+> **【待确认】** 色差门槛（如 CIEDE2000 的样本分位数阈值）、对照标准图集、不同系统版本基线；须在核心 PoC 阶段确定，不宜在没有样本的情况下声称具体数值已可达成。HDR→SDR 策略已定，见 §6.7。
 
 ---
 
