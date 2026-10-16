@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import PhotoFrameApplication
 import PhotoFrameCore
 import PhotoFrameRendering
 import PhotoFrameStorage
@@ -9,6 +8,7 @@ import Synchronization
 import UniformTypeIdentifiers
 
 /// 用 PhotoFrameRendering 实现应用层的两个协议：任务队列的 ``JobRenderer`` 和服务的 ``ImageAnalyzer``。
+/// ``LocalPhotoFrameService/makeDefault(_:)`` 用它组装 GUI、CLI、MCP 共用的服务。
 ///
 /// 适配要点：
 /// - **类型**：应用层的 `JobRenderRequest` / `JobOutputRole`… 与渲染层的 `RenderJob` / `OutputRole`… 一一对应，
@@ -63,7 +63,8 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
         } ?? ([:], [])
         return RenderJob(
             sourceURL: request.source.fileURL, preset: request.preset, assets: assetFiles, skippedLayerIds: skipped,
-            outputDirectory: outputDirectory, maxCarouselItems: request.platform?.maxCarouselItems)
+            outputDirectory: outputDirectory, sourceColorOverride: request.sourceColorOverride,
+            maxCarouselItems: request.platform?.maxCarouselItems)
     }
 
     // MARK: - ImageAnalyzer

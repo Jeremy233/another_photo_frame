@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 import PhotoFrameStorage
 
 /// 渲染器：把一个任务渲染成输出文件。队列只依赖这个协议；真正的实现在 PhotoFrameRendering 模块。
@@ -40,11 +41,14 @@ public struct JobRenderRequest: Sendable {
     public var platform: PlatformProfile?
     /// 素材槽解析结果（D-14、D-28、D-29）。队列没有配置素材库时为 nil，由渲染器自行处理。
     public var slots: SlotResolution?
+    /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
+    public var sourceColorOverride: SourceColorOverride?
 
     public init(
         jobId: JobID, attemptId: AttemptID, source: PhotoSource, preset: ExportPreset,
-        platform: PlatformProfile? = nil, slots: SlotResolution? = nil
+        platform: PlatformProfile? = nil, slots: SlotResolution? = nil, sourceColorOverride: SourceColorOverride? = nil
     ) {
+        self.sourceColorOverride = sourceColorOverride
         self.jobId = jobId
         self.attemptId = attemptId
         self.source = source

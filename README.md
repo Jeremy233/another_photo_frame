@@ -35,9 +35,8 @@ AnotherPhotoFrame 是一个免费、开源、完全在本地运行的 macOS 摄�
 | 产品与技术规范 | 审阅中（Draft） |
 | `PhotoFrameCore`：画布几何（Fit、比例裁切、全景切片） | ✅ 已完成 |
 | `PhotoFrameStorage`：`.photoframe` 预设包、素材绑定（SlotResolver）、平台配置、内置预设 | ✅ 已完成 |
-| `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService（预设、检查、校验、预览、提交、状态、取消） | ✅ 已完成 |
+| `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService（预设、检查、校验、预览、提交、状态、取消）；接入渲染模块，GUI / CLI / MCP 共用 | ✅ 已完成 |
 | `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成 |
-| `PhotoFrameEngine`：用渲染模块实现应用层的渲染与图像分析接口，组装 GUI / CLI / MCP 共用的服务 | ✅ 已完成 |
 | CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset list`，见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成（预设导入导出等预设库合并后再加） |
 | MCP、GUI | 未开始 |
 
@@ -120,9 +119,8 @@ The project is in the **specification stage**; there is no usable app yet.
 | Product and technical specification | In review (draft) |
 | `PhotoFrameCore`: canvas geometry (fit, aspect crop, panorama slicing) | ✅ Done |
 | `PhotoFrameStorage`: `.photoframe` preset packages, asset binding (SlotResolver), platform catalog, built-in presets | ✅ Done |
-| `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService (presets, inspect, validate, preview, submit, status, cancel) | ✅ Done |
+| `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService (presets, inspect, validate, preview, submit, status, cancel); wired to the rendering module, shared by GUI / CLI / MCP | ✅ Done |
 | `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done |
-| `PhotoFrameEngine`: implements the application-layer rendering and image-analysis interfaces with the rendering module; assembles the service shared by GUI / CLI / MCP | ✅ Done |
 | CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset list`; see [docs/CLI.md](docs/CLI.md) | ✅ Done (preset import/export after the preset library lands) |
 | MCP, GUI | Not started |
 

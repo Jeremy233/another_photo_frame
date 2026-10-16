@@ -189,14 +189,14 @@ struct PresetJSON: Encodable {
     var mode: String
     var background: String
     var minMarginPx: Int
-    var panorama: PresetListing.Panorama?
+    var panorama: CatalogPresetSummary.Panorama?
     var format: String
     var quality: Int
     var dynamicRange: String
     var layerCount: Int
     var slotIds: [String]
 
-    init(_ p: PresetListing) {
+    init(_ p: CatalogPresetSummary) {
         presetId = p.presetId.uuidString
         name = p.name
         slug = p.slug

@@ -4,7 +4,6 @@ import ImageIO
 import PhotoFrameApplication
 @testable import PhotoFrameCLI
 import PhotoFrameCore
-import PhotoFrameEngine
 import PhotoFrameStorage
 import Synchronization
 import Testing

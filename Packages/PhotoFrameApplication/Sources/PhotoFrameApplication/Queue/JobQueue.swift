@@ -305,7 +305,8 @@ public actor JobQueue {
         if !warnings.isEmpty {
             update(id, attemptId) { $0.warnings += warnings }
         }
-        return JobRenderRequest(jobId: id, attemptId: attemptId, source: spec.source, preset: spec.preset, platform: platform, slots: slots)
+        return JobRenderRequest(jobId: id, attemptId: attemptId, source: spec.source, preset: spec.preset, platform: platform,
+                                slots: slots, sourceColorOverride: spec.sourceColorOverride)
     }
 
     private func handleRenderProgress(_ update: JobRenderProgress, _ id: JobID, _ attemptId: AttemptID) {

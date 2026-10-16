@@ -1,7 +1,6 @@
 import ArgumentParser
 import Foundation
 import PhotoFrameApplication
-import PhotoFrameEngine
 
 /// `photoframe` 根命令。
 public struct RootCommand: AsyncParsableCommand {
@@ -57,7 +56,7 @@ struct CommandContext {
     var json: Bool
     var env: CLIEnvironment { CLIEnvironment.current }
 
-    func makeService(_ options: PhotoFrameEngine.Options = .init()) throws -> any PhotoFrameService {
+    func makeService(_ options: LocalPhotoFrameService.Options = .init()) throws -> any PhotoFrameService {
         do {
             return try env.makeService(options)
         } catch {

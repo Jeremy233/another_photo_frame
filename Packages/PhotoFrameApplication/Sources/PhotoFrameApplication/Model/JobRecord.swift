@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 
 /// 作品目录已存在时怎么办（D-49）。
 public enum ConflictPolicy: String, Hashable, Sendable, Codable, CaseIterable {
@@ -48,12 +49,18 @@ public struct JobSpec: Hashable, Sendable, Codable {
     public var destination: ExportDestination
     /// 单任务素材绑定 slotId → assetId（D-14 最高优先级）。
     public var assetBindings: [String: UUID]
+    /// 源图没有 ICC 时按什么色彩空间解释（D-04）；nil 按 sRGB 并警告。源图自带 ICC 时忽略（渲染时警告）。
+    public var sourceColorOverride: SourceColorOverride?
 
-    public init(source: PhotoSource, preset: ExportPreset, destination: ExportDestination, assetBindings: [String: UUID] = [:]) {
+    public init(
+        source: PhotoSource, preset: ExportPreset, destination: ExportDestination, assetBindings: [String: UUID] = [:],
+        sourceColorOverride: SourceColorOverride? = nil
+    ) {
         self.source = source
         self.preset = preset
         self.destination = destination
         self.assetBindings = assetBindings
+        self.sourceColorOverride = sourceColorOverride
     }
 }
 

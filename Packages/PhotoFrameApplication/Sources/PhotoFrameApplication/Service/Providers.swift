@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 import PhotoFrameStorage
 
 // 服务的两个外部注入点：素材来源（以后接 PhotoFrameStorage 的素材库）和图像分析（由渲染模块实现）。
@@ -19,8 +20,7 @@ public struct NoAssetLibrary: AssetProvider {
     public func fileURL(for asset: AssetRecord) -> URL? { nil }
 }
 
-/// 只读的图像分析：检查源图、预估输出、预览。真正的实现在渲染模块之上（PhotoFrameEngine）；
-/// 应用层只依赖这个协议，测试可以换成假的。
+/// 只读的图像分析：检查源图、预估输出、预览。正常实现是 ``RenderingBackend``；测试可以换成假的。
 public protocol ImageAnalyzer: Sendable {
     func inspect(_ fileURL: URL) async throws -> SourceInspection
     /// 不解码像素，只按文件属性和版式算出会写出哪些页。
@@ -176,11 +176,17 @@ public struct ExportPreviewRequest: Hashable, Sendable {
     public var preset: ExportPreset
     public var options: PreviewOptions
     public var assetBindings: [String: UUID]
+    /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
+    public var sourceColorOverride: SourceColorOverride?
 
-    public init(source: SourceReference, preset: ExportPreset, options: PreviewOptions = PreviewOptions(), assetBindings: [String: UUID] = [:]) {
+    public init(
+        source: SourceReference, preset: ExportPreset, options: PreviewOptions = PreviewOptions(),
+        assetBindings: [String: UUID] = [:], sourceColorOverride: SourceColorOverride? = nil
+    ) {
         self.source = source
         self.preset = preset
         self.options = options
         self.assetBindings = assetBindings
+        self.sourceColorOverride = sourceColorOverride
     }
 }

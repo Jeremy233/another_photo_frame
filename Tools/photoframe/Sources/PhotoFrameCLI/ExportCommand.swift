@@ -27,6 +27,9 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(name: [.short, .long], help: ArgumentHelp("输出根目录，不存在时创建。", valueName: "目录"))
     var output: String
 
+    @Option(name: .customLong("assume-profile"), help: AssumedProfile.help)
+    var assumeProfile: AssumedProfile?
+
     @Flag(help: "作品目录已存在时替换本软件之前导出的目录，而不是加版本后缀（D-49）。")
     var overwrite = false
 
@@ -56,7 +59,7 @@ struct ExportCommand: AsyncParsableCommand {
         // 1. 预设（按给出顺序，重复的只算一次）
         var presets: [ExportPreset] = []
         for reference in preset {
-            let entry: PresetEntry
+            let entry: CatalogPreset
             do {
                 entry = try await service.resolvePreset(PresetReference(argument: reference, relativeTo: env.currentDirectory))
             } catch {
@@ -79,7 +82,8 @@ struct ExportCommand: AsyncParsableCommand {
 
         let request = ExportRequest(
             sourceIds: sourceIds, presets: presets,
-            destination: ExportDestination(rootDirectory: env.resolvePath(output), conflictPolicy: overwrite ? .overwrite : .versionSuffix))
+            destination: ExportDestination(rootDirectory: env.resolvePath(output), conflictPolicy: overwrite ? .overwrite : .versionSuffix),
+            sourceColorOverride: assumeProfile?.override)
 
         // 3. 校验
         let validation: ValidationResult

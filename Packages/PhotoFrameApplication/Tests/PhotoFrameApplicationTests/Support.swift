@@ -1,8 +1,11 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import PhotoFrameApplication
 import PhotoFrameCore
 import Synchronization
 import Testing
+import UniformTypeIdentifiers
 
 /// 每个测试一个独立的临时目录，测试结束删除。
 final class Sandbox: Sendable {
@@ -35,6 +38,39 @@ final class Sandbox: Sendable {
     func exportTree() -> [String] {
         guard let e = FileManager.default.enumerator(atPath: exports.path) else { return [] }
         return (e.allObjects as? [String] ?? []).sorted()
+    }
+
+    /// 代码合成的「照片」：横向渐变，嵌入 Display P3 ICC（`profile: false` 时是去掉颜色描述的 PNG）。不使用任何真实照片。
+    func photo(_ name: String, width: Int, height: Int, type: UTType = .jpeg, profile: Bool = true) throws -> URL {
+        let url = root.appending(path: name)
+        let space = CGColorSpace(name: CGColorSpace.displayP3)!
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        let gradient = CGGradient(colorsSpace: space, colors: [
+            CGColor(colorSpace: space, components: [0.9, 0.3, 0.2, 1])!,
+            CGColor(colorSpace: space, components: [0.2, 0.4, 0.9, 1])!,
+        ] as CFArray, locations: [0, 1])!
+        ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: 0), options: [])
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
+        if !profile {
+            precondition(type == .png, "只支持去掉 PNG 的颜色描述")
+            // 去掉 iCCP、sRGB、cICP、gAMA、cHRM 块，得到「无 ICC」的文件。
+            let data = try Data(contentsOf: url)
+            var out = Data(data.prefix(8))
+            var i = 8
+            while i + 12 <= data.count {
+                let length = data[i..<i + 4].reduce(0) { $0 << 8 | Int($1) }
+                let end = i + 12 + length
+                if !["iCCP", "sRGB", "cICP", "gAMA", "cHRM"].contains(String(decoding: data[i + 4..<i + 8], as: UTF8.self)) {
+                    out += data[i..<end]
+                }
+                i = end
+            }
+            try out.write(to: url)
+        }
+        return url
     }
 
     var stagingRoot: URL { AtomicExporter.stagingRoot(for: exports) }
@@ -202,4 +238,13 @@ final class EventLog: Sendable {
             if case .progress(let id, _, let p) = $0, id == job { p } else { nil }
         }
     }
+}
+
+/// 读出图片的像素尺寸和嵌入的 ICC 名称。
+func imageInfo(_ url: URL) -> (width: Int, height: Int, profile: String?) {
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+          let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+    else { return (0, 0, nil) }
+    return (props[kCGImagePropertyPixelWidth] as? Int ?? 0, props[kCGImagePropertyPixelHeight] as? Int ?? 0,
+            props[kCGImagePropertyProfileName] as? String)
 }
