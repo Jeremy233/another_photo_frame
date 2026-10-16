@@ -143,7 +143,7 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 17. **照片合成之后，CI 写 gain map 时会自己推断出偏低的 headroom。** 合成后的图丢失了 `contentHeadroom`：grand_teton 源 headroom 是 3.28，CI 推成 1.68，导致高光读回误差中位 11%。在写出前用 `settingContentHeadroom` 显式标上源 headroom，并改用 RGB gain map（`.hdrGainMapAsRGB`）后，高光误差降到 0.4%，Δu′v′ 降为约 1/10。
 18. **读过属性后，`CGImageSourceGetType` 会把 Lightroom 的 gain map JPEG 报成 `public.heic`。** 先调用 `CGImageSourceGetType` 再读属性，才能拿到正确的 `public.jpeg`。正式代码判断输入格式时要么最先取类型，要么自己看文件头。
 19. **Lightroom 勾选 Maximize Compatibility 导出的 HDR TIFF，Apple 只读得到 SDR，HDR 被静默丢掉。** 这种 TIFF 的主图（IFD0）是 Lightroom 的 SDR 版本，gain map 放在 SubIFD 里：Photometric 用了 Apple 不认识的值 52553，元数据在私有标签 52557 里，按 ISO 21496-1 二进制格式解析得到 alternate headroom 2.64、RGB 三通道，和同一张照片 JPEG 里的 gain map 一致。ImageIO 和 CI 都忽略这个 SubIFD：`contentHeadroom` 为 1，也不报告 gain map。要支持这种文件，必须自己检测 SubIFD，否则至少要提示"HDR 部分未读取"。
-20. **Apple 会把 Lightroom 16 位 SDR "Rec. 2020" TIFF 解得偏暗。** 这份 ICC（v4，504 B）的 TRC 是 BT.709/2020 OETF 的逆曲线（para type 3，g = 2.222），和像素的实际编码完全吻合（误差 0.1%）。但 CG/ColorSync 和 CI 实际都按 γ2.4 解码：线性值只有正确值的 84%，比 Lightroom 自己的 SDR 版本暗 8.8 个 L*。同样设置导出的 32 位线性 TIFF 不受影响，与 JPEG 的 SDR 底图 ΔE 中位 0.00。
+20. **Apple 会把 Lightroom 16 位 SDR "Rec. 2020" TIFF 解得偏暗。** 这份 ICC（v4，504 B）的 TRC 是 BT.709/2020 OETF 的逆曲线（para type 3，g = 2.222），和像素的实际编码完全吻合（误差 0.1%）。但 CG/ColorSync 和 CI 实际都按 γ2.4 解码：线性值只有正确值的 84%，比 Lightroom 自己的 SDR 版本暗 8.8 个 L*。同样设置导出的 32 位线性 TIFF 不受影响，与 JPEG 的 SDR 底图 ΔE 中位 0.00。 **有两种已验证的绕开办法，都能把线性值还原到真值的 99.97%：** 一是取 ImageIO 解出的原始码值（解码不改像素），自己按逆 OETF 线性化，再标成线性 Rec.2020；二是把 ICC 里的参数曲线改写成 4096 点采样曲线（`curv`）后，再交给 Apple 解码。第二种不用自己处理像素，可以作为通用的预处理：凡是带参数曲线的 ICC 都先改写一遍。
 
 ## 6. D-03 推荐与理由
 
