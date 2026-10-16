@@ -70,7 +70,7 @@
 | ID | 功能 | V1 要求 | 状态 |
 |---|---|---|---|
 | FR-01 | macOS GUI | Compressor 风格三栏、自适应窗口、自由拖动分隔条 | 【已确定】 |
-| FR-02 | 图像输入与预览 | JPG/PNG/TIFF（含 HDR 变体）；HEIC 稍后；正确方向、ICC、缩略图 | 【已确定：D-02】 |
+| FR-02 | 图像输入与预览 | JPG/PNG/TIFF（含 HDR 变体）；HEIC 放到 V2；正确方向、ICC、缩略图 | 【已确定：D-02】 |
 | FR-03 | 画布引擎 | 任意目标尺寸、背景颜色、最小边距、Fit/居中；可选比例裁切模式 | 【已确定：D-21】 |
 | FR-04 | 全景轮播 | 完整封面 + 无裁切、左右补底色的连续切片 | 【已确定】 |
 | FR-05 | 平台预设 | Instagram、XHS、Douyin（用户可修改） | 【已确定】 |
@@ -295,7 +295,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 |---|---|---|
 | 8-bit JPEG / PNG | 必须 | ICC、EXIF Orientation、透明通道（PNG） |
 | 16-bit TIFF | 必须 | 嵌入 ICC、高精度转换、避免 8-bit 中途量化 |
-| HEIC / HEIF | 首个 Alpha 不含（D-02） | 正确识别 SDR/Wide Gamut，和系统解码器版本有关 |
+| HEIC / HEIF（含 iPhone HDR） | 【V1 不做，V2】（D-02） | V1 只处理后期软件导出的成片；V2 再支持，需正确识别 SDR/Wide Gamut/HDR gain map |
 | 16-bit PNG | 建议 | 验证系统解码管线是否保留预期精度 |
 | Adobe RGB / Display P3 / ProPhoto ICC | 必须测试 | 无提示色域失真不可接受 |
 | 无 ICC 的图像 | 必须 | 明确默认假设、提示和人工覆盖途径 |
@@ -882,7 +882,7 @@ photoframe mcp serve
 ### P0 — 开始编码前
 
 - [x] **D-01** 最低系统版本：**macOS 26+，仅 Apple Silicon**（使用最新系统 UI 设计语言）。【已确定 2026-10-16】
-- [x] **D-02** 首批输入格式：**JPEG / PNG / TIFF**；HEIC 不在首个 Alpha。三种格式的 HDR 变体须在首版支持（见 D-05）。【已确定 2026-10-16】
+- [x] **D-02** 首批输入格式：**JPEG / PNG / TIFF**；三种格式的 HDR 变体须在首版支持（见 D-05）。**HEIC/HEIF（含 iPhone HDR 照片）放到 V2**：V1 只处理在后期软件里修完、导出后的成片，不处理手机直出照片。【已确定 2026-10-16】
 - [ ] **D-03** 工作色域与高精度像素格式：因 D-05 要求 HDR 输入/输出，工作空间**必须是 extended-range linear 浮点**（至少 `RGBAh`），不能在 `[0,1]` 截断；具体色域（extended linear sRGB / Display P3 / Rec.2020）由色彩 PoC 实测后定。【待 PoC】
 - [x] **D-04** 无源 ICC：**默认假设 sRGB，显示警告，允许按源图或任务覆盖**。【已确定 2026-10-16】
 - [x] **D-05** HDR：**V1 支持 HDR 输入与输出**。输入支持所有受支持格式中的 HDR 形式（如 gain map JPEG、PQ/HLG PNG、float/PQ TIFF）；HDR 输出作为可选导出项，由**平台配置决定对应的 HDR 输出格式**（例如带 gain map 的 JPEG），并始终可选择 SDR 输出。【已确定 2026-10-16；具体格式矩阵见 D-17】
@@ -971,7 +971,7 @@ photoframe mcp serve
 
 **尚待技术定稿：** 精确工作空间（D-03，待色彩 PoC）、各平台 HDR 输出格式矩阵、支持的 SVG/HEIC/视频编码范围、跨进程任务模型、色彩容差基线、许可和签名方式。
 
-**V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布。
+**V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布、HEIC/HEIF 输入（含 iPhone HDR，放到 V2）。
 
 **未来方向（独立设计，不进入 V1 的实现依赖）：** 用户自托管 Remote Service / 网络配置、Mac 渲染节点、Shortcuts / Discord、CloudKit 预设同步、iPadOS/iOS 共享 Core、Windows 由社区或其他技术栈接入。
 
