@@ -149,68 +149,99 @@ def workflow():
 
 
 def interface():
-    f = Figure(2, "三栏工作台与可调整分隔线", "左侧预设与素材 · 中间源图和任务 · 右侧预览与 Inspector", 1020, "界面概念图 · 示意控件位置与信息层级，不代表已实现 UI")
+    f = Figure(2, "三栏工作台与可调整分隔线", "左侧预设 / 位置 / 素材 · 中间预览与任务列表 · 右侧 Inspector", 1020, "界面概念图 · 参照 Compressor，示意控件位置与信息层级，不代表已实现 UI")
     f.rect(64, 194, 1472, 658, WHITE, LINE, 16)
     for i, color in enumerate(["#D8B4A9", "#DACBA9", "#B9CABB"]):
         f.dot(90 + i * 24, 221, 6, color)
-    f.text(182, 229, "PhotoFrame", 20, weight=600)
-    for x, name, w, active in [(870, "Add Photos", 155, False), (1044, "Add Preset", 155, False), (1221, "Start Batch", 272, True)]:
-        f.rect(x, 207, w, 31, TEAL if active else BG, TEAL if active else LINE, 7)
-        f.text(x + w / 2, 228, name, 16, WHITE if active else INK, 600, "middle")
+    for x in (164, 1500):
+        f.rect(x, 211, 26, 20, "none", MUTED, 4)
+        f.line(x + 9 if x < 800 else x + 17, 211, x + 9 if x < 800 else x + 17, 231, MUTED, 1.5)
+    f.rect(620, 207, 360, 31, BG, LINE, 8)
+    for i, name in enumerate(["当前", "活跃", "已完成"]):
+        x = 620 + i * 120
+        if i == 0:
+            f.rect(x + 3, 210, 114, 25, TEAL, "none", 6, sw=0)
+        f.text(x + 60, 228, name, 16, WHITE if i == 0 else INK, 600, "middle")
     f.line(64, 253, 1536, 253, LINE)
     f.rect(66, 254, 310, 554, "#F2F4EF", "none", 0, sw=0)
     f.line(377, 253, 377, 808, LINE, 2)
-    f.line(941, 253, 941, 808, LINE, 2)
-    f.text(88, 287, "PRESETS", 15, MUTED, 600, spacing=1)
-    f.text(88, 325, "Favorites", 19, weight=600)
-    f.rect(78, 340, 284, 42, PALE, "none", 8)
-    f.text(96, 368, "Instagram Panorama", 18, TEAL, 600)
-    f.text(96, 411, "XHS Standard", 18)
-    f.lines(88, 463, ["Built-in", "My Presets", "Imported"], 19, 43)
-    f.line(88, 580, 351, 580, LINE)
-    f.text(88, 614, "ASSETS", 15, MUTED, 600, spacing=1)
-    f.lines(96, 656, ["Camera Icons", "Signatures"], 18, 43)
-    f.text(403, 287, "BATCH QUEUE", 15, MUTED, 600, spacing=1)
-    f.rect(393, 308, 530, 212, BG, LINE, 10)
-    f.photo(410, 331, 98, 58)
-    f.text(527, 350, "Badlands_panorama.tif", 21, weight=600)
-    f.text(527, 380, "65:24 · TIFF · embedded ICC", 16, MUTED)
-    f.rect(412, 405, 493, 50, PALE, "none", 7)
-    f.text(429, 436, "IG Panorama", 18, TEAL, 600)
-    f.text(887, 436, "Rendering  72%", 16, TEAL, anchor="end")
-    f.rect(429, 445, 170, 3, LINE, "none", 0)
-    f.rect(429, 445, 122.4, 3, TEAL, "none", 0)
-    f.text(429, 492, "XHS Panorama", 18)
-    f.text(887, 492, "Waiting", 16, MUTED, anchor="end")
-    f.rect(393, 541, 530, 135, BG, LINE, 10)
-    f.photo(410, 564, 98, 50)
-    f.text(527, 585, "Landscape_02.tif", 21, weight=600)
-    f.text(429, 647, "IG Standard", 18)
-    f.text(887, 647, "Completed", 16, TEAL, anchor="end")
-    f.text(403, 766, "同一源图可以包含多个独立任务", 17, MUTED)
-    f.text(965, 287, "PREVIEW", 15, MUTED, 600, spacing=1)
-    f.pill(1110, 267, "Cover", 81, size=15)
+    f.line(1041, 253, 1041, 808, LINE, 2)
+
+    f.rect(84, 268, 274, 31, WHITE, LINE, 8)
+    for i, name in enumerate(["预设", "位置", "素材"]):
+        x = 84 + i * 91.3
+        if i == 0:
+            f.rect(x + 3, 271, 85, 25, PALE, "none", 6, sw=0)
+        f.text(x + 45.6, 289, name, 16, TEAL if i == 0 else INK, 600, "middle")
+    f.text(88, 336, "内置", 15, MUTED, 600, spacing=1)
+    f.rect(78, 350, 284, 40, PALE, "none", 8)
+    f.text(96, 377, "Instagram Panorama", 18, TEAL, 600)
+    f.lines(96, 420, ["XHS Standard", "Douyin Photo"], 18, 38)
+    f.line(88, 474, 351, 474, LINE)
+    f.text(88, 506, "用户保存", 15, MUTED, 600, spacing=1)
+    f.text(96, 542, "My Landscape", 18)
+    f.line(88, 570, 351, 570, LINE)
+    f.text(88, 602, "导入", 15, MUTED, 600, spacing=1)
+    f.text(96, 638, "Minimal Gallery", 18)
+    f.text(88, 780, "拖动预设到源图即可创建任务", 15, MUTED)
+
+    f.text(403, 287, "PREVIEW", 15, MUTED, 600, spacing=1)
+    f.pill(707, 267, "Cover", 81, size=15)
     for k in range(4):
-        f.text(1234 + k * 65, 290, str(k + 1), 16, MUTED, anchor="middle")
-    f.cover(1113, 311, 222, 296, overlays=True)
-    f.text(1360, 353, "3:4", 18, MUTED)
-    f.text(1360, 386, "Fit", 18, TEAL, 600)
-    f.line(942, 630, 1535, 630, LINE, 2)
-    f.text(965, 663, "INSPECTOR", 15, MUTED, 600, spacing=1)
-    for i, (key, val) in enumerate([("Canvas", "1080 × 1440"), ("Margin / Background", "60 px  /  #FAFAF8"), ("Overlays / Asset Binding", "Cover only"), ("Export", "JPEG  /  sRGB")]):
-        y = 696 + 30 * i
-        f.text(966, y, key, 16)
-        f.text(1504, y, val, 16, MUTED, anchor="end")
+        f.text(818 + k * 50, 290, str(k + 1), 16, MUTED, anchor="middle")
+    f.cover(615, 308, 180, 240, overlays=True)
+    f.text(815, 352, "3:4", 18, MUTED)
+    f.text(815, 384, "Fit", 18, TEAL, 600)
+    f.line(378, 562, 1040, 562, LINE, 2)
+    f.text(403, 594, "BATCH", 15, MUTED, 600, spacing=1)
+    f.rect(393, 608, 632, 122, BG, LINE, 10)
+    f.photo(410, 622, 98, 36)
+    f.text(527, 638, "Badlands_panorama.tif", 19, weight=600)
+    f.text(527, 660, "65:24 · TIFF · embedded ICC", 15, MUTED)
+    f.rect(412, 672, 595, 26, PALE, "none", 6)
+    f.text(429, 691, "IG Panorama", 16, TEAL, 600)
+    f.text(989, 691, "Cover + 4  ·  1080 × 1440", 15, TEAL, anchor="end")
+    f.text(429, 719, "XHS Panorama", 16)
+    f.text(989, 719, "Cover + 3  ·  1080 × 1080", 15, MUTED, anchor="end")
+    f.rect(393, 740, 632, 54, BG, LINE, 10)
+    f.photo(410, 750, 98, 36)
+    f.text(527, 773, "Landscape_02.tif", 19, weight=600)
+    f.text(989, 773, "IG Standard  ·  1080 × 1440", 15, MUTED, anchor="end")
+
+    f.rect(1062, 268, 452, 31, BG, LINE, 8)
+    for i, name in enumerate(["画布", "全景", "图层", "输出"]):
+        x = 1062 + i * 113
+        if i == 0:
+            f.rect(x + 3, 271, 107, 25, PALE, "none", 6, sw=0)
+        f.text(x + 56.5, 289, name, 16, TEAL if i == 0 else INK, 600, "middle")
+    rows = [("尺寸", "1080 × 1440"), ("比例", "3:4"), ("适配", "完整嵌入"), ("背景", "#FAFAF8"), ("最小边距", "60 px"), ("对齐", "居中")]
+    for i, (key, val) in enumerate(rows):
+        y = 346 + 42 * i
+        f.text(1066, y, key, 17)
+        f.text(1510, y, val, 17, MUTED, anchor="end")
+        f.line(1066, y + 16, 1510, y + 16, LINE, 1)
+    f.rect(1412, 459, 16, 16, BG, MUTED, 3, sw=1)
+    f.text(1066, 640, "选中任务时修改该任务参数，", 15, MUTED)
+    f.text(1066, 664, "不会自动写回预设。", 15, MUTED)
+    f.rect(1062, 752, 452, 36, BG, LINE, 8)
+    f.text(1288, 776, "存储为预设", 16, INK, 600, "middle")
+
     f.line(64, 808, 1536, 808, LINE)
-    f.text(88, 836, "Destination:  ~/Pictures/Social Exports", 16, MUTED)
-    f.text(1511, 836, "Batch Progress  42%", 16, TEAL, 600, "end")
-    for x, num in [(377, "A"), (941, "B")]:
+    f.rect(82, 816, 110, 28, BG, LINE, 7)
+    f.text(137, 836, "添加图片", 15, INK, 600, "middle")
+    f.text(214, 836, "位置：~/Pictures/Social Exports", 15, MUTED)
+    f.rect(1010, 827, 200, 6, LINE, "none", 3, sw=0)
+    f.rect(1010, 827, 84, 6, TEAL, "none", 3, sw=0)
+    f.text(1224, 836, "42%", 15, TEAL, 600)
+    f.rect(1330, 816, 190, 28, TEAL, TEAL, 7)
+    f.text(1425, 836, "开始批处理", 15, WHITE, 600, "middle")
+
+    for x, num in [(377, "A"), (1041, "B")]:
         f.line(x, 852, x, 879, TEAL, dash="4 4")
         f.pill(x - 21, 879, num, 42)
-    f.path("M 1490 630 H 1560 V 897 H 1515", dash="4 4", arrow=True)
-    f.pill(1460, 879, "C", 42)
+    f.pill(978, 545, "C", 42)
     f.text(64, 940, "A / B  横向拖动调整三栏宽度", 19, TEAL, 600)
-    f.text(796, 940, "C  上下拖动调整预览与设置区高度", 19, TEAL, 600)
+    f.text(796, 940, "C  上下拖动调整预览与任务列表高度", 19, TEAL, 600)
     f.save("02-three-column-workbench")
 
 

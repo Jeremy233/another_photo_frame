@@ -7,7 +7,7 @@
 | 图 | 文件 | 正文章节 | 说明 |
 |---|---|---|---|
 | 1 | `01-publishing-workflow` | §3.2 后 | 同一原图、多预设、独立任务与本地成品 |
-| 2 | `02-three-column-workbench` | §4.1 | 三栏界面与可拖动分隔线 |
+| 2 | `02-three-column-workbench` | §4.1 | 参照 Compressor 的三栏界面、预览位置与可拖动分隔线 |
 | 3 | `03-fit-and-minimum-margins` | §5.2 后 | 完整图 Fit、画布比例与最小安全边距 |
 | 4 | `04-seamless-panorama` | §5.3 数值表后 | 65:24 算例、全局切片、两端补边与独立封面 |
 | 5 | `05-managed-color-pipeline` | §6.3 | 输入 ICC、高精度合成、输出预览与颜色转换 |

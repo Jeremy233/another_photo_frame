@@ -142,31 +142,34 @@ A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布�
 
 ### 4.1 三栏 Compressor 布局
 
-![图 2：PhotoFrame 三栏工作台概念图，左侧预设和素材，中间源图与任务，右侧预览和 Inspector；A、B、C 标注可拖动分隔线。](docs/illustrations/02-three-column-workbench.png)
+![图 2：PhotoFrame 三栏工作台概念图，参照 Compressor：顶栏切换当前、活跃、已完成；左侧预设、位置、素材；中间上方预览、下方任务列表；右侧 Inspector 分画布、全景、图层、输出；A、B、C 标注可拖动分隔线。](docs/illustrations/02-three-column-workbench.png)
 
-*图 2 · 界面概念示意：A / B 调整三栏宽度，C 调整预览与设置区高度；示意不代表已实现界面。*
+*图 2 · 界面概念示意：A / B 调整三栏宽度，C 调整预览与任务列表高度；示意不代表已实现界面。*
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│ PhotoFrame                 Add Photos    Add Preset     Start Batch          │
+│ ● ● ●  [◧]             当前 | 活跃 | 已完成                             [◨]   │
 ├──────────────────┬────────────────────────────────┬───────────────────────────┤
-│ PRESETS / ASSETS │ BATCH QUEUE                    │ PREVIEW + INSPECTOR       │
-│                  │                                │ ┌───────────────────────┐ │
-│ Favorites        │ Badlands_panorama.tif          │ │     Cover  1/5        │ │
-│ Built-in         │   IG Panorama   72%            │ │    photo preview      │ │
-│ My Presets       │   XHS Panorama  Waiting        │ └───────────────────────┘ │
-│ Imported         │                                │ Canvas                    │
-│                  │ Aurora.tif                     │ Overlays / Camera Badge   │
-│ ASSETS           │   IG Standard   Completed      │ Metadata / Panorama       │
-│ Camera Icons     │                                │ Asset Slot Binding        │
-│ Signatures       │                                │ Export                    │
+│ 预设 | 位置 | 素材│ PREVIEW   [Cover] [1] ... [N]  │ 画布 | 全景 | 图层 | 输出 │
+│                  │ ┌────────────────────────────┐ │                           │
+│ 内置             │ │       photo preview        │ │ Width / Height / Ratio    │
+│ ───────          │ └────────────────────────────┘ │ Fit / Crop                │
+│ 用户保存         ├────────────────────────────────┤ Background / Margin       │
+│ ───────          │ BATCH                          │ Align                     │
+│ 导入             │ Badlands_panorama.tif          │                           │
+│                  │   IG Panorama   4320×1440 ⚠    │                           │
+│                  │   XHS Panorama  2925×1080      │                           │
+│                  │ Aurora.tif                     │                           │
+│                  │   IG Standard   1080×1440      │                           │
 ├──────────────────┴────────────────────────────────┴───────────────────────────┤
-│ Destination: ~/Pictures/Social Exports                 Batch Progress: 42%   │
+│ 添加图片   位置：~/Pictures/Social Exports    ▓▓▓▓░░ 42%          开始批处理 │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- 【已确定】左侧 = **Presets + Assets**；中间 = **Sources + Jobs + Progress**；右侧 = **Preview + Inspector**。
-- 【已确定】左、中、右分隔线可自由拖动；右侧预览与设置区也可上下调整。
+- 【已确定】整体参照 Compressor。顶栏中间切换「当前 | 活跃 | 已完成」三个界面；左右两端是侧栏开关。
+- 【已确定】左侧 = **预设 | 位置 | 素材**三个标签；中间上方 = **预览**，中间下方 = **源图与任务列表**；右侧 = **Inspector**（画布 | 全景 | 图层 | 输出）。
+- 【已确定】左、中、右分隔线可自由拖动；中间的预览与任务列表之间也可上下调整。
+- 界面细节见《Another Photo Frame UI Design.md》。
 - 【建议】双击分隔线恢复默认大小；允许隐藏侧栏，记住每个窗口最后布局；设置最小可用宽高。
 - 【建议】双击照片预览打开大图；支持 Fit、100% 与手动缩放。
 - 【建议】主控件可键盘操作，支持 VoiceOver、浅色和深色外观。
@@ -175,15 +178,13 @@ A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布�
 ### 4.2 右侧 Inspector 结构
 
 ```text
-Preview            [Cover] [Slide 1] ... [Slide N]
-Canvas             Width / Height / Ratio / Background / Margin / Fit / Align
-Watermark          On / Text or Image Slot / Anchor / Offset / Opacity
-Camera Badge       On / Asset Slot / Auto Match / Scale / Anchor
-Metadata           EXIF Fields / Text Style / Privacy
-Panorama           Auto Tiles / Manual Count / Padding / Preview Seam
-Asset Binding      Slot → Local Asset / Unresolved Status
-Export             File Type / Quality / Color Profile / Location / Naming
+画布   Width / Height / Ratio / Fit or Crop / Background / Margin / Align
+全景   On / Auto or Manual Tiles / Vertical Margin / Preview Seam
+图层   Watermark / Camera Badge / EXIF Text / Visible On / Asset Slot Binding
+输出   Format / Quality / SDR or HDR / Metadata / Naming / Location
 ```
+
+预览区（中间栏上方）可切换 `[Cover] [Slide 1] ... [Slide N]` 与全景长卷视图。
 
 - 点击**源图**时显示原始信息与 EXIF；点击**任务**时显示该任务实际输出参数；点击多个任务时仅显示可批改的共同字段。
 - 改动任务参数**不自动回写共享预设**；通过显式 `Save as Preset` 保存。
