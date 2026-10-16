@@ -23,6 +23,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`RenderJob`、`RenderedOutput`、`RenderResult`、`RenderProgress` |
 | `Export/OutputNaming.swift` | §9.2 目录与文件命名、版本后缀、文件名清理 |
 | `Export/AtomicExporter.swift` | 临时目录、校验、原子发布、清理 |
+| `Export/Overwrite.swift` | 显式覆盖（D-49）：发布标记、替换前检查、挪开 / 就位 / 恢复 |
+| `Export/StagingCleanup.swift` | 清理超过 24 小时的残留临时目录（D-55） |
 | `Export/OutputVerifier.swift` | 发布前的文件检查（默认看 JPEG / PNG 文件头） |
 | `Queue/JobQueue.swift` | `actor JobQueue`：并发与内存限制、暂停、取消、重试、事件流、等待 |
 | `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 |
@@ -67,8 +69,9 @@ Source ──┬── Job（源图 × 预设快照）── Attempt 1（failed�
    非空，文件头与输出格式一致；输出位置不能重复。任何一项不满足，整个任务失败，目的地什么都不会出现。
 2. 按轮播顺序改名为 `00_Cover.jpg`、`01_Slide.jpg`…，可选计算 SHA-256。
 3. `<平台>/<作品名>` 已存在时依次试 `_v2`、`_v3`…；`RENAME_EXCL` 保证并发发布同名作品也不会覆盖。
-4. 成功或失败都删除 `<attemptId>` 目录；`.photoframe-staging` 空了也删除。
-5. 原图只读：队列不会写、移动或覆盖源文件。
+4. 显式选择覆盖时按 D-49 的规则替换本软件之前发布的目录。
+5. 成功或失败都删除 `<attemptId>` 目录；`.photoframe-staging` 空了也删除。
+6. 原图只读：队列不会写、移动或覆盖源文件。
 
 ## 接入渲染模块
 
@@ -91,17 +94,28 @@ struct Renderer: JobRenderer {
 
 错误实现 `ApplicationErrorConvertible` 可以带稳定错误码，否则记为 `render.failed`。
 
-## 待确认
+## 已确定（2026-10-16）
 
-以下是规范没写清楚、这里先按默认做法实现的地方，见本次提交的汇报。确认后应写进规范 §16。
+规范 §16 中的编号：
 
-1. 作品名默认 `{source}_{variant}`（源文件名 + Standard / Panorama）。
-2. 单图预设也输出 `00_Cover.jpg`。
-3. 平台目录名：`Instagram`、`Xiaohongshu`、`Douyin`（与 §9.2 一致），无平台时 `Custom`。
-4. 冲突时给作品目录加 `_v2`、`_v3`…；V1 不提供「确认覆盖」。
-5. 临时目录放在输出根目录下的 `.photoframe-staging/`。
-6. 暂停只停止派发，不中断正在执行的任务。
-7. 只有 `failed` / `canceled` 可以重试；已完成的任务想再导出就新建任务。
-8. 默认并发 = 性能核数一半（1…4），内存预算 = 物理内存一半；按提交顺序派发，不插队。
-9. 清单只保存在 `JobRecord` 里，不在作品目录写 `manifest.json`；hash 默认不算。
-10. 进程崩溃后残留的 `.photoframe-staging/<attemptId>` 目前不自动清理。
+- **D-46** 作品目录名默认 `{source}_{variant}`（源文件名 + `Standard` / `Panorama`），模板可改（`OutputNaming.workNameTemplate`）。
+- **D-47** 单图预设也输出 `00_Cover.jpg`。
+- **D-48** 平台目录名用英文：`Instagram`、`Xiaohongshu`、`Douyin`（与 §9.2 一致）；预设没有平台时用 `Custom`。
+- **D-49** 文件冲突：默认加版本后缀 `_v2`、`_v3`…（`ConflictPolicy.versionSuffix`）；可选覆盖（`ConflictPolicy.overwrite`，
+  在 `ExportDestination` 上按任务 / 提交指定，以后 GUI 弹确认、CLI 用 `--overwrite`）。覆盖的安全规则：
+  - 新作品目录先在临时目录里完整校验、组装好；
+  - 只替换本软件发布的目录：发布时在作品目录上写扩展属性 `org.anotherphotoframe.published`，没有这个标记的目录拒绝覆盖；
+    目标是符号链接、或目录里有本软件命名（`NN_Cover/Slide.jpg|png`）和 `.DS_Store` 以外的东西，也拒绝；
+  - 目录里含有本任务或队列中任何任务的源文件（按路径，也按设备 + inode 识别硬链接）时拒绝，错误码 `export.overwrite_contains_source`；
+  - 步骤：旧目录改名挪进本次执行的临时目录 → 新目录改名就位 → 删除旧目录；新目录就位失败时把旧目录改名挪回原处；
+  - 成功时清单里有 `export.replaced_previous` 警告。
+- **D-50** 临时目录放在输出根目录下的 `.photoframe-staging/<attemptId>/`。
+- **D-51** 暂停只停止派发新任务，不中断正在执行的任务。
+- **D-52** 只有 `failed` / `canceled` 可以重试；已完成的任务想再导出就新建任务。
+- **D-53** 调度：默认并发 = 性能核数一半（1…4），内存预算 = 物理内存一半，按提交顺序派发、不插队。调用方可以在
+  `QueueConfiguration` 里设置，运行中用 `setMaxConcurrentJobs(_:)` / `setMemoryBudget(_:)` 修改并立即生效
+  （调低时正在执行的任务继续做完）。
+- **D-54** 清单只保存在 `JobRecord` 里，不在作品目录写 `manifest.json`；hash 默认不算（`computeHashes`）。
+- **D-55** 清理残留临时目录：只删除 `.photoframe-staging` 下名字是 AttemptID、目录树中最新修改时间超过 24 小时、
+  且不在本队列执行中的目录；之后 `.photoframe-staging` 空了就删除，其他文件不碰。队列第一次使用某个输出根目录时自动清理，
+  应用启动时也可以对已知的输出目录调用 `removeStaleStaging(in:)`。

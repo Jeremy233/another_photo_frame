@@ -25,14 +25,17 @@ public struct StagingArea: Hashable, Sendable {
 /// 先写临时目录、校验、再原子发布（§9.2、§12.2）。
 ///
 /// - 整个作品目录一次改名发布，目的地要么没有这个目录，要么是完整的成品，不会出现半成品。
-/// - 改名用 `renamex_np(RENAME_EXCL)`：目标已存在时失败并改用下一个版本号，永不覆盖；
-///   两个任务同时发布同名作品也不会互相覆盖。
+/// - 改名用 `renamex_np(RENAME_EXCL)`：默认（``ConflictPolicy/versionSuffix``）目标已存在时改用下一个版本号；
+///   两个任务同时发布同名作品也不会互相覆盖。显式选择 ``ConflictPolicy/overwrite`` 时，
+///   只替换本软件之前发布的作品目录，步骤见 `replacePublished`。
 /// - 只接受临时目录里的普通文件；符号链接、硬链接（可能指向原图）、目录都拒绝，原图永远不会被移动或改写。
 /// - 清理只删除本次执行自己的 `<attemptId>` 目录。
 public struct AtomicExporter: Sendable {
     public static let stagingDirectoryName = ".photoframe-staging"
 
     public var verifier: any OutputVerifier
+    /// 互斥改名；测试用来模拟中途失败。
+    var renameOperation: RenameOperation = .exclusive
 
     public init(verifier: any OutputVerifier = SignatureOutputVerifier()) {
         self.verifier = verifier
@@ -82,19 +85,21 @@ public struct AtomicExporter: Sendable {
     }
 
     /// 本进程内让「创建临时目录」与「删除空的 `.photoframe-staging`」互斥。
-    private static let stagingLock = Mutex(())
+    static let stagingLock = Mutex(())
 
     /// 校验渲染结果，组装成作品目录并原子发布。成功或失败都会删除临时目录。
     ///
     /// - Parameter isCanceled: 每移动一个文件、以及最终改名前检查；返回 true 时放弃发布并抛出 `CancellationError`。
     ///   最终改名完成后就不能再取消。
-    /// - Parameter onPublished: 发布成功后报告字节数。
+    /// - Parameter protectedSources: 队列中所有任务的源文件。覆盖时目标目录里含有其中任何一个就拒绝；
+    ///   本任务的源文件总会加进来。
     public func publish(
         _ result: RenderResult,
         spec: JobSpec,
         jobId: JobID,
         staging: StagingArea,
         startedAt: Date,
+        protectedSources: [URL] = [],
         isCanceled: @Sendable () -> Bool = { false }
     ) throws -> OutputManifest {
         defer { discard(staging) }
@@ -123,6 +128,7 @@ public struct AtomicExporter: Sendable {
             let hash = spec.destination.computeHashes ? try Self.sha256(of: target) : nil
             staged.append((output, name, size, hash))
         }
+        try Self.markAsPublished(assembly, jobId: jobId)
 
         // 发布：整个作品目录一次改名。
         let platformDir = spec.destination.rootDirectory.appending(
@@ -133,7 +139,20 @@ public struct AtomicExporter: Sendable {
             throw ApplicationError.publishFailed(error.localizedDescription)
         }
         if isCanceled() { throw CancellationError() }
-        let published = try Self.renameExclusive(assembly, into: platformDir, baseName: workName)
+        var warnings = result.warnings
+        let published: URL
+        switch spec.destination.conflictPolicy {
+        case .versionSuffix:
+            published = try renameExclusive(assembly, into: platformDir, baseName: workName)
+        case .overwrite:
+            let target = platformDir.appending(path: workName, directoryHint: .isDirectory)
+            let replaced = try publishReplacing(
+                assembly, at: target, staging: staging, protectedSources: protectedSources + [spec.source.fileURL])
+            published = target
+            if replaced {
+                warnings.append(ApplicationWarning(code: "export.replaced_previous", message: "已替换之前导出的 \(target.path)"))
+            }
+        }
 
         let items = staged.map { s in
             OutputManifestItem(
@@ -148,7 +167,7 @@ public struct AtomicExporter: Sendable {
         }
         return OutputManifest(
             jobId: jobId, attemptId: staging.attemptId, directory: published, items: items,
-            warnings: result.warnings, startedAt: startedAt, finishedAt: Date())
+            warnings: warnings, startedAt: startedAt, finishedAt: Date())
     }
 
     /// 检查渲染器返回的输出项，按轮播顺序排列。
@@ -185,13 +204,10 @@ public struct AtomicExporter: Sendable {
     }
 
     /// 把 `source` 改名为 `directory/<baseName>`；已存在时依次尝试 `_v2`、`_v3`…。返回最终路径。
-    static func renameExclusive(_ source: URL, into directory: URL, baseName: String) throws(ApplicationError) -> URL {
+    func renameExclusive(_ source: URL, into directory: URL, baseName: String) throws(ApplicationError) -> URL {
         for version in 1...OutputNaming.maxVersion {
             let target = directory.appending(path: OutputNaming.versioned(baseName, version: version), directoryHint: .isDirectory)
-            let (from, to) = (source.path, target.path)
-            let code = from.withCString { f in
-                to.withCString { t in renamex_np(f, t, UInt32(RENAME_EXCL)) == 0 ? 0 : errno }
-            }
+            let code = renameOperation.rename(source, target)
             if code == 0 { return target }
             guard code == EEXIST || code == ENOTEMPTY else {
                 throw .publishFailed(String(cString: strerror(code)))

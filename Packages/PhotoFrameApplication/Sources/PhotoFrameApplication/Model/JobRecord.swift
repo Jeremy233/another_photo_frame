@@ -1,18 +1,42 @@
 import Foundation
 import PhotoFrameCore
 
+/// 作品目录已存在时怎么办（D-49）。
+public enum ConflictPolicy: String, Hashable, Sendable, Codable, CaseIterable {
+    /// 默认：加版本后缀 `_v2`、`_v3`…，不动已有目录。
+    case versionSuffix
+    /// 显式选择（GUI 确认后、CLI `--overwrite`）：替换本软件之前发布的同名作品目录。
+    /// 目录不是本软件发布的、含有其他文件、或含有任何任务的源文件时拒绝。
+    case overwrite
+}
+
 /// 输出到哪里、怎么命名（§9.2）。
 public struct ExportDestination: Hashable, Sendable, Codable {
     /// 例如 `~/Pictures/Social Exports`。不存在时在校验阶段创建。
     public var rootDirectory: URL
     public var naming: OutputNaming
-    /// 是否为每个输出文件计算 SHA-256 写入清单（§9.1「可选 hash」）。
+    public var conflictPolicy: ConflictPolicy
+    /// 是否为每个输出文件计算 SHA-256 写入清单（§9.1「可选 hash」，D-54 默认不算）。
     public var computeHashes: Bool
 
-    public init(rootDirectory: URL, naming: OutputNaming = OutputNaming(), computeHashes: Bool = false) {
+    public init(
+        rootDirectory: URL, naming: OutputNaming = OutputNaming(),
+        conflictPolicy: ConflictPolicy = .versionSuffix, computeHashes: Bool = false
+    ) {
         self.rootDirectory = rootDirectory
         self.naming = naming
+        self.conflictPolicy = conflictPolicy
         self.computeHashes = computeHashes
+    }
+
+    enum CodingKeys: String, CodingKey { case rootDirectory, naming, conflictPolicy, computeHashes }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rootDirectory = try c.decode(URL.self, forKey: .rootDirectory)
+        naming = try c.decodeIfPresent(OutputNaming.self, forKey: .naming) ?? OutputNaming()
+        conflictPolicy = try c.decodeIfPresent(ConflictPolicy.self, forKey: .conflictPolicy) ?? .versionSuffix
+        computeHashes = try c.decodeIfPresent(Bool.self, forKey: .computeHashes) ?? false
     }
 }
 

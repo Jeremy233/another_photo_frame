@@ -42,6 +42,13 @@ public protocol PhotoFrameService: Sendable {
     /// 最近一次成功执行的输出清单；还没有成功过时为 nil。
     func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest?
 
+    /// 修改调度设置，立即生效（D-53）。
+    func setMaxConcurrentJobs(_ count: Int) async
+    func setMemoryBudget(_ bytes: Int64?) async
+    /// 清理输出目录中超过 24 小时的残留临时目录（D-55），返回删除的目录。应用启动时对已知的输出目录调用；
+    /// 队列第一次使用某个输出目录时也会自动清理。
+    func removeStaleStaging(in destinationRoot: URL) async -> [URL]
+
     /// 任务事件流。
     func events() async -> AsyncStream<JobEvent>
     /// 等这些任务结束（CLI 默认阻塞到任务结束，§10.3）。
@@ -117,6 +124,13 @@ public actor LocalPhotoFrameService: PhotoFrameService {
 
     public func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest? {
         try await status(job).manifest
+    }
+
+    public func setMaxConcurrentJobs(_ count: Int) async { await queue.setMaxConcurrentJobs(count) }
+    public func setMemoryBudget(_ bytes: Int64?) async { await queue.setMemoryBudget(bytes) }
+
+    public func removeStaleStaging(in destinationRoot: URL) async -> [URL] {
+        await queue.removeStaleStaging(in: destinationRoot)
     }
 
     public func events() async -> AsyncStream<JobEvent> { await queue.events() }

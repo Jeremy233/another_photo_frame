@@ -11,8 +11,10 @@ import Synchronization
 ///   状态变为 `canceled`。最终改名发布一旦完成就不能再取消。
 /// - **重试**只对 `failed` / `canceled` 的任务，新建一个 Attempt，旧 Attempt 保留在历史里。
 /// - 每个进程一个队列，不跨进程共享（D-13）；状态都在可序列化的 ``JobRecord`` 里。
+/// - 并发数与内存预算可以在运行中修改（D-53），见 ``setMaxConcurrentJobs(_:)``、``setMemoryBudget(_:)``。
+/// - 每个输出根目录第一次使用时清理其中超过 24 小时的残留临时目录（D-55）。
 public actor JobQueue {
-    public nonisolated let configuration: QueueConfiguration
+    public private(set) var configuration: QueueConfiguration
     private let renderer: any JobRenderer
     private let exporter: AtomicExporter
 
@@ -24,6 +26,8 @@ public actor JobQueue {
     public private(set) var isPaused: Bool
     private var subscribers: [UUID: AsyncStream<JobEvent>.Continuation] = [:]
     private var waiters: [Waiter] = []
+    /// 已经清理过残留临时目录的输出根目录。
+    private var cleanedRoots: Set<String> = []
 
     private struct Running {
         var attemptId: AttemptID
@@ -148,6 +152,30 @@ public actor JobQueue {
         return attempt.attemptId
     }
 
+    // MARK: - 调度设置（D-53）
+
+    /// 修改并发上限，立即生效。调低时正在执行的任务继续做完，之后按新上限派发。
+    public func setMaxConcurrentJobs(_ count: Int) {
+        configuration.maxConcurrentJobs = max(1, count)
+        dispatch()
+    }
+
+    /// 修改内存预算（nil = 不按内存限制），立即生效。
+    public func setMemoryBudget(_ bytes: Int64?) {
+        configuration.memoryBudgetBytes = bytes
+        dispatch()
+    }
+
+    // MARK: - 残留临时目录（D-55）
+
+    /// 清理 `destinationRoot` 下超过 `olderThan` 的残留临时目录，跳过本队列正在执行的 Attempt。
+    @discardableResult
+    public func removeStaleStaging(in destinationRoot: URL, olderThan age: TimeInterval = AtomicExporter.staleStagingAge) -> [URL] {
+        cleanedRoots.insert(destinationRoot.standardizedFileURL.path)
+        let active = Set(running.values.map(\.attemptId))
+        return AtomicExporter.removeStaleStaging(in: destinationRoot, olderThan: age, excluding: active)
+    }
+
     // MARK: - 等待
 
     /// 等到没有正在执行的任务，并且没有待派发的任务（或队列已暂停）。CLI 用它阻塞到批处理结束。
@@ -187,7 +215,7 @@ public actor JobQueue {
     private func dispatch() {
         defer { resumeWaiters() }
         guard !isPaused else { return }
-        while let id = pending.first, running.count < configuration.maxConcurrentJobs {
+        while let id = pending.first, running.count < max(1, configuration.maxConcurrentJobs) {
             guard let record = records[id] else { pending.removeFirst(); continue }
             let memory = estimatedMemory(record)
             // 按提交顺序派发，不让后面的小任务插队，避免大任务一直等不到内存。
@@ -240,9 +268,12 @@ public actor JobQueue {
             transition(id, attemptId, to: .writing)
             // 发布在独立的 Task 里做文件操作，不占用队列；它只看取消标志，不响应 Task 取消。
             let exporter = self.exporter
+            let protectedSources = records.values.map(\.spec.source.fileURL)
             staging = nil  // publish 无论成败都会清理临时目录
             let manifest = try await Task.detached {
-                try exporter.publish(result, spec: spec, jobId: id, staging: area, startedAt: startedAt, isCanceled: { flag.isSet })
+                try exporter.publish(
+                    result, spec: spec, jobId: id, staging: area, startedAt: startedAt,
+                    protectedSources: protectedSources, isCanceled: { flag.isSet })
             }.value
             complete(id, attemptId, manifest)
         } catch {
@@ -286,6 +317,9 @@ public actor JobQueue {
             } catch {
                 throw .destinationUnavailable(root.path, error.localizedDescription)
             }
+        }
+        if !cleanedRoots.contains(root.path) {
+            removeStaleStaging(in: root)
         }
 
         var slots: SlotResolution?
