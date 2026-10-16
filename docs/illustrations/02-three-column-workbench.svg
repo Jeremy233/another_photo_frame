@@ -1,95 +1,123 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="1020" viewBox="0 0 1600 1020" role="img" aria-labelledby="title desc">
-<title id="title">三栏工作台与可调整分隔线</title><desc id="desc">左侧预设与素材 · 中间源图和任务 · 右侧预览与 Inspector</desc>
+<title id="title">三栏工作台与可调整分隔线</title><desc id="desc">左侧预设 / 位置 / 素材 · 中间预览与任务列表 · 右侧 Inspector</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="#356D62" stroke-width="1.5"/></marker></defs>
 <rect width="1600" height="1020" fill="#FAFAF8"/>
 <text x="64" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start" letter-spacing="2">PHOTOFRAME  /  V1.0</text>
 <text x="1536" y="40" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="end" letter-spacing="2">FIG. 02</text>
 <text x="64" y="92" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="38" font-weight="600" fill="#283B36" text-anchor="start">三栏工作台与可调整分隔线</text>
-<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">左侧预设与素材 · 中间源图和任务 · 右侧预览与 Inspector</text>
+<text x="64" y="126" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="400" fill="#6D7C76" text-anchor="start">左侧预设 / 位置 / 素材 · 中间预览与任务列表 · 右侧 Inspector</text>
 <line x1="64" y1="150" x2="1536" y2="150" stroke="#D8E0D9" stroke-width="2"/>
 <line x1="64" y1="956" x2="1536" y2="956" stroke="#D8E0D9" stroke-width="2"/>
-<text x="64" y="989" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">界面概念图 · 示意控件位置与信息层级，不代表已实现 UI</text>
+<text x="64" y="989" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">界面概念图 · 参照 Compressor，示意控件位置与信息层级，不代表已实现 UI</text>
 <text x="1536" y="989" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="13" font-weight="400" fill="#6D7C76" text-anchor="end" letter-spacing="1">LOCAL FIRST · CREATE ONCE</text>
 <rect x="64" y="194" width="1472" height="658" rx="16" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
 <circle cx="90" cy="221" r="6" fill="#D8B4A9"/>
 <circle cx="114" cy="221" r="6" fill="#DACBA9"/>
 <circle cx="138" cy="221" r="6" fill="#B9CABB"/>
-<text x="182" y="229" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="20" font-weight="600" fill="#283B36" text-anchor="start">PhotoFrame</text>
-<rect x="870" y="207" width="155" height="31" rx="7" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
-<text x="947.5" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">Add Photos</text>
-<rect x="1044" y="207" width="155" height="31" rx="7" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
-<text x="1121.5" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">Add Preset</text>
-<rect x="1221" y="207" width="272" height="31" rx="7" fill="#356D62" stroke="#356D62" stroke-width="1.5"/>
-<text x="1357.0" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF" text-anchor="middle">Start Batch</text>
+<rect x="164" y="211" width="26" height="20" rx="4" fill="none" stroke="#6D7C76" stroke-width="1.5"/>
+<line x1="173" y1="211" x2="173" y2="231" stroke="#6D7C76" stroke-width="1.5"/>
+<rect x="1500" y="211" width="26" height="20" rx="4" fill="none" stroke="#6D7C76" stroke-width="1.5"/>
+<line x1="1517" y1="211" x2="1517" y2="231" stroke="#6D7C76" stroke-width="1.5"/>
+<rect x="620" y="207" width="360" height="31" rx="8" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="623" y="210" width="114" height="25" rx="6" fill="#356D62" stroke="none" stroke-width="0"/>
+<text x="680" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF" text-anchor="middle">当前</text>
+<text x="800" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">活跃</text>
+<text x="920" y="228" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">已完成</text>
 <line x1="64" y1="253" x2="1536" y2="253" stroke="#D8E0D9" stroke-width="2"/>
 <rect x="66" y="254" width="310" height="554" rx="0" fill="#F2F4EF" stroke="none" stroke-width="0"/>
 <line x1="377" y1="253" x2="377" y2="808" stroke="#D8E0D9" stroke-width="2"/>
-<line x1="941" y1="253" x2="941" y2="808" stroke="#D8E0D9" stroke-width="2"/>
-<text x="88" y="287" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">PRESETS</text>
-<text x="88" y="325" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#283B36" text-anchor="start">Favorites</text>
-<rect x="78" y="340" width="284" height="42" rx="8" fill="#EAF1ED" stroke="none" stroke-width="1.5"/>
-<text x="96" y="368" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="start">Instagram Panorama</text>
-<text x="96" y="411" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="start">XHS Standard</text>
-<text x="88" y="463" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">Built-in</text>
-<text x="88" y="506" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">My Presets</text>
-<text x="88" y="549" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="400" fill="#6D7C76" text-anchor="start">Imported</text>
-<line x1="88" y1="580" x2="351" y2="580" stroke="#D8E0D9" stroke-width="2"/>
-<text x="88" y="614" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">ASSETS</text>
-<text x="96" y="656" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">Camera Icons</text>
-<text x="96" y="699" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">Signatures</text>
-<text x="403" y="287" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">BATCH QUEUE</text>
-<rect x="393" y="308" width="530" height="212" rx="10" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
-<image x="410" y="331" width="98" height="58" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
-<text x="527" y="350" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="start">Badlands_panorama.tif</text>
-<text x="527" y="380" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="start">65:24 · TIFF · embedded ICC</text>
-<rect x="412" y="405" width="493" height="50" rx="7" fill="#EAF1ED" stroke="none" stroke-width="1.5"/>
-<text x="429" y="436" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="start">IG Panorama</text>
-<text x="887" y="436" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#356D62" text-anchor="end">Rendering  72%</text>
-<rect x="429" y="445" width="170" height="3" rx="0" fill="#D8E0D9" stroke="none" stroke-width="1.5"/>
-<rect x="429" y="445" width="122.4" height="3" rx="0" fill="#356D62" stroke="none" stroke-width="1.5"/>
-<text x="429" y="492" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="start">XHS Panorama</text>
-<text x="887" y="492" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="end">Waiting</text>
-<rect x="393" y="541" width="530" height="135" rx="10" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
-<image x="410" y="564" width="98" height="50" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
-<text x="527" y="585" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="21" font-weight="600" fill="#283B36" text-anchor="start">Landscape_02.tif</text>
-<text x="429" y="647" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="start">IG Standard</text>
-<text x="887" y="647" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#356D62" text-anchor="end">Completed</text>
-<text x="403" y="766" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="start">同一源图可以包含多个独立任务</text>
-<text x="965" y="287" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">PREVIEW</text>
-<rect x="1110" y="267" width="81" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
-<text x="1150.5" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="middle">Cover</text>
-<text x="1234" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">1</text>
-<text x="1299" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">2</text>
-<text x="1364" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">3</text>
-<text x="1429" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">4</text>
-<rect x="1113" y="311" width="222" height="296" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
-<image x="1125.3333333333333" y="422.5692307692308" width="197.33333333333331" height="72.86153846153846" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
-<text x="1224.0" y="576" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="10" font-weight="600" fill="#6D7C76" text-anchor="middle" letter-spacing="1">LANDSCAPE STUDY</text>
-<text x="1224.0" y="591" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="9" font-weight="400" fill="#6D7C76" text-anchor="middle">45 mm · f/8 · ISO 100</text>
-<text x="1360" y="353" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">3:4</text>
-<text x="1360" y="386" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="start">Fit</text>
-<line x1="942" y1="630" x2="1535" y2="630" stroke="#D8E0D9" stroke-width="2"/>
-<text x="965" y="663" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">INSPECTOR</text>
-<text x="966" y="696" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#283B36" text-anchor="start">Canvas</text>
-<text x="1504" y="696" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="end">1080 × 1440</text>
-<text x="966" y="726" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#283B36" text-anchor="start">Margin / Background</text>
-<text x="1504" y="726" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="end">60 px  /  #FAFAF8</text>
-<text x="966" y="756" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#283B36" text-anchor="start">Overlays / Asset Binding</text>
-<text x="1504" y="756" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="end">Cover only</text>
-<text x="966" y="786" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#283B36" text-anchor="start">Export</text>
-<text x="1504" y="786" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="end">JPEG  /  sRGB</text>
+<line x1="1041" y1="253" x2="1041" y2="808" stroke="#D8E0D9" stroke-width="2"/>
+<rect x="84" y="268" width="274" height="31" rx="8" fill="#FFFFFF" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="87.0" y="271" width="85" height="25" rx="6" fill="#EAF1ED" stroke="none" stroke-width="0"/>
+<text x="129.6" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#356D62" text-anchor="middle">预设</text>
+<text x="220.9" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">位置</text>
+<text x="312.20000000000005" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">素材</text>
+<text x="88" y="336" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">内置</text>
+<rect x="78" y="350" width="284" height="40" rx="8" fill="#EAF1ED" stroke="none" stroke-width="1.5"/>
+<text x="96" y="377" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="start">Instagram Panorama</text>
+<text x="96" y="420" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">XHS Standard</text>
+<text x="96" y="458" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">Douyin Photo</text>
+<line x1="88" y1="474" x2="351" y2="474" stroke="#D8E0D9" stroke-width="2"/>
+<text x="88" y="506" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">用户保存</text>
+<text x="96" y="542" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="start">My Landscape</text>
+<line x1="88" y1="570" x2="351" y2="570" stroke="#D8E0D9" stroke-width="2"/>
+<text x="88" y="602" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">导入</text>
+<text x="96" y="638" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#283B36" text-anchor="start">Minimal Gallery</text>
+<text x="88" y="780" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">拖动预设到源图即可创建任务</text>
+<text x="403" y="287" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">PREVIEW</text>
+<rect x="707" y="267" width="81" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="747.5" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="middle">Cover</text>
+<text x="818" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">1</text>
+<text x="868" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">2</text>
+<text x="918" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">3</text>
+<text x="968" y="290" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="middle">4</text>
+<rect x="615" y="308" width="180" height="240" rx="0" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="625.0" y="398.46153846153845" width="160.0" height="59.07692307692308" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="705.0" y="517" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="10" font-weight="600" fill="#6D7C76" text-anchor="middle" letter-spacing="1">LANDSCAPE STUDY</text>
+<text x="705.0" y="532" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="9" font-weight="400" fill="#6D7C76" text-anchor="middle">45 mm · f/8 · ISO 100</text>
+<text x="815" y="352" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="400" fill="#6D7C76" text-anchor="start">3:4</text>
+<text x="815" y="384" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="18" font-weight="600" fill="#356D62" text-anchor="start">Fit</text>
+<line x1="378" y1="562" x2="1040" y2="562" stroke="#D8E0D9" stroke-width="2"/>
+<text x="403" y="594" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#6D7C76" text-anchor="start" letter-spacing="1">BATCH</text>
+<rect x="393" y="608" width="632" height="122" rx="10" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="410" y="622" width="98" height="36" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="527" y="638" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#283B36" text-anchor="start">Badlands_panorama.tif</text>
+<text x="527" y="660" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">65:24 · TIFF · embedded ICC</text>
+<rect x="412" y="672" width="595" height="26" rx="6" fill="#EAF1ED" stroke="none" stroke-width="1.5"/>
+<text x="429" y="691" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#356D62" text-anchor="start">IG Panorama</text>
+<text x="989" y="691" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#356D62" text-anchor="end">Cover + 4  ·  1080 × 1440</text>
+<text x="429" y="719" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#283B36" text-anchor="start">XHS Panorama</text>
+<text x="989" y="719" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="end">Cover + 3  ·  1080 × 1080</text>
+<rect x="393" y="740" width="632" height="54" rx="10" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<image x="410" y="750" width="98" height="36" xlink:href="source/landscape-sample.png" preserveAspectRatio="xMidYMid meet"/>
+<text x="527" y="773" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#283B36" text-anchor="start">Landscape_02.tif</text>
+<text x="989" y="773" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="end">IG Standard  ·  1080 × 1440</text>
+<rect x="1062" y="268" width="452" height="31" rx="8" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<rect x="1065" y="271" width="107" height="25" rx="6" fill="#EAF1ED" stroke="none" stroke-width="0"/>
+<text x="1118.5" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#356D62" text-anchor="middle">画布</text>
+<text x="1231.5" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">全景</text>
+<text x="1344.5" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">图层</text>
+<text x="1457.5" y="289" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">输出</text>
+<text x="1066" y="346" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">尺寸</text>
+<text x="1510" y="346" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">1080 × 1440</text>
+<line x1="1066" y1="362" x2="1510" y2="362" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1066" y="388" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">比例</text>
+<text x="1510" y="388" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">3:4</text>
+<line x1="1066" y1="404" x2="1510" y2="404" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1066" y="430" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">适配</text>
+<text x="1510" y="430" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">完整嵌入</text>
+<line x1="1066" y1="446" x2="1510" y2="446" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1066" y="472" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">背景</text>
+<text x="1510" y="472" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">#FAFAF8</text>
+<line x1="1066" y1="488" x2="1510" y2="488" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1066" y="514" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">最小边距</text>
+<text x="1510" y="514" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">60 px</text>
+<line x1="1066" y1="530" x2="1510" y2="530" stroke="#D8E0D9" stroke-width="1"/>
+<text x="1066" y="556" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#283B36" text-anchor="start">对齐</text>
+<text x="1510" y="556" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="400" fill="#6D7C76" text-anchor="end">居中</text>
+<line x1="1066" y1="572" x2="1510" y2="572" stroke="#D8E0D9" stroke-width="1"/>
+<rect x="1412" y="459" width="16" height="16" rx="3" fill="#FAFAF8" stroke="#6D7C76" stroke-width="1"/>
+<text x="1066" y="640" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">选中任务时修改该任务参数，</text>
+<text x="1066" y="664" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">不会自动写回预设。</text>
+<rect x="1062" y="752" width="452" height="36" rx="8" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="1288" y="776" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#283B36" text-anchor="middle">存储为预设</text>
 <line x1="64" y1="808" x2="1536" y2="808" stroke="#D8E0D9" stroke-width="2"/>
-<text x="88" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="400" fill="#6D7C76" text-anchor="start">Destination:  ~/Pictures/Social Exports</text>
-<text x="1511" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="16" font-weight="600" fill="#356D62" text-anchor="end">Batch Progress  42%</text>
+<rect x="82" y="816" width="110" height="28" rx="7" fill="#FAFAF8" stroke="#D8E0D9" stroke-width="1.5"/>
+<text x="137" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#283B36" text-anchor="middle">添加图片</text>
+<text x="214" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="400" fill="#6D7C76" text-anchor="start">位置：~/Pictures/Social Exports</text>
+<rect x="1010" y="827" width="200" height="6" rx="3" fill="#D8E0D9" stroke="none" stroke-width="0"/>
+<rect x="1010" y="827" width="84" height="6" rx="3" fill="#356D62" stroke="none" stroke-width="0"/>
+<text x="1224" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#356D62" text-anchor="start">42%</text>
+<rect x="1330" y="816" width="190" height="28" rx="7" fill="#356D62" stroke="#356D62" stroke-width="1.5"/>
+<text x="1425" y="836" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="15" font-weight="600" fill="#FFFFFF" text-anchor="middle">开始批处理</text>
 <line x1="377" y1="852" x2="377" y2="879" stroke="#356D62" stroke-width="2" stroke-dasharray="4 4"/>
 <rect x="356" y="879" width="42" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
 <text x="377.0" y="902" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">A</text>
-<line x1="941" y1="852" x2="941" y2="879" stroke="#356D62" stroke-width="2" stroke-dasharray="4 4"/>
-<rect x="920" y="879" width="42" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
-<text x="941.0" y="902" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">B</text>
-<path d="M 1490 630 H 1560 V 897 H 1515" fill="none" stroke="#356D62" stroke-width="2" stroke-linejoin="round" marker-end="url(#arrow)" stroke-dasharray="4 4"/>
-<rect x="1460" y="879" width="42" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
-<text x="1481.0" y="902" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">C</text>
+<line x1="1041" y1="852" x2="1041" y2="879" stroke="#356D62" stroke-width="2" stroke-dasharray="4 4"/>
+<rect x="1020" y="879" width="42" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="1041.0" y="902" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">B</text>
+<rect x="978" y="545" width="42" height="34" rx="17" fill="#EAF1ED" stroke="#EAF1ED" stroke-width="0"/>
+<text x="999.0" y="568" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="17" font-weight="600" fill="#356D62" text-anchor="middle">C</text>
 <text x="64" y="940" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#356D62" text-anchor="start">A / B  横向拖动调整三栏宽度</text>
-<text x="796" y="940" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#356D62" text-anchor="start">C  上下拖动调整预览与设置区高度</text>
+<text x="796" y="940" font-family="Arial, &#x27;Heiti SC&#x27;, &#x27;STHeiti&#x27;, &#x27;Hiragino Sans GB&#x27;, sans-serif" font-size="19" font-weight="600" fill="#356D62" text-anchor="start">C  上下拖动调整预览与任务列表高度</text>
 </svg>
