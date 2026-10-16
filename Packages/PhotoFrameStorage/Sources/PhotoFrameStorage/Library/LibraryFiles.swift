@@ -3,7 +3,7 @@ import Foundation
 /// 库目录的布局与文件操作。
 ///
 /// ```text
-/// <root>/                         默认 ~/Library/Application Support/AnotherPhotoFrame/
+/// <root>/                         默认 ~/Library/Group Containers/<App Group>/Library/Application Support/AnotherPhotoFrame/
 /// ├── Presets/<presetId>.json     每个用户预设一个文件（LibraryPresetFile）
 /// ├── Assets/<assetId>/           每个素材一个目录
 /// │   ├── asset.json              元信息（AssetInfo）
@@ -15,15 +15,51 @@ import Foundation
 ///
 /// 每个条目单独一个文件，任何一个损坏只影响它自己。所有写入都是「写临时文件 → fsync → rename」，
 /// 进程中途崩溃只会留下以 `.` 开头的临时文件，读取时忽略。
+///
+/// 根目录放在 App Group 共享容器里（D-78），沙盒 GUI 与不在沙盒里的 CLI / MCP 用同一个库：
+/// - CLI / MCP：``defaultRoot()``，直接按路径计算，不调用容器 API。
+/// - GUI：``groupContainerRoot()``，先用 `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`，
+///   返回 nil（未签名、未配置 App Group）时退回按路径计算的结果。
+/// - 两者都可以被 `LocalLibrary(root:)` 覆盖（测试、自定义位置）。
 public enum LibraryLocation {
     public static let directoryName = "AnotherPhotoFrame"
 
-    /// 默认根目录：`~/Library/Application Support/AnotherPhotoFrame/`。
-    /// 沙盒进程里 Application Support 会落在自己的容器内。
-    public static func defaultRoot() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(filePath: NSHomeDirectory()).appending(path: "Library/Application Support")
-        return base.appending(path: directoryName, directoryHint: .isDirectory)
+    /// App Group ID。占位值：真实值依赖开发者 Team ID，签名时一并确定。
+    public static let appGroupIdentifier = "group.org.anotherphotoframe"
+
+    /// 默认根目录：`~/Library/Group Containers/<appGroupIdentifier>/Library/Application Support/AnotherPhotoFrame/`。
+    ///
+    /// `~` 取当前用户真实的主目录（不受沙盒容器影响），因此在任何进程里算出的都是同一个路径。
+    public static func defaultRoot(appGroupIdentifier: String = appGroupIdentifier) -> URL {
+        root(inGroupContainer: groupContainerPath(appGroupIdentifier: appGroupIdentifier, home: userHomeDirectory()))
+    }
+
+    /// GUI 用：优先用系统给出的 App Group 容器，拿不到时退回 ``defaultRoot(appGroupIdentifier:)``。
+    public static func groupContainerRoot(appGroupIdentifier: String = appGroupIdentifier) -> URL {
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
+            return root(inGroupContainer: container)
+        }
+        return defaultRoot(appGroupIdentifier: appGroupIdentifier)
+    }
+
+    /// `<home>/Library/Group Containers/<appGroupIdentifier>`。
+    public static func groupContainerPath(appGroupIdentifier: String, home: URL) -> URL {
+        home.appending(path: "Library/Group Containers", directoryHint: .isDirectory)
+            .appending(path: appGroupIdentifier, directoryHint: .isDirectory)
+    }
+
+    /// 容器内的库目录：`<container>/Library/Application Support/AnotherPhotoFrame/`。
+    public static func root(inGroupContainer container: URL) -> URL {
+        container.appending(path: "Library/Application Support", directoryHint: .isDirectory)
+            .appending(path: directoryName, directoryHint: .isDirectory)
+    }
+
+    /// 真实主目录：沙盒进程里 `NSHomeDirectory()` 指向自己的容器，所以从用户数据库读。
+    static func userHomeDirectory() -> URL {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            return URL(filePath: String(cString: dir), directoryHint: .isDirectory)
+        }
+        return URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
     }
 }
 

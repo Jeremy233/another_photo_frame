@@ -101,13 +101,24 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 ### 目录布局
 
 ```text
-<root>/                         默认 ~/Library/Application Support/AnotherPhotoFrame/（LibraryLocation.defaultRoot()）
+<root>/                         默认 ~/Library/Group Containers/<App Group>/Library/Application Support/AnotherPhotoFrame/
 ├── Presets/<presetId>.json     每个用户预设一个文件
 ├── Assets/<assetId>/           每个素材一个目录：asset.json（元信息）+ content.png | content.svg
 ├── Assets/.staging/            导入中的素材；完成后整个目录一次改名到位
 ├── bindings.json               预设本地绑定 + 用户默认绑定
 └── .lock                       修改 bindings.json 时的跨进程文件锁
 ```
+
+**根目录（D-78）**：放在 App Group 共享容器里，沙盒 GUI 与不在沙盒里的 CLI / MCP 读写同一个库。
+
+- App Group ID 是常量 `LibraryLocation.appGroupIdentifier`，目前是占位值 `group.org.anotherphotoframe`；
+  真实值依赖开发者 Team ID，签名时一并确定。
+- CLI / MCP：`LibraryLocation.defaultRoot()` 直接按路径计算
+  `~/Library/Group Containers/<App Group ID>/Library/Application Support/AnotherPhotoFrame/`，不调用容器 API；
+  `~` 取当前用户真实的主目录（`getpwuid`），不受沙盒容器影响。`LocalLibrary(platforms:)` 默认用它。
+- GUI：`LibraryLocation.groupContainerRoot()` 先用 `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`；
+  返回 nil（未签名、未配置 App Group）时退回上面按路径计算的结果。
+- 根目录始终可以注入：`LocalLibrary(root:platforms:)`（测试、自定义位置）。
 
 - 预设文件：`{"storageFormat": 1, "origin": "user"|"imported", "createdAt", "modifiedAt", "preset": {manifest}}`。
   `preset` 与 `.photoframe` 的 `manifest.json` 完全相同，用 `PresetSchema` 读写，迁移和扩展字段规则都适用。
@@ -126,7 +137,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 
 ```swift
 let catalog = try PlatformCatalogStore.builtIn()
-let library = LocalLibrary(platforms: catalog)            // 测试：LocalLibrary(root: tmp, platforms: catalog)
+let library = LocalLibrary(platforms: catalog)            // CLI / MCP；测试：LocalLibrary(root: tmp, platforms: catalog)
+let guiLibrary = LocalLibrary(root: LibraryLocation.groupContainerRoot(), platforms: catalog)   // GUI
 
 // 预设（UI 设计文档第 7 节；CLI preset list/import/export）
 let listing = library.presets.list()                      // .builtIn / .user / .imported / .warnings
@@ -135,11 +147,12 @@ let entry = try library.presets.find("instagram-panorama")// UUID、完整名称
 let mine = try library.presets.create(name: "My Landscape", from: entry.preset)
 let copy = try library.duplicatePreset(entry.presetId)   // 内置预设也能复制；默认连同本地绑定一起复制
 try library.presets.rename(copy.presetId, to: "Gallery")
-try library.presets.update(editedPreset)                  // 内置预设 → library.builtin_read_only
+try library.presets.update(editedPreset)                  // 内置预设 → library.builtin_read_only；分组不变
+try library.presets.move(id, to: .user)                   // 「用户保存」⇄「导入」，GUI 拖放用（D-81）
 try library.deletePreset(copy.presetId)                   // 同时删除它的本地绑定
 
 let preview = try library.presets.previewImport(data)     // §8.3；preview.idConflictResolutions == [.saveAsCopy, .replace]
-let imported = try library.presets.importPackage(data)    // 默认 .saveAsCopy（D-39），也可 onConflict: .replace
+let imported = try library.presets.importPackage(data)    // 默认 .saveAsCopy（D-39，副本名加 Copy，D-80），也可 onConflict: .replace
 try library.presets.exportPackage(id, to: url)            // 校验 + 隐私检查（D-37）+ 原子写
 PresetLibrary.suggestedFileName(for: entry.name)          // "My Landscape.photoframe"
 
@@ -170,7 +183,7 @@ RenderJob.assets(from: resolution, fileURL: library.assets.contentURL(for:))    
 ### 素材导入检查（`AssetValidator`）
 
 按扩展名确定期望格式（只接受 `png`、`svg`），再按**内容**校验，扩展名与内容不符时拒绝。默认上限
-（`AssetImportLimits.default`）：PNG ≤ 16 MiB、SVG ≤ 2 MiB、单边 ≤ 8192 px、总像素 ≤ 16 MP、SVG ≤ 20000 个元素、嵌套 ≤ 64 层。
+（`AssetImportLimits.default`，D-85）：PNG ≤ 64 MiB、SVG ≤ 8 MiB、单边 ≤ 16384 px、总像素 ≤ 64 MP、SVG ≤ 50000 个元素、嵌套 ≤ 64 层。
 
 | 检查 | 错误码 |
 |---|---|
@@ -196,22 +209,25 @@ RenderJob.assets(from: resolution, fileURL: library.assets.contentURL(for:))    
 `library.unexpected_file`、`library.shadows_builtin`、`library.unknown_fields`、`library.migrated`、`library.invalid_preset`、
 `asset.unreadable_metadata`、`asset.missing_file`、`asset.size_mismatch`、`binding.unreadable`。
 
-### 本地库：待确认（实现时采用的默认做法）
+### 本地库：已确定（2026-10-16）
 
-1. **沙盒与路径**：GUI 若启用 App Sandbox，`Application Support` 会落在 GUI 自己的容器里，与 CLI / MCP 看到的
-   `~/Library/Application Support/AnotherPhotoFrame/` 不是同一个目录。推荐用 App Group 共享容器作为根目录（`LocalLibrary(root:)` 已可注入）。
-2. **副本命名**：存储层默认命名为「原名 Copy」「原名 Copy 2」…（英文）；GUI 可以传入本地化名称（`duplicate(_:name:)`）。
-3. **导入另存为副本时保留原名**，不加后缀；靠「导入」分组区分。
-4. **导入的预设被编辑后仍留在「导入」组**（分组表示来源）。备选：保存修改后移到「用户保存」。
-5. **组内排序**：按名称（Finder 式自然排序），同名按 ID。备选：按创建或修改时间。
-6. **删除素材时保留指向它的绑定**：解析时按 D-28 警告并回退；`deleteAsset` 返回这些绑定供界面提示重新绑定。备选：删除时一并清理。
-7. **复制预设默认连同本地绑定一起复制**；删除预设时删除它的本地绑定；导入「替换」保留原 ID 的本地绑定。
-8. **素材上限**：PNG 16 MiB、SVG 2 MiB、单边 8192 px、总像素 16 MP、SVG 20000 个元素 / 64 层。
-9. **动画 PNG 拒绝**；PNG 在 IEND 之后的数据被去掉（防止拼接的 ZIP 等夹带内容）。
-10. **SVG 导入比渲染更严**：额外拒绝动画元素和处理指令；不支持的元素只警告。两处规则目前各有一份，建议以后渲染模块改用 `AssetValidator.SVGPolicy`。
-11. **重复内容仍然导入**为新素材（可能想放在不同分组），只通过 `duplicateOf` 提示。
-12. **素材分组只用于整理**，不限制能绑定到哪个 slot；slot 只按格式限制（`acceptedFormats`）。
-13. **用户默认绑定按 slotId 全局生效**：不同预设里同名的 slot（如 `camera.badge`）共用一个默认素材。
-14. **内容校验不通过的已存预设仍然列出**（带警告），而不是跳过，方便用户在 GUI 里修好。
-15. **CLI 引用预设**：UUID、完整名称（不区分大小写）或短名（`Instagram Panorama` → `instagram-panorama`）；匹配到多个时报 `library.ambiguous_preset`。
-16. **预设在库里的存储格式**是 JSON 封装（来源、时间 + manifest），而不是 `.photoframe` ZIP。
+1. **D-78 根目录**：App Group 共享容器，规则见上面「根目录」。
+2. **D-79 副本命名**：存储层默认「原名 Copy」「原名 Copy 2」…（英文）；GUI 可以传入本地化名称（`duplicate(_:name:)`）。
+3. **D-80 导入另存为副本**：留在「导入」组，名称按复制预设的规则加后缀（「原名 Copy」「原名 Copy 2」…）。
+4. **D-81 分组**：预设留在原来的组，除非用户自己拖动或移动。导入的预设编辑后仍在「导入」组；
+   `PresetLibrary.move(_:to:)` 在「用户保存」和「导入」之间移动（内容和时间不变），内置预设不能移动。
+5. **D-82 组内排序**：按名称（Finder 式自然排序），同名按 ID。
+6. **D-83 删除素材时保留指向它的绑定**：解析时按 D-28 警告并回退；`deleteAsset` 返回这些绑定供界面提示重新绑定。
+7. **D-84 复制预设默认连同本地绑定一起复制**；删除预设时删除它的本地绑定；导入「替换」保留原 ID 的本地绑定。
+8. **D-85 素材上限**：PNG 64 MiB、SVG 8 MiB、单边 16384 px、总像素 64 MP、SVG 50000 个元素 / 64 层。
+9. **D-86 动画 PNG 拒绝**；PNG 在 IEND 之后的数据被去掉（防止拼接的 ZIP 等夹带内容）。
+10. **D-87 SVG 规则只保留一份**：以 `AssetValidator.SVGPolicy` 为准，渲染模块在集成时改用它（由 CLI 会话完成）。
+    导入比渲染更严：额外拒绝动画元素和处理指令；不支持的元素只警告。
+    注意：渲染模块目前的 SVG 上限还是 2 MiB / 20000 个元素，统一时要一起改成 D-85 的值。
+11. **D-88 重复内容仍然导入**为新素材，只通过 `duplicateOf` 提示。
+12. **D-89 素材分组只用于整理**，不限制能绑定到哪个 slot；slot 只按格式限制（`acceptedFormats`）。
+13. **D-90 用户默认绑定按 slotId 全局生效**：不同预设里同名的 slot 共用一个默认素材。
+14. **D-91 内容校验不通过的已存预设仍然列出**（带警告），方便用户在 GUI 里修好。
+15. **D-76 CLI 引用预设**：UUID、完整名称（不区分大小写）或短名（`Instagram Panorama` → `instagram-panorama`），
+    匹配到多个时报 `library.ambiguous_preset`；与 CLI 的匹配规则合并为 D-76，CLI 以后改用 `PresetLibrary.find(_:)`。
+16. **D-92 预设在库里的存储格式**是 JSON 封装（来源、时间 + manifest），而不是 `.photoframe` ZIP。
