@@ -79,13 +79,13 @@
 | FR-08 | 预设管理 | 创建、复制、编辑、导入、导出、分享、schema 版本 | 【已确定】 |
 | FR-09 | 批处理 | 多原图、多预设、队列、进度、取消、重试 | 【已确定】 |
 | FR-10 | 图像导出 | JPEG 必须；PNG/HEIC 等按格式矩阵逐项实现 | 【建议：分级交付】 |
-| FR-11 | 视频导出 | 9:16 完整展示与横向平移 MP4 | 【已纳入 V1 规划；细节待确认】 |
+| FR-11 | 视频导出 | V1、V2 不做；V2 考虑 Live Photo，V3 及以后再做视频 | 【V1 不做：D-16】 |
 | FR-12 | CLI | 独立可执行文件、可脚本化、JSON 输出 | 【已确定】 |
 | FR-13 | MCP | 本地 stdio MCP Server，供 AI 客户端调用 | 【已确定】 |
 | FR-14 | 色彩管理 | 输入 ICC、色彩转换、正确合成与输出 ICC、可测试 | 【已确定】 |
 | FR-15 | 隐私安全 | 本地数据、路径权限、默认剥离敏感位置元数据 | 【建议】 |
 
-> **范围控制说明：** 表中 V1 指正式稳定版的目标集；并非第一天就同时实现。V1 的视频导出、SVG、安全解析等复杂子项可以在 Alpha/Beta 阶段用能力开关逐项交付，但正式发布前应明确哪些已通过验收。
+> **范围控制说明：** 表中 V1 指正式稳定版的目标集；并非第一天就同时实现。V1 的 HDR 输出、SVG、安全解析等复杂子项可以在 Alpha/Beta 阶段用能力开关逐项交付，但正式发布前应明确哪些已通过验收。
 
 ### 2.2 推荐默认值（用户个人风格，不应硬编码为唯一风格）
 
@@ -93,7 +93,7 @@
 |---|---:|---|---:|---|
 | Instagram Photo / Panorama | 1080 × 1440，3:4 | `#FAFAF8` | 60 px | 完整图等比居中；全景另输出连续切片 |
 | 小红书 XHS Photo / Panorama | 1080 × 1080，1:1 | `#FAFAF8` | 60 px | 同上 |
-| 抖音 Photo / Video | 1080 × 1920，9:16 | `#FAFAF8` | 60 px | 完整图／横向平移视频可选 |
+| 抖音 Photo | 1080 × 1920，9:16 | `#FAFAF8` | 60 px | 完整图等比居中 |
 
 - 【已确定】当前摄影风格为 **Modern Fine Art Landscape Photography**：中性暖白底、照片为主体、装饰克制。
 - 【已确定】原图封面**完整嵌入**画布；不是自动裁切填满。比例裁切仅作为用户主动开启的可选模式（D-21）。
@@ -372,7 +372,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 - 输出：HDR 是**可选导出项**。平台配置（§5.4）声明该平台支持的 HDR 输出格式（例如带 ISO 21496-1 gain map 的 JPEG，SDR 底图 + gain map，不支持 HDR 的设备自动退回 SDR）；用户选择 HDR 时按平台配置导出对应格式。
 - SDR 输出：HDR 源选择 SDR 输出时，使用选定并记录参数的 tone mapping 算法，**不能无声地把高亮直接 clip 到白色**。
 - 合成：背景、水印、文字等 SDR 元素在 HDR 输出中按参考白（SDR 白点）放置，不随 headroom 一起变亮。
-- 视频：V1 视频仍输出 SDR H.264，写入一致的 Rec.709 色彩描述并进行播放器验证；HDR 视频不在 V1 范围内。
+- 视频：V1 不做视频输出（D-16）。
 
 ### 6.8 输出与元数据
 
@@ -381,7 +381,6 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 | JPEG | sRGB，8-bit，最高质量 Q100（D-06）；可选 HDR gain map | 嵌入正确 ICC；EXIF 默认全部不写出，可选「保留拍摄参数」「保留 GPS（带隐私警告）」 |
 | PNG | sRGB + ICC 或等价标准颜色描述；支持透明输出配置 | 不传播与实际渲染不符的旧 ICC |
 | HEIC | 【待确认】8-bit/10-bit 模式与 ICC 支持测试 | 由系统编码器能力决定 |
-| MP4 | H.264、SDR Rec.709、建议 30fps，9:16 | 颜色 primaries / transfer / matrix 明确标识 |
 
 **EXIF Orientation：** 输出像素统一为正确方向，写出 Orientation=1 或不写该字段，防止社交平台再次旋转。对源图的镜头、焦距、光圈、快门等展示用参数，应与**是否复制到输出元数据**分别控制。输出元数据默认全部不写出；「保留拍摄参数」与「保留 GPS」为独立可选项，「保留 GPS」旁显示隐私警告（D-06）。
 
@@ -573,12 +572,10 @@ Source (原图)
 
 *图 7 · 任务与落盘：处理中可失败或取消；重试保留历史，取消只清理本任务临时文件，成品校验成功后再发布。*
 
-### 9.3 视频输出（V1 规划）
+### 9.3 视频与 Live Photo（V1 不做）
 
-- 1080×1920、9:16、SDR H.264 MP4（建议 30fps）。
-- 模式 A：完整图片 + `#FAFAF8` 背景固定展示；模式 B：全景在画布中横向平移，显示完整作品。
-- 【待确认】默认时长、平移速度／缓动、头尾完整展示秒数、是否需多照片视频；V1 尽量先做单张原图视频。
-- 使用 AVFoundation；颜色标签、ICC-to-video 转换、像素范围（full/video range）都须单独测试，避免 QuickTime 和手机端色彩差异。
+- 【已确定：D-16】V1、V2 都不做视频输出。V2 考虑支持 Live Photo；V3 或以后再做视频（如 9:16 完整展示、全景横向平移 MP4）。
+- 架构上不为视频预留专门实现，但 Rendering 模块的接口不应假设输出只能是静态图片文件。
 
 ---
 
@@ -602,7 +599,7 @@ Source (原图)
              ┌─────────────────┼─────────────────┐
              │                 │                 │
        PhotoFrameCore   PhotoFrameRendering   Adapters
-       Models / Layout  Color / Image / Video  Files / Metadata
+       Models / Layout  Color / Image          Files / Metadata
              └─────────────────┼─────────────────┘
                                │
                          Local Storage
@@ -610,7 +607,7 @@ Source (原图)
 
 - **GUI 不包含业务核心计算**；所有工具共用统一服务协议。
 - `PhotoFrameCore` 尽可能使用跨 Apple 平台可用的纯 Swift 数学、几何和 schema；不依赖 SwiftUI/AppKit。
-- `PhotoFrameRendering` 可以利用 ColorSync、ImageIO、Core Image、Core Graphics、AVFoundation。封装平台实现，避免它们渗入 Core。
+- `PhotoFrameRendering` 可以利用 ColorSync、ImageIO、Core Image、Core Graphics。封装平台实现，避免它们渗入 Core。
 - `PhotoFrameApplication` 管理预设快照、任务、取消、进度、输出清单、权限策略。
 - GUI 的实时预览通过**同一 Renderer** 的 preview mode 完成。
 - 【建议】每个功能提供独立可测试 Swift Package；错误类型使用稳定 code + human-readable message + recoverable hint。
@@ -756,11 +753,12 @@ photoframe mcp serve
 
 ### 12.1 面向高像素摄影
 
-目标数据包括 Nikon Z8 约 45MP 成片、16-bit TIFF、大于 100MP 的接片、超宽幅 65:24 / 3:1 图像。具体上限由实测决定，**不能仅以能打开缩略图代表支持全尺寸导出**。
+目标数据包括 Nikon Z8 约 45MP 成片、16-bit TIFF、大于 100MP 的接片、超宽幅 65:24 / 3:1 图像。【已确定：D-18】不设输入尺寸上限：输出总会缩放到平台分辨率，内存占用应主要取决于输出尺寸而非输入尺寸。
 
-- 浏览使用降采样缩略图缓存，不能一口气解码整个照片库。
+- 浏览和预览使用降采样解码与缩略图缓存；超过一定分辨率时不按全分辨率渲染预览。
+- 导出时尽量直接按输出所需尺寸降采样解码（JPEG 可在解码时缩小；非分块 TIFF 可能需要一次完整解码，是峰值内存的主要来源）。
 - 导出使用按需解码、复用颜色变换、tile-based 处理；避免构造数十亿像素的一整张常驻 strip。
-- 限制渲染任务并行数；按内存与输入尺寸调整并发。
+- 按像素数估算每个任务的内存需求，根据可用内存决定并行数量；内存不足时改为排队执行。
 - 进度、取消、错误由后台执行，不阻塞主线程。
 - 处理大图时优先控制峰值内存，并在失败时给出可重试的诊断。
 
@@ -844,7 +842,7 @@ photoframe mcp serve
 | **Alpha 3** | 三栏可缩放 UI、任务进度、取消与重试 | GUI 能完成完整批量工作流 |
 | **Alpha 4** | 预设 schema、导入导出、Asset Library、Slots、Overlays | 用户可分享布局且不携带私有素材 |
 | **Beta 1** | MCP 本地 stdio、CLI 稳定参数、文档 | AI 能校验、预览和安全导出 |
-| **Beta 2** | 视频、性能、颜色回归、安全审查 | SDR 视频与大 TIFF 达标 |
+| **Beta 2** | 各平台 HDR 输出、性能、颜色回归、安全审查 | HDR 输出实测通过，大 TIFF 达标 |
 | **V1.0** | 跨入口一致性、文档、安装包、许可证、测试 | 本文 V1 Checklist 全部完成或经公开版本说明明确取舍 |
 
 > 【已确定：D-08】CLI 与 GUI 同时开发；GUI 的每项操作都必须能通过 CLI 完成，以便脚本与 AI 调用。GUI 基本参照 Compressor 界面。
@@ -853,8 +851,8 @@ photoframe mcp serve
 
 - 【已确定】代码公开、应用免费，不以在线服务为使用前提。
 - 【建议】GitHub 仓库 + Issues/PR + GitHub Releases + 示例预设 + 可运行自动测试。
-- 【待确认】许可证：Apache-2.0（明确专利授权）或 MIT（更简明）；兼容第三方依赖许可证。
-- 【待确认】项目正式名称、Bundle Identifier、应用最低 macOS、发布签名／公证流程、默认语言和国际化范围。
+- 【已确定：D-20】许可证：Apache-2.0；第三方依赖须与之兼容。README 可放自愿打赏渠道。
+- 【待确认】项目正式名称、Bundle Identifier、默认语言和国际化范围。最低系统已定为 macOS 26（D-01）；签名：Alpha/Beta 不签名，V1.0 前决定是否公证（D-20）。
 - 附 `README`、`CONTRIBUTING`、`SECURITY`、`LICENSE`，明确第三方用户素材的版权责任。
 
 ---
@@ -869,8 +867,8 @@ photoframe mcp serve
 | 超大接片瞬时内存 | OOM、无响应 | 按 tile 渲染、解码降采样、受控并发 |
 | 素材与预设混用版权 | 无授权素材再分发 | 默认只导出 Slots；不随软件附带品牌线稿 |
 | UI/CLI/MCP 实现不一致 | 预览与成品不符 | 后端只有一套 Layout + Renderer；跨入口 Golden Tests |
-| 免费开源但发布签名成本 | 普通用户安装门槛 | 源码构建与未公证发布作为备选；签名成本另评估 |
-| V1 范围过大 | 发布拖延 | Alpha 分阶段，先保核心闭环，视频等依测试成熟度验收 |
+| 免费开源但发布签名成本 | 普通用户安装门槛 | 已有 Apple Developer 账号；Alpha/Beta 发布未公证版本并支持源码构建，V1.0 前决定是否公证（D-20） |
+| V1 范围过大 | 发布拖延 | Alpha 分阶段，先保核心闭环；视频已移出 V1（D-16），HDR 输出等依测试成熟度验收 |
 | 无常驻进程的 MCP 长任务 | 客户端退出任务中断 | 明确 session 生命周期；未来单独加入 Agent |
 
 ---
@@ -903,11 +901,17 @@ photoframe mcp serve
 
 ### P2 — Beta / 发布前
 
-- [ ] **D-16** MP4 的默认长度／fps／平移曲线、完整图首尾时长。
-- [ ] **D-17** 格式矩阵（JPEG/PNG/HEIC、位深、ICC 嵌入）最终正式支持列表。
-- [ ] **D-18** 输入尺寸／单任务内存／最大切片张数的产品限制。
-- [ ] **D-19** ICC 色彩对照的数值验收阈值、硬件与系统基线。
-- [ ] **D-20** 开源许可证、发布签名／公证方式及社区素材贡献规则。
+- [x] **D-16** 视频：**V1、V2 都不做视频**；V2 考虑 Live Photo；V3 或以后再做视频。【已确定 2026-10-16】
+- [x] **D-17** 格式矩阵：**所有平台都提供 HDR 输出选项**，并都可导出 SDR（8-bit sRGB JPEG / PNG）。Instagram 的 HDR 用带 gain map 的 JPEG；小红书、抖音的 HDR 上传效果由用户实测确认后写入平台配置。【已确定 2026-10-16；XHS/抖音待实测】
+- [x] **D-18** 产品限制：**不设输入尺寸上限**。输出始终缩放到平台支持且不会被二次压缩的最大分辨率，因此任意大小的输入都可接受。实现要求：
+  - 预览：超过某一分辨率时不按全分辨率渲染，按需降采样解码。
+  - 导出：尽量按输出所需尺寸降采样解码；按像素数估算每个任务的内存，根据可用内存决定并行数量，内存不足时改为排队执行。
+  - 轮播张数上限仍写在平台配置中，超出时警告（§5.3）。【已确定 2026-10-16】
+- [x] **D-19** 色彩验收阈值：**暂定 ΔE2000 中位数 ≤ 1、95 分位 ≤ 2**；基线为开发者本机 Apple Silicon Mac + macOS 26。色彩 PoC 用真实样本验证后定稿。【暂定 2026-10-16】
+- [x] **D-20** 发布与开源：
+  - 许可证：【已确定】**Apache-2.0**。允许接受自愿打赏；不妨碍以后上架 Mac App Store（GPL-3.0 与其条款冲突，故未选）。
+  - 签名：【已确定】Alpha/Beta 先不签名；已有 Apple Developer 账号，V1.0 前再决定是否公证。
+  - 素材贡献：【已确定】V1 不接受任何素材贡献，仓库只放代码与预设。
 
 ---
 
@@ -936,7 +940,7 @@ photoframe mcp serve
 - [ ] `#FAFAF8` 在受控 sRGB 输出下数值正确。
 - [ ] sRGB JPEG 嵌入正确 ICC，输出无系统性色偏。
 - [ ] 色彩/Alpha Golden Tests 完成；HDR 输入不静默错误处理。
-- [ ] 视频（若列为 V1 必交）色彩标签和 SDR 输出通过实测。
+- [ ] 各平台 HDR 输出在 HDR 屏幕正确显示，上传后效果经实测确认。
 
 ### 预设与素材
 
@@ -969,9 +973,11 @@ photoframe mcp serve
 
 **已确定（2026-10-16 P0 审阅）：** macOS 26+ / Apple Silicon、JPEG/PNG/TIFF 输入、HDR 输入与可选 HDR 输出、无 ICC 假设 sRGB 并警告、JPEG Q100 且元数据默认不写出、ZIP `.photoframe`、CLI 与 GUI 同步开发、默认不裁切（裁切可选）。
 
-**尚待技术定稿：** 精确工作空间（D-03，待色彩 PoC）、各平台 HDR 输出格式矩阵、支持的 SVG/HEIC/视频编码范围、跨进程任务模型、色彩容差基线、许可和签名方式。
+**已确定（2026-10-16 P1/P2 审阅）：** PNG + 受限 SVG 素材、切片统一上下边距、自动切片张数可手改、图层以照片为参照、各入口独立进程（可升级）、绑定优先级、UUID 预设 ID、所有平台提供 HDR 选项、不设输入尺寸上限（按内存调度）、暂定 ΔE2000 阈值、暂不签名、V1 不收素材贡献。
 
-**V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布、HEIC/HEIF 输入（含 iPhone HDR，放到 V2）。
+**尚待技术定稿：** 精确工作空间（D-03，待色彩 PoC）、小红书/抖音 HDR 实测结果、色彩阈值定稿（D-19）。许可证已定为 Apache-2.0（D-20）。
+
+**V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布、HEIC/HEIF 输入（含 iPhone HDR，放到 V2）、视频输出（V2 考虑 Live Photo，V3 及以后再做视频）。
 
 **未来方向（独立设计，不进入 V1 的实现依赖）：** 用户自托管 Remote Service / 网络配置、Mac 渲染节点、Shortcuts / Discord、CloudKit 预设同步、iPadOS/iOS 共享 Core、Windows 由社区或其他技术栈接入。
 
