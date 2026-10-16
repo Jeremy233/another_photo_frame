@@ -215,11 +215,21 @@ public struct PresetLibrary: Sendable {
         return try write(e.preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
     }
 
-    /// 保存修改。预设必须已经在库里且不是内置预设；来源和创建时间保持不变。
+    /// 保存修改。预设必须已经在库里且不是内置预设；分组（来源）和创建时间保持不变（D-81：导入的预设编辑后仍在「导入」组）。
     @discardableResult
     public func update(_ preset: ExportPreset) throws(LibraryError) -> PresetEntry {
         let e = try mutableEntry(preset.presetId)
         return try write(preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
+    }
+
+    /// 在「用户保存」和「导入」两组之间移动（GUI 拖放用，D-81）。内容、创建与修改时间都不变；
+    /// 已经在目标组时什么也不做。内置预设不能移动，也不能移进内置组。
+    @discardableResult
+    public func move(_ id: UUID, to group: PresetOrigin) throws(LibraryError) -> PresetEntry {
+        let e = try mutableEntry(id)
+        guard group != .builtIn else { throw .builtInReadOnly(id) }
+        guard e.origin != group else { return e }
+        return try write(e.preset, origin: group, createdAt: e.createdAt, modifiedAt: e.modifiedAt, mustBeNew: false)
     }
 
     /// 删除用户预设。读不出来的文件也可以删除。
@@ -265,7 +275,9 @@ public struct PresetLibrary: Sendable {
             applied = onConflict
             switch onConflict {
             case .saveAsCopy:
+                // D-80：留在「导入」组，名称按复制预设的规则加 Copy 后缀。
                 preset.presetId = UUID()
+                preset.name = Self.copyName(for: preset.name, existing: Set(list().all.map(\.name)))
             case .replace:
                 if builtIns.contains(where: { $0.presetId == preset.presetId }) { throw .builtInReadOnly(preset.presetId) }
             }
@@ -323,7 +335,8 @@ public struct PresetLibrary: Sendable {
         return try entry(id)
     }
 
-    private func write(_ preset: ExportPreset, origin: PresetOrigin, createdAt: Date?, mustBeNew: Bool) throws(LibraryError) -> PresetEntry {
+    private func write(_ preset: ExportPreset, origin: PresetOrigin, createdAt: Date?, modifiedAt: Date? = nil,
+                       mustBeNew: Bool) throws(LibraryError) -> PresetEntry {
         let id = preset.presetId
         if BuiltInPresets.isBuiltIn(id) || builtIns.contains(where: { $0.presetId == id }) { throw .builtInReadOnly(id) }
         _ = try Self.checkedName(preset.name)
@@ -332,9 +345,9 @@ public struct PresetLibrary: Sendable {
         let url = fileURL(id)
         if mustBeNew, FileManager.default.fileExists(atPath: url.path) { throw .presetAlreadyExists(id) }
         let now = LibraryFiles.now()
-        let file = LibraryPresetFile(origin: origin, createdAt: createdAt ?? now, modifiedAt: now)
+        let file = LibraryPresetFile(origin: origin, createdAt: createdAt ?? now, modifiedAt: modifiedAt ?? now)
         try LibraryFiles.atomicWrite(try file.encode(preset), to: url)
-        return PresetEntry(preset: preset, origin: origin, createdAt: file.createdAt, modifiedAt: now, warnings: [])
+        return PresetEntry(preset: preset, origin: origin, createdAt: file.createdAt, modifiedAt: file.modifiedAt, warnings: [])
     }
 
     private func loadFile(_ url: URL, expectedId: UUID) -> Result<PresetEntry, LibraryWarning> {

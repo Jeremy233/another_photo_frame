@@ -24,10 +24,10 @@ public struct AssetImportLimits: Hashable, Sendable {
         self.maxSVGDepth = maxSVGDepth
     }
 
-    /// PNG ≤ 16 MiB、SVG ≤ 2 MiB、单边 ≤ 8192 px、总像素 ≤ 16 MP、SVG ≤ 20000 个元素、嵌套 ≤ 64 层。
+    /// D-85：PNG ≤ 64 MiB、SVG ≤ 8 MiB、单边 ≤ 16384 px、总像素 ≤ 64 MP、SVG ≤ 50000 个元素、嵌套 ≤ 64 层。
     public static let `default` = AssetImportLimits(
-        maxPNGBytes: 16 << 20, maxSVGBytes: 2 << 20, maxDimension: 8192, maxPixelCount: 16 << 20,
-        maxSVGElements: 20_000, maxSVGDepth: 64)
+        maxPNGBytes: 64 << 20, maxSVGBytes: 8 << 20, maxDimension: 16384, maxPixelCount: 64 << 20,
+        maxSVGElements: 50_000, maxSVGDepth: 64)
 }
 
 /// 通过检查的素材内容。
@@ -215,7 +215,7 @@ public enum AssetValidator {
 
     // MARK: - SVG
 
-    /// 受限 SVG 的规则（D-09）。与 PhotoFrameRendering 的 `RestrictedSVG` 保持一致：导入时拒绝的，渲染时也一定拒绝。
+    /// 受限 SVG 的规则（D-09、D-87）。与 PhotoFrameRendering 的 `RestrictedSVG` 保持一致：导入时拒绝的，渲染时也一定拒绝。
     public enum SVGPolicy {
         /// 出现即拒绝整个文件。比渲染模块多拒绝动画元素（渲染时会跳过它们，但导入时没必要接受）。
         public static let forbiddenElements: Set<String> = [

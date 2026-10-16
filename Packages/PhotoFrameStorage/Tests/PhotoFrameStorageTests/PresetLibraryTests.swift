@@ -127,8 +127,39 @@ struct PresetLibraryTests {
         let result = try presets.importPackage(data)
         #expect(result.conflictResolution == .saveAsCopy)
         #expect(result.entry.presetId != mine.presetId)
-        #expect(result.entry.name == "Theirs")
+        #expect(result.entry.name == "Theirs Copy")
+        #expect(result.entry.origin == .imported)
         #expect(try presets.entry(mine.presetId).name == "Mine")
+
+        // 再导入一次：按复制预设的规则继续编号（D-80）。
+        #expect(try presets.importPackage(data).entry.name == "Theirs Copy 2")
+    }
+
+    @Test("在「用户保存」和「导入」之间移动；编辑不改变分组；内置预设不能移动（D-81）")
+    func moveBetweenGroups() throws {
+        let imported = try presets.importPackage(try PresetPackage.export(samplePreset(name: "Shared"))).entry
+        var edited = imported.preset
+        edited.canvas.minMarginPx = 80
+        #expect(try presets.update(edited).origin == .imported)
+        #expect(presets.list().imported.map(\.presetId) == [imported.presetId])
+
+        let stored = try presets.entry(imported.presetId)
+        let moved = try presets.move(imported.presetId, to: .user)
+        #expect(moved.origin == .user)
+        #expect(moved.preset == stored.preset)
+        #expect(moved.createdAt == stored.createdAt && moved.modifiedAt == stored.modifiedAt)
+        let fresh = PresetLibrary(root: root.url, platforms: testCatalog).list()
+        #expect(fresh.user.map(\.presetId) == [imported.presetId])
+        #expect(fresh.imported.isEmpty)
+
+        #expect(try presets.move(imported.presetId, to: .user).origin == .user)
+        #expect(try presets.move(imported.presetId, to: .imported).origin == .imported)
+
+        let builtIn = presets.list().builtIn[0].presetId
+        #expect(code { () throws(LibraryError) in _ = try presets.move(builtIn, to: .user) } == "library.builtin_read_only")
+        #expect(code { () throws(LibraryError) in _ = try presets.move(imported.presetId, to: .builtIn) } == "library.builtin_read_only")
+        #expect(code { () throws(LibraryError) in _ = try presets.move(UUID(), to: .user) } == "library.preset_not_found")
+        #expect(try presets.entry(imported.presetId).origin == .imported)
     }
 
     @Test("导入：选择替换时覆盖已有预设；内置预设不能被替换")
@@ -284,5 +315,22 @@ struct PresetLibraryTests {
         let final = try presets.entry(entry.presetId).preset
         #expect(final.name == "Name \(final.canvas.minMarginPx)")
         #expect(try FileManager.default.contentsOfDirectory(atPath: presets.directory.path).count == 1)
+    }
+}
+
+@Suite("库的位置（D-78）")
+struct LibraryLocationTests {
+    @Test("默认根目录在 App Group 共享容器里，与沙盒无关")
+    func defaultRoot() {
+        let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+        let container = LibraryLocation.groupContainerPath(appGroupIdentifier: "group.example", home: home)
+        #expect(container.path == "/Users/someone/Library/Group Containers/group.example")
+        #expect(LibraryLocation.root(inGroupContainer: container).path
+            == "/Users/someone/Library/Group Containers/group.example/Library/Application Support/AnotherPhotoFrame")
+
+        let root = LibraryLocation.defaultRoot()
+        #expect(root.path.hasSuffix("/Library/Group Containers/\(LibraryLocation.appGroupIdentifier)/Library/Application Support/AnotherPhotoFrame"))
+        #expect(root.path.hasPrefix(LibraryLocation.userHomeDirectory().path))
+        #expect(LibraryLocation.appGroupIdentifier == "group.org.anotherphotoframe")
     }
 }

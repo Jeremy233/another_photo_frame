@@ -11,7 +11,8 @@ public struct LocalLibrary: Sendable {
     public let assets: AssetLibrary
     public let bindings: AssetBindingStore
 
-    /// `root` 默认是 `~/Library/Application Support/AnotherPhotoFrame/`；测试时传临时目录。
+    /// `root` 默认是 App Group 共享容器里的库目录（``LibraryLocation/defaultRoot(appGroupIdentifier:)``，D-78）；
+    /// GUI 传 ``LibraryLocation/groupContainerRoot(appGroupIdentifier:)``，测试传临时目录。
     public init(root: URL = LibraryLocation.defaultRoot(), platforms: PlatformCatalog, assetLimits: AssetImportLimits = .default) {
         self.root = root
         presets = PresetLibrary(root: root, platforms: platforms)

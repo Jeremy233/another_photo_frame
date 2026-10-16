@@ -30,6 +30,10 @@ struct PNGValidationTests {
         let gray = PNGBuilder.png([PNGBuilder.ihdr(width: 2, height: 2, colorType: 0), PNGBuilder.chunk("IDAT", PNGBuilder.zlib(Data(count: 6)))])
         #expect(try AssetValidator.validate(gray, format: .png).pixelSize == PixelSize(width: 2, height: 2))
 
+        // 单边正好 16384 px（D-85 上限）可以导入。
+        let wide = PNGBuilder.png([PNGBuilder.ihdr(width: 16384, height: 1), PNGBuilder.chunk("IDAT", PNGBuilder.zlib(Data(count: 1 + 16384 * 4)))])
+        #expect(try AssetValidator.validate(wide, format: .png).pixelSize == PixelSize(width: 16384, height: 1))
+
         // 索引色缺调色板 → 拒绝。
         let noPalette = PNGBuilder.png([PNGBuilder.ihdr(width: 2, height: 2, colorType: 3), PNGBuilder.chunk("IDAT", PNGBuilder.zlib(Data(count: 6)))])
         #expect(rejection { () throws(LibraryError) in try AssetValidator.validate(noPalette, format: .png) } == "asset.corrupted")
@@ -58,6 +62,14 @@ struct PNGValidationTests {
         }
     }
 
+    @Test("默认上限（D-85）")
+    func defaultLimits() {
+        let d = AssetImportLimits.default
+        #expect(d.maxPNGBytes == 64 << 20 && d.maxSVGBytes == 8 << 20)
+        #expect(d.maxDimension == 16384 && d.maxPixelCount == 64 << 20)
+        #expect(d.maxSVGElements == 50_000 && d.maxSVGDepth == 64)
+    }
+
     @Test("文件超过大小上限")
     func tooLarge() {
         var limits = AssetImportLimits.default
@@ -68,7 +80,7 @@ struct PNGValidationTests {
     @Test("IHDR 谎报超大尺寸：不解压就拒绝")
     func hugeDimensions() {
         let tiny = PNGBuilder.zlib(Data(count: 10))
-        for (w, h) in [(100_000, 10), (10, 100_000), (8192, 8192), (0, 10)] as [(UInt32, UInt32)] {
+        for (w, h) in [(100_000, 10), (10, 100_000), (16_385, 1), (16_384, 16_384), (8193, 8193), (0, 10)] as [(UInt32, UInt32)] {
             let data = PNGBuilder.png([PNGBuilder.ihdr(width: w, height: h), PNGBuilder.chunk("IDAT", tiny)])
             #expect(rejection { () throws(LibraryError) in try AssetValidator.validate(data, format: .png) } == "asset.invalid_dimensions")
         }
