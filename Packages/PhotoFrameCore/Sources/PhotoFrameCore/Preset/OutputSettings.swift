@@ -19,20 +19,28 @@ public struct OutputSettings: Hashable, Sendable, Codable {
         public var keepShootingInfo: Bool
         /// 打开时 UI 须显示隐私警告。
         public var keepGps: Bool
+        /// 保留作者和版权（TIFF Artist / Copyright，IPTC 与 XMP 中对应的作者、版权字段），与拍摄参数分开控制。
+        /// JSON 字段 `keepAuthorAndCopyright`；旧预设没有这个字段时为 false。
+        public var keepAuthorAndCopyright: Bool
         public var extensions: ExtensionFields
 
-        public init(keepShootingInfo: Bool = false, keepGps: Bool = false, extensions: ExtensionFields = [:]) {
+        public init(
+            keepShootingInfo: Bool = false, keepGps: Bool = false, keepAuthorAndCopyright: Bool = false,
+            extensions: ExtensionFields = [:]
+        ) {
             self.keepShootingInfo = keepShootingInfo
             self.keepGps = keepGps
+            self.keepAuthorAndCopyright = keepAuthorAndCopyright
             self.extensions = extensions
         }
 
-        enum CodingKeys: String, CodingKey, CaseIterable { case keepShootingInfo, keepGps }
+        enum CodingKeys: String, CodingKey, CaseIterable { case keepShootingInfo, keepGps, keepAuthorAndCopyright }
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             keepShootingInfo = try c.decodeIfPresent(Bool.self, forKey: .keepShootingInfo) ?? false
             keepGps = try c.decodeIfPresent(Bool.self, forKey: .keepGps) ?? false
+            keepAuthorAndCopyright = try c.decodeIfPresent(Bool.self, forKey: .keepAuthorAndCopyright) ?? false
             extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
         }
 
@@ -40,6 +48,7 @@ public struct OutputSettings: Hashable, Sendable, Codable {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(keepShootingInfo, forKey: .keepShootingInfo)
             try c.encode(keepGps, forKey: .keepGps)
+            try c.encode(keepAuthorAndCopyright, forKey: .keepAuthorAndCopyright)
             try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
         }
     }
