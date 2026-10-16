@@ -1,5 +1,13 @@
 import PhotoFrameCore
 
+/// presetId 冲突时的处理方式（D-39）。实际执行由 Application 层负责。
+public enum PresetIdConflictResolution: String, Hashable, Sendable, Codable {
+    /// 生成新 UUID，另存为副本（默认）。
+    case saveAsCopy
+    /// 替换已有预设。
+    case replace
+}
+
 /// 导入前预览（§8.3）：尺寸、图层、slots、目标格式、schema 版本及可能不可用的能力。
 ///
 /// 可直接序列化给 CLI `--json` 和 MCP 使用。
@@ -15,6 +23,8 @@ public struct PresetImportPreview: Hashable, Sendable, Codable {
     public var summary: PresetSummary?
     /// 所有问题，包括不可用的能力（例如 HDR 待实测、平台不支持的格式）。
     public var issues: [PresetIssue] = []
+    /// presetId 与已安装的预设冲突时，可选的处理方式，第一项是默认（D-39）。没有冲突时为空。
+    public var idConflictResolutions: [PresetIdConflictResolution] = []
 
     public init(currentSchemaVersion: Int) {
         self.currentSchemaVersion = currentSchemaVersion
@@ -28,7 +38,7 @@ public struct PresetSummary: Hashable, Sendable, Codable {
         public var layerId: String
         public var type: OverlayLayer.LayerType
         public var enabled: Bool
-        public var visibleOn: OverlayLayer.Visibility
+        public var visibility: OverlayVisibility
         public var slotId: String?
     }
 
@@ -75,7 +85,7 @@ public struct PresetSummary: Hashable, Sendable, Codable {
             let count: Int? = if case .fixed(let n) = p.panorama.tileCount { n } else { nil }
             panorama = Panorama(cover: p.panorama.cover, tileCount: count, verticalMarginPx: p.panorama.verticalMarginPx)
         }
-        layers = p.layers.map { Layer(layerId: $0.layerId, type: $0.type, enabled: $0.enabled, visibleOn: $0.visibleOn, slotId: $0.slotId) }
+        layers = p.layers.map { Layer(layerId: $0.layerId, type: $0.type, enabled: $0.enabled, visibility: $0.visibility, slotId: $0.slotId) }
         slots = p.assetSlots.map { Slot(slotId: $0.slotId, kind: $0.kind, required: $0.required, label: $0.label) }
         format = p.output.format
         quality = p.output.quality

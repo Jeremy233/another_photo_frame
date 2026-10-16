@@ -68,43 +68,24 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 
 `AssetBindingTable` 只存在本机，不写入 `.photoframe`。
 
-## 待确认
+## 已确定（P3 实现细节，2026-10-16）
 
-以下是实现时遇到的规范歧义或需要拍板的地方，都**按下面的「当前实现」先做了**，规范未改动。
+原来列在「待确认」里的问题已由用户决定，写入规范 §16「P3」（D-23～D-45），并按决定实现：
 
-1. **素材几何放在哪里。** §8.1 示例把 `anchor`、`sizePx`、`opacity`、`visibleOn` 写在 `assetSlots[]` 上；
-   §7.1 又把定位、尺寸、可见性定义为 `OverlayLayer` 的属性。当前实现：几何只在 `layers[]` 上，
-   `asset` / `cameraBadge` 图层用 `slotId` 引用素材槽；`AssetSlot` 只有 `slotId`、`kind`、`required`、`label`、
-   `acceptedFormats`。因此**规范示例原样导入会因不认识的字段被拒绝**（测试 `specExample` 记录了这一点）。
-   是否改示例，或反过来让 slot 携带默认几何？
-2. **规范示例之外新增的字段名**，请确认命名：顶层 `platform`、`layers`；`canvas.crop`（`aspectRatio: [w, h]`、
-   `anchor: [x, y]`，对应 D-21）；`panorama.verticalMarginPx`（D-10）；`OverlayLayer` 的 `layerId`、`type`、`enabled`、
-   `visibleOn`、`slides`、`anchor`、`reference`（`photo`/`canvas`，D-12）、`region`（`margin`/`photo`/`canvas`）、
-   `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`；`TextStyle` 的
-   `content`、`template`、`fontFamily`、`fontSizePx`、`lineHeight`、`color`、`paddingPx`。
-3. **不认识的非 `x-` 字段默认拒绝导入。** D-15 只规定 `x-` 字段原样保留；§8.3 说「不默默丢失字段」。
-   当前：同一 schema 版本内出现未定义字段视为文件损坏或被手改，默认拒绝；`UnknownFieldPolicy.keep` 可保留并警告。
-4. **`selectedSlides` 的页面编号**：当前 0 = 封面，k + 1 = 第 k 张切片（与 `PanoramaSlice.index` 差 1）。
-5. **绑定失效时是否回退。** D-14 只给了优先级。当前：高优先级绑定指向已删除或格式不符的素材时，警告并回退到下一层；
-   另一种做法是直接视为缺失，让用户修复。
-6. **未被使用的必需 slot。** 当前只解析启用图层引用的 slot，所以 `required: true` 但没有图层（或图层被关闭）
-   的 slot 不阻止输出。
-7. **平台数值待核实**：轮播上限（含封面）Instagram 20、小红书 18、抖音 35；各平台是否接受 PNG；
-   单文件体积上限（`maxFileSizeBytes` 暂未填写）。小红书、抖音的 HDR 状态是 `pendingVerification`，
-   候选格式先填 gain map JPEG（D-17）。
-8. **抖音 Panorama。** §2.2 只列了「抖音 Photo」，任务要求做 6 个内置预设，因此加了 `Douyin Panorama`
-   （9:16 切片，3:1 全景会切成 6 张）。是否保留？
-9. **内置预设命名**：§3 用 `Instagram Standard` / `XHS Standard`，§2.2 用 Photo。当前用 Standard / Panorama，
-   平台名用英文（`XHS`、`Douyin`）。
-10. **预设包中的额外文件**：§8.1 说将来可能 opt-in 附带授权素材。当前：额外文件计入大小与数量上限，
-    但不解压、只警告（`package.ignored_entry`）。也可以改为直接拒绝。
-11. **ZIP 上限默认值**（4 MiB / 32 条 / 单条 1 MiB / 总量 8 MiB）是拍脑袋的保守值。
-12. **颜色**：只接受 `colorSpace: "sRGB"`，`hex` 允许 `#RRGGBB` 或 `#RRGGBBAA`。8 位 alpha 的合成语义未定义。
-    输出 `colorSpace` 也只接受 `sRGB`；HDR 输出时它指 gain map JPEG 的 SDR 底图色彩空间。内部工作空间（D-03）不在预设里。
-13. **HEIC 输出**：`output.format` 允许 `heic`（§6.8 列为待确认），但三个平台的 `outputFormats` 都没有它，
-    所以平台检查会报错。
-14. **导出时的隐私检查**是启发式的：只拦截以 `/Users/`、`/Volumes/`、`/private/`、`/home/`、`/var/`、`~/`、`file:`
-    开头或含 `:\` 的字符串。
-15. **PhotoFrameCore 现在 `import Foundation`**（`UUID`、`JSONDecoder`、`NSLock`）。§10.1 要求 Core 是跨 Apple 平台的纯 Swift；
-    Foundation 满足跨平台，但如果「纯 Swift」指不依赖 Foundation，需要把编解码挪到别处。
-16. **presetId 冲突**：预览只提示 `package.preset_id_exists`，「替换」还是「另存为副本（新 UUID）」留给 Application 层。
+1. **D-24 几何只在图层上**：`AssetSlot` 只有 `slotId`、`kind`、`required`、`label`、`acceptedFormats`。规范 §8.1 示例已改写；
+   `specExample`（Core）和 `specExampleImports`（Storage）两个测试直接从规范文件里取示例 JSON，保证它能被导入。
+2. **D-25 字段名**：接受新增字段名，写入 §8.1 示例。图层的 `region` 已按 D-41 换成 `side`。
+3. **D-26 不认识的非 `x-` 字段默认拒绝**，错误信息写明字段路径；`UnknownFieldPolicy.keep` 保留并警告。
+4. **D-27 页码**：0 = 封面，切片 k 是第 k + 1 页。
+5. **D-28 失效绑定回退**：警告后回退到下一优先级。
+6. **D-29 未被启用图层用到的必需 slot** 不阻止导出。
+7. **D-30 平台数值暂定**：IG 20、小红书 18、抖音 35（含封面）；PNG 是否接受、单文件大小上限待用户实测（`platforms.json` 的 `notes` 已注明）。
+8. **D-31 保留 Douyin Panorama**。
+9. **D-32 命名**：Standard / Panorama，平台名用英文。
+10. **D-33 额外文件**：不解压，只警告。
+11. **D-34 ZIP 上限**：4 MiB / 32 条 / 单条 1 MiB / 总量 8 MiB。
+12. **D-35 颜色只允许 `#RRGGBB`**，透明度统一用图层的 `opacity`。
+13. **D-36 V1 只输出 JPEG 和 PNG**，`output.format` 已去掉 `heic`（以后可能重新评估）。
+14. **D-37 隐私检查**保持当前的启发式规则。
+15. **D-38 Core 允许依赖 Foundation**；「纯 Swift」指不依赖 UI 框架。
+16. **D-39 presetId 冲突**：预览与导入结果的 `idConflictResolutions` 为 `[.saveAsCopy, .replace]`，第一项是默认；实际执行留给 Application 层。

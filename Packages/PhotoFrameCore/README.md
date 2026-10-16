@@ -96,16 +96,22 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 `Sources/PhotoFrameCore/Preset/` 定义可分享预设的数据模型（规范 §7.1、§8.1、§11.1）：
 `ExportPreset`（画布、全景、图层、素材槽、输出）、`OverlayLayer`、`AssetSlot`、`OutputSettings`、`PlatformProfile`。
 全部是 `Codable`、`Sendable` 的纯数据。读写 JSON 用 `PresetSchema`（版本检查、迁移、不认识字段的登记），
-内容校验用 `ExportPreset.validate()`。`.photoframe` 打包、导入检查和素材绑定在 `PhotoFrameStorage`，
-字段命名的待确认项见 `PhotoFrameStorage/README.md`。
+内容校验用 `ExportPreset.validate()`。`.photoframe` 打包、导入检查和素材绑定在 `PhotoFrameStorage`。
 
-## 待确认
+**图层存储与几何共用一套类型（D-23）**：`OverlayLayer` 是预设中的存储形式，它的 `anchor`、`reference`、`offset`、
+`visibility` 直接使用上文的 `OverlayAnchor`、`OverlayReference`、`OverlayOffset`、`OverlayVisibility`。
+渲染前调用 `layer.geometry(contentSize:)` 得到 `OverlayGeometry`，再交给 `OverlayPlacement` 或
+`PanoramaLayout.overlayPlan(for:)`：有 `sizePx` 时用固定尺寸；否则用内容尺寸，超过 `maxBoundsPx` 时等比缩小；
+两者都没有时抛 `overlay.missing_size`。JSON 里锚点写成名称（`"bottomRight"`），参照物写成
+`"reference": "photo", "side": "outside"`，偏移写成 `"offsetPx": [x, y]`。
 
-以下是实现装饰图层定位时发现的规范歧义，目前按括号中的方式实现，未改规范：
+## 已确定（P3 实现细节，2026-10-16）
 
-1. **角锚点放在外侧时朝哪个方向伸出**（按竖直方向：上／下）。§7.1 只说九宫格 + 外侧，D-12 的例子「照片右下角下方」是竖直方向。是否需要让用户选择水平伸出（照片右侧、底边对齐）或对角伸出？
-2. **以画布为参照时是否算「留白模式」**（算：仍检查是否遮挡照片）。§7.1 把「渲染空间」（画布／留白／照片）和「参照物」（照片／画布）分成两个字段，本实现只用 `reference` 表达：`.photo(.inside)` 对应「照片」渲染空间，其余都按「留白，不遮挡照片」检查。是否需要独立的渲染空间字段，例如以画布为参照但允许叠在照片上？
-3. **偏移的符号约定**（见上文「偏移」）。规范只说 offset 以 px 为单位，没有说正方向。
-4. **全景切片上的参照**（这张切片里的照片部分）。§5.3 只规定默认不在切片上显示；如果改为参照整张切片，外侧锚点在 v = 0 时没有意义。
-5. **`selectedSlides` 的页码基准**（轮播位置，0 = 封面）。规范和 §8.1 示例 `"visibleOn": "coverOnly"` 没有给出指定页的格式；手动张数改动后超出范围的页码目前只在 `missingPages` 中列出，不报错。
-6. **图层尺寸是否随画布缩放**（不缩放，固定 px）。§8.1 示例 `"sizePx": [48, 48]` 是固定像素；同一预设用于 1080 宽以外的画布时是否按比例缩放，规范未说明。
+以下规则已由用户确认，并写入规范 §7.1 与 §16「P3」：
+
+1. **D-40 角锚点外侧竖直伸出**：上／下两行的锚点在照片外侧时竖直伸出，水平方向仍对齐照片边缘；V1 不提供水平或对角伸出。
+2. **D-41 参照物 + 内侧／外侧**：不再有单独的渲染空间字段。以画布为参照时仍按留白模式检查是否遮挡照片；遮挡只警告，允许导出。
+3. **D-42 偏移的符号约定**：见上文「偏移」。
+4. **D-43 全景切片上的参照**：以照片为参照指这张切片里的照片部分；整张都是底色的切片上不画这种图层。
+5. **D-27 / D-44 页码**：轮播位置，0 = 封面；超出实际页数的页码只列在 `missingPages` 中，不报错。
+6. **D-45 图层尺寸**：固定像素，不随画布缩放。

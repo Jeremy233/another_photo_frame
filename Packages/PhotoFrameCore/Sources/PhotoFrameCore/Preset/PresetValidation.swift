@@ -44,7 +44,7 @@ extension ExportPreset {
             issues.append(PresetIssue(.warning, code: "preset.\(code)", path: path, message: message))
         }
         func checkColor(_ color: PresetColor, _ path: String) {
-            if !color.isValidHex { error("invalid_color", "\(path).hex", "颜色应为 #RRGGBB 或 #RRGGBBAA：\(color.hex)") }
+            if !color.isValidHex { error("invalid_color", "\(path).hex", "颜色应为 #RRGGBB：\(color.hex)") }
             if color.colorSpace != "sRGB" {
                 error("unsupported_color_space", "\(path).colorSpace", "目前只支持 sRGB 颜色：\(color.colorSpace)")
             }
@@ -117,22 +117,20 @@ extension ExportPreset {
             if !(0...1).contains(layer.opacity) {
                 error("invalid_opacity", "\(path).opacity", "不透明度必须在 0…1 之间：\(layer.opacity)")
             }
-            if let s = layer.sizePx, s.first <= 0 || s.second <= 0 {
+            if let s = layer.sizePx, !s.isPositive {
                 error("invalid_size", "\(path).sizePx", "尺寸必须为正")
             }
-            if let s = layer.maxBoundsPx, s.first <= 0 || s.second <= 0 {
+            if let s = layer.maxBoundsPx, !s.isPositive {
                 error("invalid_size", "\(path).maxBoundsPx", "尺寸必须为正")
             }
-            switch layer.visibleOn {
-            case .selectedSlides:
-                if (layer.slides ?? []).isEmpty {
+            if layer.anchor == .center, layer.reference == .photo(.outside) {
+                error("center_anchor_outside", "\(path).anchor", "居中锚点不能放在照片外侧；请改为内侧或选择其他锚点")
+            }
+            if case .selectedSlides(let pages) = layer.visibility {
+                if pages.isEmpty {
                     error("invalid_slides", "\(path).slides", "visibleOn 为 selectedSlides 时须列出页面")
-                } else if layer.slides!.contains(where: { $0 < 0 }) {
-                    error("invalid_slides", "\(path).slides", "页面序号不能为负")
-                }
-            case .coverOnly, .allSlides:
-                if layer.slides != nil {
-                    warning("ignored_field", "\(path).slides", "只有 visibleOn 为 selectedSlides 时才使用 slides")
+                } else if pages.contains(where: { $0 < 0 }) {
+                    error("invalid_slides", "\(path).slides", "页码不能为负")
                 }
             }
             if layer.type.usesAssetSlot {
