@@ -68,7 +68,7 @@ public struct OutputNaming: Hashable, Sendable, Codable {
     }
 
     /// 输出文件名：`00_Cover.jpg`、`01_Slide.jpg`…。序号至少两位；超过 99 项时按总数补位。
-    public static func fileName(for role: OutputRole, format: OutputSettings.Format, outputCount: Int) -> String {
+    public static func fileName(for role: JobOutputRole, format: OutputSettings.Format, outputCount: Int) -> String {
         let width = max(2, String(max(outputCount - 1, 0)).count)
         let number = String(role.carouselPosition)
         let padded = String(repeating: "0", count: max(0, width - number.count)) + number

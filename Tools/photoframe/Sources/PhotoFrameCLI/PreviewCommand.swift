@@ -1,0 +1,96 @@
+import ArgumentParser
+import Foundation
+import PhotoFrameApplication
+import PhotoFrameCore
+
+/// `photoframe preview <图片> --preset … --output <目录>`：与 GUI 预览区相同的预览（§6.3「预览 ≈ 导出」、§11.2
+/// `renderPreview`），写成 sRGB PNG，供脚本或 AI 客户端查看版式。
+///
+/// 文件名 `<源文件名>_<Standard|Panorama>_preview_00_Cover.png`、`…_01_Slide.png`。目标文件已存在时报错，
+/// `--overwrite` 时替换。预览文件不是成品：长边受 `--max-edge` 限制，不带 HDR 和元数据。
+struct PreviewCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "preview",
+        abstract: "渲染预览 PNG（与导出同一条管线，按预览尺寸缩小）。",
+        discussion: "stdout 每行一个写出的文件路径（--json 时为结构化结果）。")
+
+    @Argument(help: ArgumentHelp("源图（JPEG / PNG / TIFF）。", valueName: "图片"))
+    var image: String
+
+    @Option(name: .long, help: ArgumentHelp("预设：presetId、名称或 .photoframe 文件。", valueName: "id|名称|文件"))
+    var preset: String
+
+    @Option(name: [.short, .long], help: ArgumentHelp("写预览文件的目录，不存在时创建。", valueName: "目录"))
+    var output: String
+
+    @Option(name: .customLong("max-edge"), help: ArgumentHelp("预览页长边上限（像素），不超过导出尺寸。", valueName: "px"))
+    var maxEdge = 1200
+
+    @Option(name: .customLong("page"), help: ArgumentHelp("只预览这些轮播页（0 = 封面，切片 k 为 k + 1）。可重复。", valueName: "n"))
+    var pages: [Int] = []
+
+    @Flag(help: "替换已存在的同名预览文件。")
+    var overwrite = false
+
+    @Flag(help: "stdout 输出 JSON。")
+    var json = false
+
+    func validate() throws {
+        guard maxEdge > 0 else { throw ValidationError("--max-edge 应为正整数。") }
+        guard pages.allSatisfy({ $0 >= 0 }) else { throw ValidationError("--page 不能为负数。") }
+    }
+
+    func run() async throws {
+        let ctx = CommandContext(command: "preview", json: json)
+        let env = ctx.env
+        let service = try ctx.makeService()
+
+        let entry: PresetEntry
+        let source: PhotoSource
+        let preview: ExportPreview
+        do {
+            entry = try await service.resolvePreset(PresetReference(argument: preset, relativeTo: env.currentDirectory))
+            source = try await service.addSource(env.resolvePath(image))
+            preview = try await service.renderPreview(ExportPreviewRequest(
+                source: .id(source.sourceId), preset: entry.preset,
+                options: PreviewOptions(maxLongEdge: maxEdge, pages: pages.isEmpty ? nil : Set(pages))))
+        } catch {
+            throw ctx.fail(error)
+        }
+
+        // 写文件：先检查全部目标，任何一个已存在（且没有 --overwrite）就什么都不写。
+        let directory = env.resolvePath(output)
+        let workName = OutputNaming().workName(source: source, preset: entry.preset)
+        let targets = preview.pages.map { page in
+            directory.appending(path: "\(workName)_preview_" + OutputNaming.fileName(for: page.role, format: .png, outputCount: preview.roles.count))
+        }
+        if !overwrite, let existing = targets.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            throw ctx.fail(ApplicationError(code: "preview.file_exists", message: "预览文件已存在：\(existing.path)",
+                                            hint: "换一个输出目录，或加 --overwrite 替换"))
+        }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for (page, url) in zip(preview.pages, targets) {
+                try page.pngData.write(to: url, options: .atomic)
+            }
+        } catch {
+            throw ctx.fail(ApplicationError(code: "preview.write_failed", message: "无法写入预览文件：\(error.localizedDescription)"))
+        }
+
+        if json {
+            ctx.emit(PreviewJSON(
+                source: source.fileURL.path,
+                preset: PresetRefJSON(presetId: entry.preset.presetId.uuidString, name: entry.preset.name),
+                files: zip(preview.pages, targets).map { page, url in
+                    PreviewFileJSON(role: page.role.kindName, position: page.role.carouselPosition, path: url.path,
+                                    width: page.pixelSize.width, height: page.pixelSize.height,
+                                    exportWidth: page.exportPixelSize.width, exportHeight: page.exportPixelSize.height)
+                },
+                positions: preview.roles.map(\.carouselPosition),
+                warnings: (entry.warnings + preview.warnings).map(WarningJSON.init)))
+        } else {
+            ctx.warn(entry.warnings + preview.warnings)
+            for url in targets { env.stdout.line(url.path) }
+        }
+    }
+}

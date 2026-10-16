@@ -15,8 +15,10 @@ public struct QueueConfiguration: Sendable {
     public var startsPaused: Bool
     /// 平台配置，传给渲染器查轮播上限与 HDR 格式。
     public var platformCatalog: PlatformCatalog?
-    /// 素材槽解析器；nil 时不在校验阶段解析素材，由渲染器处理。
+    /// 素材槽解析器；nil 时不在校验阶段解析素材，由渲染器处理。设置了 `assets` 时以 `assets` 为准。
     public var slotResolver: SlotResolver?
+    /// 素材来源。每次校验任务时取一次当前的解析器，素材库可以在运行中变化。
+    public var assets: (any AssetProvider)?
 
     public init(
         maxConcurrentJobs: Int = QueueConfiguration.defaultMaxConcurrentJobs,
@@ -24,7 +26,8 @@ public struct QueueConfiguration: Sendable {
         fallbackJobMemoryBytes: Int64 = 1 << 30,
         startsPaused: Bool = false,
         platformCatalog: PlatformCatalog? = nil,
-        slotResolver: SlotResolver? = nil
+        slotResolver: SlotResolver? = nil,
+        assets: (any AssetProvider)? = nil
     ) {
         self.maxConcurrentJobs = max(1, maxConcurrentJobs)
         self.memoryBudgetBytes = memoryBudgetBytes
@@ -32,6 +35,17 @@ public struct QueueConfiguration: Sendable {
         self.startsPaused = startsPaused
         self.platformCatalog = platformCatalog
         self.slotResolver = slotResolver
+        self.assets = assets
+    }
+
+    /// 校验任务时使用的素材解析器：`assets` 优先，其次 `slotResolver`。
+    public func currentSlotResolver() -> SlotResolver? {
+        assets?.slotResolver() ?? slotResolver
+    }
+
+    public func platformProfile(for preset: ExportPreset) -> PlatformProfile? {
+        guard let id = preset.platform else { return nil }
+        return platformCatalog?.profile(id: id)
     }
 
     /// 默认并发：性能核数的一半，限制在 1…4。单个任务内部（解码、Core Image）本身已经并行。

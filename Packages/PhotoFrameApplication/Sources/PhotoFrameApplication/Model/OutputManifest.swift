@@ -4,7 +4,7 @@ import PhotoFrameCore
 /// 一个输出项在轮播中的位置（D-27：0 = 封面，切片 k 是第 k + 1 页）。
 ///
 /// 单图预设只有封面。JSON 形式：`{"kind": "cover"}`、`{"kind": "slide", "position": 3}`。
-public enum OutputRole: Hashable, Sendable, Codable, Comparable, CustomStringConvertible {
+public enum JobOutputRole: Hashable, Sendable, Codable, Comparable, CustomStringConvertible {
     case cover
     /// 轮播位置 `position`（≥ 1），即第 `position - 1` 张切片。
     case slide(position: Int)
@@ -51,7 +51,7 @@ public enum OutputRole: Hashable, Sendable, Codable, Comparable, CustomStringCon
 
 /// 输出清单中的一个文件（§9.1）。
 public struct OutputManifestItem: Hashable, Sendable, Codable {
-    public var role: OutputRole
+    public var role: JobOutputRole
     /// 发布后的绝对路径。
     public var fileURL: URL
     public var fileName: String
@@ -64,7 +64,7 @@ public struct OutputManifestItem: Hashable, Sendable, Codable {
     public var warnings: [ApplicationWarning]
 
     public init(
-        role: OutputRole, fileURL: URL, fileName: String, pixelSize: PixelSize,
+        role: JobOutputRole, fileURL: URL, fileName: String, pixelSize: PixelSize,
         colorProfile: String?, fileSizeBytes: Int64, sha256: String?, warnings: [ApplicationWarning]
     ) {
         self.role = role

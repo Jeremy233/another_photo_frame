@@ -8,16 +8,16 @@ struct AtomicExporterTests {
     let exporter = AtomicExporter()
 
     /// 在临时目录里写出若干文件，模拟渲染结果。
-    func render(_ area: StagingArea, slides: Int, corrupt: Int? = nil) throws -> RenderResult {
-        let roles: [OutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
+    func render(_ area: StagingArea, slides: Int, corrupt: Int? = nil) throws -> JobRenderResult {
+        let roles: [JobOutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
         // 故意倒序返回，发布时应按轮播顺序排列。
         let outputs = try roles.enumerated().reversed().map { i, role in
             let url = area.renderDirectory.appending(path: "tmp-\(i)")
             let data = i == corrupt ? Data("garbage".utf8) : Data([0xFF, 0xD8, 0xFF, 0xDB, UInt8(i)])
             try data.write(to: url)
-            return RenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB IEC61966-2.1")
+            return JobRenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB IEC61966-2.1")
         }
-        return RenderResult(outputs: outputs)
+        return JobRenderResult(outputs: outputs)
     }
 
     @Test("发布完整作品目录，生成清单，清理临时文件")
@@ -167,7 +167,7 @@ struct AtomicExporterTests {
 
         area = try exporter.makeStaging(destinationRoot: box.exports, attemptId: AttemptID())
         #expect(throws: ApplicationError.noOutputs()) {
-            try exporter.publish(RenderResult(outputs: []), spec: spec, jobId: JobID(), staging: area, startedAt: Date())
+            try exporter.publish(JobRenderResult(outputs: []), spec: spec, jobId: JobID(), staging: area, startedAt: Date())
         }
 
         area = try exporter.makeStaging(destinationRoot: box.exports, attemptId: AttemptID())
@@ -195,7 +195,7 @@ struct AtomicExporterTests {
         let url = area2.renderDirectory.appending(path: "x")
         try Data(SignatureOutputVerifier.signature(for: .png) + [0]).write(to: url)
         let manifest = try exporter.publish(
-            RenderResult(outputs: [RenderedOutput(role: .cover, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: nil)]),
+            JobRenderResult(outputs: [JobRenderedOutput(role: .cover, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: nil)]),
             spec: spec, jobId: JobID(), staging: area2, startedAt: Date())
         #expect(manifest.items.map(\.fileName) == ["00_Cover.png"])
         #expect(manifest.directory.lastPathComponent == "Badlands_Standard")

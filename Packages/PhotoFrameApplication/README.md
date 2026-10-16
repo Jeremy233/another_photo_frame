@@ -1,7 +1,11 @@
 # PhotoFrameApplication
 
-任务队列、原子导出和 `PhotoFrameService` 骨架（规范 §9、§10.3、§11.1–11.2、§12.2）。
-依赖 `PhotoFrameCore`、`PhotoFrameStorage`；**不依赖** `PhotoFrameRendering`，渲染通过 `JobRenderer` 协议接入。
+任务队列、原子导出和 `PhotoFrameService`（规范 §9、§10.3、§11.1–11.2、§12.2）。
+依赖 `PhotoFrameCore`、`PhotoFrameStorage`；**不依赖** `PhotoFrameRendering`：渲染通过 `JobRenderer` 协议、检查 / 预估 / 预览通过
+`ImageAnalyzer` 协议接入，真正的实现在 `Packages/PhotoFrameEngine`。GUI、CLI、MCP 都用 `PhotoFrameEngine.makeService()` 取服务。
+
+与渲染模块同名的类型在这里都加了 `Job` 前缀（`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress`、
+`JobOutputRole`、`JobRenderStage`），同时导入两个模块时不会冲突。
 
 ## 运行测试
 
@@ -18,16 +22,20 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Model/Identifiers.swift` | `SourceID`、`JobID`、`AttemptID`（UUID，JSON 中是字符串） |
 | `Model/JobStatus.swift` | 状态机：`queued → validating → decoding → rendering → encoding → writing → completed`，处理中可转 `failed` / `canceled`，`queued` 可转 `canceled` |
 | `Model/JobRecord.swift` | `JobSpec`（源图 + 预设快照 + 目的地 + 单任务绑定）、`AttemptRecord`、`JobProgress`、`JobRecord`（Codable，D-13） |
-| `Model/OutputManifest.swift` | `OutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
+| `Model/OutputManifest.swift` | `JobOutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
 | `Model/ApplicationError.swift` | `ApplicationError`（`code` + `message` + `hint`）、`ApplicationWarning`、`ApplicationErrorConvertible` |
-| `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`RenderJob`、`RenderedOutput`、`RenderResult`、`RenderProgress` |
+| `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress` |
 | `Export/OutputNaming.swift` | §9.2 目录与文件命名、版本后缀、文件名清理 |
 | `Export/AtomicExporter.swift` | 临时目录、校验、原子发布、清理 |
 | `Export/Overwrite.swift` | 显式覆盖（D-49）：发布标记、替换前检查、挪开 / 就位 / 恢复 |
 | `Export/StagingCleanup.swift` | 清理超过 24 小时的残留临时目录（D-55） |
 | `Export/OutputVerifier.swift` | 发布前的文件检查（默认看 JPEG / PNG 文件头） |
 | `Queue/JobQueue.swift` | `actor JobQueue`：并发与内存限制、暂停、取消、重试、事件流、等待 |
-| `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 |
+| `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 / 素材来源 |
+| `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（§11.2 全部接口）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
+| `Service/PresetCatalog.swift` | 预设来源 `PresetProvider`（内置、合并；以后接用户预设库）、`PresetReference`（ID / 名称 / 文件）、`PresetFileLoader`、`PresetListing` |
+| `Service/Providers.swift` | 素材来源 `AssetProvider`（现阶段 `NoAssetLibrary`；以后接素材库）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
+| `Service/Validation.swift` | `ValidationResult`；队列 `validating` 与服务 `validate` 共用的检查 |
 | `Queue/JobEvent.swift` | 事件（Codable） |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（任务相关部分）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
 
@@ -79,7 +87,7 @@ Source ──┬── Job（源图 × 预设快照）── Attempt 1（failed�
 
 ```swift
 struct Renderer: JobRenderer {
-    func render(_ job: RenderJob, outputDirectory: URL, progress: RenderProgressReporter) async throws -> RenderResult {
+    func render(_ job: JobRenderRequest, outputDirectory: URL, progress: RenderProgressReporter) async throws -> JobRenderResult {
         // 调用前队列已进入 decoding
         await progress.report(.plannedOutputs(1 + slideCount))
         await progress.report(.stage(.rendering))
@@ -87,12 +95,32 @@ struct Renderer: JobRenderer {
         await progress.report(.stage(.encoding))
         await progress.report(.outputFinished(.slide(position: k + 1)))
         try Task.checkCancellation()   // 两张切片之间检查取消
-        return RenderResult(outputs: [...], warnings: [...])
+        return JobRenderResult(outputs: [...], warnings: [...])
     }
 }
 ```
 
 错误实现 `ApplicationErrorConvertible` 可以带稳定错误码，否则记为 `render.failed`。
+
+PhotoFrameRendering 的适配器是 `PhotoFrameEngine.RenderingBackend`，它同时实现 `ImageAnalyzer`。
+
+## 服务（§11.2）
+
+| 接口 | 说明 |
+|---|---|
+| `listPresets()` | 内置预设 + 本服务读过的 `.photoframe` 文件（以后加上用户预设库） |
+| `resolvePreset(_:)` | `PresetReference`：presetId、名称（不区分大小写，空格 / 下划线 / 连字符等价，`instagram-panorama`）、文件（只读，不安装）。找不到 `preset.not_found`，同名多个 `preset.ambiguous` |
+| `addSource(_:)` / `sources()` | 登记源图（只检查存在与扩展名，D-02） |
+| `inspectSource(_:)` | 格式、尺寸、方向、ICC、HDR 判定、EXIF 摘要；GPS 与作者只报告有无 |
+| `validate(_:)` | 不渲染、不写文件：每个任务的源图、预设与平台、输出目录（不存在时只检查能否创建）、素材槽、预估输出（文件名与尺寸）、推算的作品目录（版本后缀；覆盖时检查能否替换、同一请求是否有两个任务指向同一目录 `request.duplicate_output`） |
+| `renderPreview(_:)` | 与导出同一条管线，返回 sRGB PNG |
+| `submit` / `status` / `cancel` / `retry` / `jobs` / `manifest` / `events` / `waitUntilFinished` | 任务 |
+
+注入点：
+
+- **预设来源** `PresetProvider`：默认 `BuiltInPresetProvider`；用户预设库做好后实现这个协议，用 `CompositePresetProvider` 与内置预设合并。
+- **素材来源** `AssetProvider`（`QueueConfiguration.assets`）：每次校验任务时取一次 `slotResolver()`，渲染时用 `fileURL(for:)` 找素材文件。
+  默认 `NoAssetLibrary`：必需素材缺失照常报 `slot.missing_required`，可选素材跳过图层并警告。
 
 ## 已确定（2026-10-16）
 

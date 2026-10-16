@@ -102,9 +102,9 @@ final class FakeRenderer: JobRenderer {
 
     func release() { state.withLock { $0.released = true } }
 
-    func estimatedPeakMemoryBytes(for job: RenderJob) -> Int64? { state.withLock { $0.memoryEstimate } }
+    func estimatedPeakMemoryBytes(for job: JobRenderRequest) -> Int64? { state.withLock { $0.memoryEstimate } }
 
-    func render(_ job: RenderJob, outputDirectory: URL, progress: RenderProgressReporter) async throws -> RenderResult {
+    func render(_ job: JobRenderRequest, outputDirectory: URL, progress: RenderProgressReporter) async throws -> JobRenderResult {
         let behavior = state.withLock { s in
             s.calls += 1
             s.running += 1
@@ -115,11 +115,11 @@ final class FakeRenderer: JobRenderer {
         defer { state.withLock { $0.running -= 1 } }
 
         let slides = if case .succeed(let n) = behavior { n } else { 2 }
-        let roles: [OutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
+        let roles: [JobOutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
         await progress.report(.plannedOutputs(roles.count))
         await progress.report(.stage(.rendering))
 
-        var outputs: [RenderedOutput] = []
+        var outputs: [JobRenderedOutput] = []
         for (i, role) in roles.enumerated() {
             if case .fail(let after) = behavior, i == after {
                 throw FakeRenderError()
@@ -131,7 +131,7 @@ final class FakeRenderer: JobRenderer {
             var data = Data([0xFF, 0xD8, 0xFF, 0xE0]) + Data("fake jpeg \(role)".utf8)
             if case .corruptFile(let index) = behavior, index == i { data = Data("not a jpeg".utf8) }
             try data.write(to: url)
-            outputs.append(RenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB IEC61966-2.1"))
+            outputs.append(JobRenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB IEC61966-2.1"))
             await progress.report(.outputFinished(role))
         }
 
@@ -147,7 +147,7 @@ final class FakeRenderer: JobRenderer {
         default:
             break
         }
-        return RenderResult(outputs: outputs, warnings: [ApplicationWarning(code: "test.note", message: "fake")])
+        return JobRenderResult(outputs: outputs, warnings: [ApplicationWarning(code: "test.note", message: "fake")])
     }
 
     private func holdIfNeeded() async throws {
