@@ -175,16 +175,14 @@ struct SourceDecoder {
         _ cg: CGImage, embedded: Bool, override: SourceColorOverride?, into out: inout DecodedSource
     ) throws(RenderError) -> CGImage {
         let current = cg.colorSpace
-        if let override {
+        // 覆盖只用于没有颜色描述的源图（§6.2「无 ICC 策略」、D-04）；文件自带 ICC 时以文件为准，忽略覆盖并警告。
+        if let override, embedded {
+            out.warnings.append(Self.overrideIgnored(override, embedded: WorkingColor.describe(current)))
+        } else if let override {
             guard current?.model == .rgb, let retagged = cg.copy(colorSpace: WorkingColor.space(for: override)) else {
                 out.warnings.append(RenderWarning(code: "source.override_ignored", message: "非 RGB 图像，忽略输入色彩空间覆盖"))
                 out.sourceProfile = WorkingColor.describe(current)
                 return cg
-            }
-            if embedded {
-                out.warnings.append(RenderWarning(
-                    code: "source.profile_overridden",
-                    message: "源文件自带颜色描述（\(WorkingColor.describe(current))），按用户指定解释为 \(override.rawValue)"))
             }
             out.sourceProfile = override.rawValue
             out.sourceProfileOrigin = "override"
@@ -212,11 +210,18 @@ struct SourceDecoder {
         return cg
     }
 
+    static func overrideIgnored(_ override: SourceColorOverride, embedded: String) -> RenderWarning {
+        RenderWarning(code: "source.override_ignored",
+                      message: "源文件自带颜色描述（\(embedded)），忽略输入色彩空间覆盖 \(override.rawValue)：覆盖只用于没有 ICC 的源图（D-04）")
+    }
+
     private func decodeGainMapTIFF(
         _ gm: GainMapTIFF, into out: inout DecodedSource, step: Int, override: SourceColorOverride?
     ) throws {
         var iccData = gm.file.bytes(gm.base, 34675)
-        if let override {
+        if let override, iccData != nil {
+            out.warnings.append(Self.overrideIgnored(override, embedded: "嵌入的 ICC"))
+        } else if let override {
             iccData = WorkingColor.space(for: override).copyICCData() as Data?
             out.sourceProfileOrigin = "override"
         } else if iccData == nil {

@@ -231,7 +231,7 @@ public actor JobQueue {
     }
 
     private func estimatedMemory(_ record: JobRecord) -> Int64 {
-        let probe = RenderJob(
+        let probe = JobRenderRequest(
             jobId: record.jobId, attemptId: record.currentAttempt.attemptId,
             source: record.spec.source, preset: record.spec.preset,
             platform: platformProfile(for: record.spec.preset))
@@ -239,8 +239,7 @@ public actor JobQueue {
     }
 
     private func platformProfile(for preset: ExportPreset) -> PlatformProfile? {
-        guard let id = preset.platform else { return nil }
-        return configuration.platformCatalog?.profile(id: id)
+        configuration.platformProfile(for: preset)
     }
 
     // MARK: - 执行
@@ -289,55 +288,28 @@ public actor JobQueue {
     }
 
     /// `validating` 阶段：源文件可读、预设与平台检查无错误、输出目录可写、素材槽可解析。
-    private func validate(_ spec: JobSpec, _ id: JobID, _ attemptId: AttemptID) throws(ApplicationError) -> RenderJob {
-        let fm = FileManager.default
-        var isDirectory: ObjCBool = false
-        let sourcePath = spec.source.fileURL.path
-        guard fm.fileExists(atPath: sourcePath, isDirectory: &isDirectory), !isDirectory.boolValue,
-              fm.isReadableFile(atPath: sourcePath)
-        else { throw .sourceUnreadable(sourcePath) }
-
-        var issues = spec.preset.validate()
+    private func validate(_ spec: JobSpec, _ id: JobID, _ attemptId: AttemptID) throws(ApplicationError) -> JobRenderRequest {
+        try ExportChecks.checkSource(spec.source.fileURL)
         let platform = platformProfile(for: spec.preset)
-        if let platform { issues += platform.check(spec.preset) }
-        let errors = issues.filter { $0.severity == .error }
-        guard errors.isEmpty else { throw .invalidPreset(errors.map { "\($0.path)：\($0.message)" }) }
-        var warnings = issues.map { ApplicationWarning(code: $0.code, message: $0.message) }
+        var warnings = try ExportChecks.checkPreset(spec.preset, platform: platform)
 
         let root = spec.destination.rootDirectory.standardizedFileURL
-        if root.pathComponents.contains(AtomicExporter.stagingDirectoryName) {
-            throw .destinationInsideStaging(root.path)
-        }
-        if fm.fileExists(atPath: root.path, isDirectory: &isDirectory) {
-            guard isDirectory.boolValue else { throw .destinationUnavailable(root.path, "不是目录") }
-            guard fm.isWritableFile(atPath: root.path) else { throw .destinationUnavailable(root.path, "没有写权限") }
-        } else {
-            do {
-                try fm.createDirectory(at: root, withIntermediateDirectories: true)
-            } catch {
-                throw .destinationUnavailable(root.path, error.localizedDescription)
-            }
-        }
+        try ExportChecks.checkDestination(root, create: true)
         if !cleanedRoots.contains(root.path) {
             removeStaleStaging(in: root)
         }
 
-        var slots: SlotResolution?
-        if let resolver = configuration.slotResolver {
-            do {
-                slots = try resolver.resolve(spec.preset, jobBindings: spec.assetBindings)
-            } catch {
-                throw ApplicationError(code: error.code, message: error.message, hint: error.hint)
-            }
-            warnings += slots?.warnings.map { ApplicationWarning(code: $0.code, message: $0.message) } ?? []
-        }
+        let (slots, slotWarnings) = try ExportChecks.resolveSlots(
+            configuration.currentSlotResolver(), preset: spec.preset, bindings: spec.assetBindings)
+        warnings += slotWarnings
         if !warnings.isEmpty {
             update(id, attemptId) { $0.warnings += warnings }
         }
-        return RenderJob(jobId: id, attemptId: attemptId, source: spec.source, preset: spec.preset, platform: platform, slots: slots)
+        return JobRenderRequest(jobId: id, attemptId: attemptId, source: spec.source, preset: spec.preset, platform: platform,
+                                slots: slots, sourceColorOverride: spec.sourceColorOverride)
     }
 
-    private func handleRenderProgress(_ update: RenderProgress, _ id: JobID, _ attemptId: AttemptID) {
+    private func handleRenderProgress(_ update: JobRenderProgress, _ id: JobID, _ attemptId: AttemptID) {
         guard let attempt = currentAttempt(id, attemptId), attempt.status.isProcessing else { return }
         switch update {
         case .stage(let stage):

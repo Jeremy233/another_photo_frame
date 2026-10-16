@@ -1,7 +1,12 @@
 # PhotoFrameApplication
 
-任务队列、原子导出和 `PhotoFrameService` 骨架（规范 §9、§10.3、§11.1–11.2、§12.2）。
-依赖 `PhotoFrameCore`、`PhotoFrameStorage`；**不依赖** `PhotoFrameRendering`，渲染通过 `JobRenderer` 协议接入。
+任务队列、原子导出和 `PhotoFrameService`（规范 §9、§10.3、§11.1–11.2、§12.2）。
+依赖 `PhotoFrameCore`、`PhotoFrameStorage`、`PhotoFrameRendering`（D-70：不另建组装包）。GUI、CLI、MCP 都用 `LocalPhotoFrameService.makeDefault()` 取服务。
+队列只通过 `JobRenderer` 协议渲染、服务只通过 `ImageAnalyzer` 协议检查 / 预估 / 预览，正常实现是 `RenderingBackend`（用 PhotoFrameRendering）；
+测试换成假的渲染器。
+
+与渲染模块同名的类型在这里都加了 `Job` 前缀（`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress`、
+`JobOutputRole`、`JobRenderStage`），同时导入两个模块时不会冲突。
 
 ## 运行测试
 
@@ -18,16 +23,21 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Model/Identifiers.swift` | `SourceID`、`JobID`、`AttemptID`（UUID，JSON 中是字符串） |
 | `Model/JobStatus.swift` | 状态机：`queued → validating → decoding → rendering → encoding → writing → completed`，处理中可转 `failed` / `canceled`，`queued` 可转 `canceled` |
 | `Model/JobRecord.swift` | `JobSpec`（源图 + 预设快照 + 目的地 + 单任务绑定）、`AttemptRecord`、`JobProgress`、`JobRecord`（Codable，D-13） |
-| `Model/OutputManifest.swift` | `OutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
+| `Model/OutputManifest.swift` | `JobOutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
 | `Model/ApplicationError.swift` | `ApplicationError`（`code` + `message` + `hint`）、`ApplicationWarning`、`ApplicationErrorConvertible` |
-| `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`RenderJob`、`RenderedOutput`、`RenderResult`、`RenderProgress` |
+| `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress` |
+| `Rendering/RenderingBackend.swift` | 用 PhotoFrameRendering 实现 `JobRenderer` 与 `ImageAnalyzer`：类型转换、进度翻译、错误码 |
 | `Export/OutputNaming.swift` | §9.2 目录与文件命名、版本后缀、文件名清理 |
 | `Export/AtomicExporter.swift` | 临时目录、校验、原子发布、清理 |
 | `Export/Overwrite.swift` | 显式覆盖（D-49）：发布标记、替换前检查、挪开 / 就位 / 恢复 |
 | `Export/StagingCleanup.swift` | 清理超过 24 小时的残留临时目录（D-55） |
 | `Export/OutputVerifier.swift` | 发布前的文件检查（默认看 JPEG / PNG 文件头） |
 | `Queue/JobQueue.swift` | `actor JobQueue`：并发与内存限制、暂停、取消、重试、事件流、等待 |
-| `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 |
+| `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 / 素材来源 |
+| `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（§11.2 全部接口）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
+| `Service/PresetCatalog.swift` | `PresetReference`（预设库引用 / 文件）、`CatalogPreset`、`CatalogPresetSummary`、预设库与素材库操作的结果类型；`LocalLibrary` 作为素材来源 |
+| `Service/Providers.swift` | 素材来源协议 `AssetProvider`（`LocalLibrary` 实现；`NoAssetLibrary` 表示没有素材）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
+| `Service/Validation.swift` | `ValidationResult`；队列 `validating` 与服务 `validate` 共用的检查 |
 | `Queue/JobEvent.swift` | 事件（Codable） |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（任务相关部分）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
 
@@ -79,7 +89,7 @@ Source ──┬── Job（源图 × 预设快照）── Attempt 1（failed�
 
 ```swift
 struct Renderer: JobRenderer {
-    func render(_ job: RenderJob, outputDirectory: URL, progress: RenderProgressReporter) async throws -> RenderResult {
+    func render(_ job: JobRenderRequest, outputDirectory: URL, progress: RenderProgressReporter) async throws -> JobRenderResult {
         // 调用前队列已进入 decoding
         await progress.report(.plannedOutputs(1 + slideCount))
         await progress.report(.stage(.rendering))
@@ -87,12 +97,46 @@ struct Renderer: JobRenderer {
         await progress.report(.stage(.encoding))
         await progress.report(.outputFinished(.slide(position: k + 1)))
         try Task.checkCancellation()   // 两张切片之间检查取消
-        return RenderResult(outputs: [...], warnings: [...])
+        return JobRenderResult(outputs: [...], warnings: [...])
     }
 }
 ```
 
 错误实现 `ApplicationErrorConvertible` 可以带稳定错误码，否则记为 `render.failed`。
+
+PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageAnalyzer`：
+
+| 应用层 | 渲染层 | 转换 |
+|---|---|---|
+| `JobRenderRequest` | `RenderJob` | 源图、预设快照、平台轮播上限、输入色彩空间覆盖；`slots` 经 `AssetProvider.fileURL(for:)` 换成素材文件 |
+| `JobOutputRole` | `OutputRole` | `.single` / `.cover` → `.cover`；`.slide(k)` → `.slide(position: k + 1)`（D-27） |
+| `JobRenderProgress`（async 事件） | `RenderProgress`（同步快照） | `ProgressTranslator`：阶段只前进；计划输出数出现或变化时报告一次；已写出数每加 1 报告一个 `.outputFinished`。事件按顺序放进一条流、逐条 `await` 报告，`render` 返回前全部报告完 |
+| `ApplicationError` | `RenderError` | 同 code、message、hint；取消原样抛出 |
+
+渲染层写 `00.<ext>`、`01.<ext>`…；`AtomicExporter` 发布时按角色改名为 `00_Cover.jpg`、`01_Slide.jpg`…（D-46–D-48）。
+
+## 服务（§11.2）
+
+| 接口 | 说明 |
+|---|---|
+| `listPresets()` | 预设库（内置、用户保存、导入）+ 本服务读过的 `.photoframe` 文件，加上读库时的警告 |
+| `resolvePreset(_:)` | `PresetReference`：`.library(文本)` 交给 `PresetLibrary.find`（presetId、完整名称、短名，D-76）；`.file(URL)` 只读取、不放进库 |
+| `importPreset` / `exportPreset` / `duplicatePreset` / `renamePreset` / `movePreset` / `deletePreset` | 预设库操作（D-39、D-79、D-80、D-84、D-37、D-94）；导出目标已存在时只有 `overwrite` 才替换（`preset.export_exists`）；内置预设不能移动、改名、删除（`library.builtin_read_only`） |
+| `listAssets` / `resolveAsset` / `importAsset` / `renameAsset` / `setAssetCategory` / `deleteAsset` | 素材库操作（D-83、D-85、D-88、D-95）；素材引用是 assetId 或唯一的显示名称 |
+| `bindAsset` / `listBindings` | 持久绑定：预设本地或用户默认（D-14、D-90）；`assetId` 为 nil 时清除 |
+| `addSource(_:)` / `sources()` | 登记源图（只检查存在与扩展名，D-02） |
+| `ExportRequest.sourceColorOverride` / `JobSpec.sourceColorOverride` | 没有 ICC 的源图按什么色彩空间解释（D-04、D-75）；源图自带 ICC 时渲染层忽略并警告 `source.override_ignored` |
+| `inspectSource(_:)` | 格式、尺寸、方向、ICC、HDR 判定、EXIF 摘要；GPS 与作者只报告有无 |
+| `validate(_:)` | 不渲染、不写文件：每个任务的源图、预设与平台、输出目录（不存在时只检查能否创建）、素材槽、预估输出（文件名与尺寸）、推算的作品目录（版本后缀；覆盖时检查能否替换、同一请求是否有两个任务指向同一目录 `request.duplicate_output`） |
+| `renderPreview(_:)` | 与导出同一条管线，返回 sRGB PNG |
+| `submit` / `status` / `cancel` / `retry` / `jobs` / `manifest` / `events` / `waitUntilFinished` | 任务 |
+
+注入点：
+
+- **本地库** `LocalLibrary`（PhotoFrameStorage）：预设、素材、绑定。`makeDefault(.init(libraryRoot:))` 默认用 App Group 共享容器（D-78），
+  GUI 传 `LibraryLocation.groupContainerRoot()`，测试传临时目录；直接 `init(renderer:…)` 不传库时用系统临时目录里一个新的空库。
+- **素材来源** `AssetProvider`（`QueueConfiguration.assets`，默认就是本地库）：每次校验任务时取一次 `slotResolver()`，
+  渲染时用 `fileURL(for:)` 找素材文件。`NoAssetLibrary` 表示没有素材：必需素材缺失照常报 `slot.missing_required`。
 
 ## 已确定（2026-10-16）
 

@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 import PhotoFrameStorage
 
 /// 渲染器：把一个任务渲染成输出文件。队列只依赖这个协议；真正的实现在 PhotoFrameRendering 模块。
@@ -20,17 +21,17 @@ import PhotoFrameStorage
 public protocol JobRenderer: Sendable {
     /// 估算这个任务的峰值内存（字节），队列据此决定能否与其他任务并行（§12.1、D-18）。
     /// 返回 nil 时队列按源图像素数粗略估算。
-    func estimatedPeakMemoryBytes(for job: RenderJob) -> Int64?
+    func estimatedPeakMemoryBytes(for job: JobRenderRequest) -> Int64?
 
-    func render(_ job: RenderJob, outputDirectory: URL, progress: RenderProgressReporter) async throws -> RenderResult
+    func render(_ job: JobRenderRequest, outputDirectory: URL, progress: RenderProgressReporter) async throws -> JobRenderResult
 }
 
 extension JobRenderer {
-    public func estimatedPeakMemoryBytes(for job: RenderJob) -> Int64? { nil }
+    public func estimatedPeakMemoryBytes(for job: JobRenderRequest) -> Int64? { nil }
 }
 
 /// 交给渲染器的输入。
-public struct RenderJob: Sendable {
+public struct JobRenderRequest: Sendable {
     public var jobId: JobID
     public var attemptId: AttemptID
     public var source: PhotoSource
@@ -40,11 +41,14 @@ public struct RenderJob: Sendable {
     public var platform: PlatformProfile?
     /// 素材槽解析结果（D-14、D-28、D-29）。队列没有配置素材库时为 nil，由渲染器自行处理。
     public var slots: SlotResolution?
+    /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
+    public var sourceColorOverride: SourceColorOverride?
 
     public init(
         jobId: JobID, attemptId: AttemptID, source: PhotoSource, preset: ExportPreset,
-        platform: PlatformProfile? = nil, slots: SlotResolution? = nil
+        platform: PlatformProfile? = nil, slots: SlotResolution? = nil, sourceColorOverride: SourceColorOverride? = nil
     ) {
+        self.sourceColorOverride = sourceColorOverride
         self.jobId = jobId
         self.attemptId = attemptId
         self.source = source
@@ -55,8 +59,8 @@ public struct RenderJob: Sendable {
 }
 
 /// 渲染器写出的一个文件。
-public struct RenderedOutput: Hashable, Sendable {
-    public var role: OutputRole
+public struct JobRenderedOutput: Hashable, Sendable {
+    public var role: JobOutputRole
     /// 必须在 `outputDirectory` 之内，且是普通文件。
     public var fileURL: URL
     public var pixelSize: PixelSize
@@ -64,7 +68,7 @@ public struct RenderedOutput: Hashable, Sendable {
     public var colorProfile: String?
     public var warnings: [ApplicationWarning]
 
-    public init(role: OutputRole, fileURL: URL, pixelSize: PixelSize, colorProfile: String?, warnings: [ApplicationWarning] = []) {
+    public init(role: JobOutputRole, fileURL: URL, pixelSize: PixelSize, colorProfile: String?, warnings: [ApplicationWarning] = []) {
         self.role = role
         self.fileURL = fileURL
         self.pixelSize = pixelSize
@@ -73,19 +77,19 @@ public struct RenderedOutput: Hashable, Sendable {
     }
 }
 
-public struct RenderResult: Hashable, Sendable {
-    public var outputs: [RenderedOutput]
+public struct JobRenderResult: Hashable, Sendable {
+    public var outputs: [JobRenderedOutput]
     /// 任务级提示（例如 `Source profile missing — assumed sRGB`、HDR 部分未读取、全景超出轮播上限）。
     public var warnings: [ApplicationWarning]
 
-    public init(outputs: [RenderedOutput], warnings: [ApplicationWarning] = []) {
+    public init(outputs: [JobRenderedOutput], warnings: [ApplicationWarning] = []) {
         self.outputs = outputs
         self.warnings = warnings
     }
 }
 
 /// 渲染器报告的阶段，对应 ``JobStatus`` 的 `decoding` / `rendering` / `encoding`。
-public enum RenderStage: String, Hashable, Sendable, Codable {
+public enum JobRenderStage: String, Hashable, Sendable, Codable {
     case decoding, rendering, encoding
 
     public var status: JobStatus {
@@ -97,23 +101,23 @@ public enum RenderStage: String, Hashable, Sendable, Codable {
     }
 }
 
-public enum RenderProgress: Hashable, Sendable {
-    case stage(RenderStage)
+public enum JobRenderProgress: Hashable, Sendable {
+    case stage(JobRenderStage)
     /// 本任务总共要输出几项（封面 + 切片）。
     case plannedOutputs(Int)
     /// 一个输出文件已经写进临时目录。
-    case outputFinished(OutputRole)
+    case outputFinished(JobOutputRole)
 }
 
 /// 渲染器用来报告进度。`await` 返回时事件已经记入任务并发布给订阅者，顺序有保证。
 public struct RenderProgressReporter: Sendable {
-    private let handler: @Sendable (RenderProgress) async -> Void
+    private let handler: @Sendable (JobRenderProgress) async -> Void
 
-    public init(_ handler: @escaping @Sendable (RenderProgress) async -> Void) {
+    public init(_ handler: @escaping @Sendable (JobRenderProgress) async -> Void) {
         self.handler = handler
     }
 
-    public func report(_ update: RenderProgress) async {
+    public func report(_ update: JobRenderProgress) async {
         await handler(update)
     }
 

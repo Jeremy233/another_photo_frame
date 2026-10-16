@@ -45,6 +45,16 @@ preview.roles     // 导出会写出的全部页，供 [Cover] [Slide 1] … 切
 preview.scaleX / scaleY, preview.diagnostics, preview.warnings
 ```
 
+只读入口（§11.2 `inspectSource`、`validate`）：
+
+```swift
+let info = try renderer.inspect(source)       // InspectedSource：格式、尺寸、方向、位深、ICC 来源、HDR 判定（D-62）、EXIF 摘要、有无 GPS / 作者
+let plan = try renderer.plan(sourceURL: source, preset: presetSnapshot, maxCarouselItems: 20)
+plan.pages                                    // [PlannedPage]：与 render(job:) 相同的版式，只读文件属性、不解码像素
+```
+
+应用层通过 `PhotoFrameApplication.RenderingBackend` 使用这些入口（任务队列的 `JobRenderer`、服务的 `ImageAnalyzer`）。
+
 ## 2. 流程
 
 ```text
@@ -62,7 +72,7 @@ probe（读属性：尺寸、方向）
 |---|---|---|
 | 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
 | 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 34675 | 坑 1 |
-| 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖 | D-04 |
+| 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖（只对缺 ICC 的源图生效；有 ICC 时忽略并警告 `source.override_ignored`） | D-04 |
 | 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
 | 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
 | BT.709/2020 参数曲线 ICC | TRC 为 `para` type 3、g≈2.222、d≈0.081 时改写成 4096 点 `curv`，按 ICC 本身解码 | 坑 20（ColorSync 当 γ2.4 解码，偏暗约 16%） |
@@ -107,7 +117,8 @@ probe（读属性：尺寸、方向）
 ### 2.4 受限 SVG（D-09）
 
 支持 `svg`、`g`、`path`（全部命令，含圆弧）、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；属性 `fill`、`stroke`、`stroke-width`、各种 `opacity`、`fill-rule`、线帽线接、`transform`、`style` 中的同名声明。
-整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、`script`、`foreignObject`、`image`、`use`、`iframe`、`style` 元素、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 2 MiB 或 20 000 个元素。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
+规则只有一份（D-87）：元素集合用 PhotoFrameStorage 的 `AssetValidator.SVGPolicy`，上限用 `AssetImportLimits.default`（D-85），与素材导入相同。
+整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、处理指令、`SVGPolicy.forbiddenElements`（`script`、`foreignObject`、`image`、`use`、`iframe`、`style`、`feImage`、`a`、动画元素…）、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 8 MiB、50 000 个元素或 64 层嵌套。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
 
 ### 2.5 `metadataText` 占位符
 

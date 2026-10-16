@@ -10,6 +10,7 @@ let package = Package(
     dependencies: [
         .package(path: "../PhotoFrameCore"),
         .package(path: "../PhotoFrameStorage"),
+        .package(path: "../PhotoFrameRendering"),
     ],
     targets: [
         .target(
@@ -17,7 +18,14 @@ let package = Package(
             dependencies: [
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
                 .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
+                .product(name: "PhotoFrameRendering", package: "PhotoFrameRendering"),
             ]),
-        .testTarget(name: "PhotoFrameApplicationTests", dependencies: ["PhotoFrameApplication"]),
+        .testTarget(
+            name: "PhotoFrameApplicationTests",
+            dependencies: [
+                "PhotoFrameApplication",
+                .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
+                .product(name: "PhotoFrameRendering", package: "PhotoFrameRendering"),
+            ]),
     ]
 )

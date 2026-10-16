@@ -35,9 +35,10 @@ AnotherPhotoFrame 是一个免费、开源、完全在本地运行的 macOS 摄�
 | 产品与技术规范 | 审阅中（Draft） |
 | `PhotoFrameCore`：画布几何（Fit、比例裁切、全景切片） | ✅ 已完成 |
 | `PhotoFrameStorage`：`.photoframe` 预设包、素材绑定（SlotResolver）、平台配置、内置预设 | ✅ 已完成 |
-| `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService | 进行中 |
-| `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成（待合并） |
-| CLI、MCP、GUI 等 | 未开始 |
+| `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService（预设、检查、校验、预览、提交、状态、取消）；接入渲染模块，GUI / CLI / MCP 共用 | ✅ 已完成 |
+| `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成 |
+| CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset …`（列出、导入、导出、复制、重命名、删除）、`asset …`（素材库与绑定），见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成 |
+| MCP、GUI | 未开始 |
 
 Alpha / Beta 版本不做代码签名；V1.0 发布前再决定是否公证。
 
@@ -45,7 +46,7 @@ Alpha / Beta 版本不做代码签名；V1.0 发布前再决定是否公证。
 
 需要 macOS 26+、Apple Silicon，以及 Xcode 26（Swift 6.2 或更高）。
 
-每个模块都是 `Packages/` 下一个独立的 Swift Package，分别构建和测试：
+每个模块都是 `Packages/` 下一个独立的 Swift Package，命令行工具在 `Tools/photoframe`，分别构建和测试：
 
 ```bash
 cd Packages/PhotoFrameCore
@@ -118,9 +119,10 @@ The project is in the **specification stage**; there is no usable app yet.
 | Product and technical specification | In review (draft) |
 | `PhotoFrameCore`: canvas geometry (fit, aspect crop, panorama slicing) | ✅ Done |
 | `PhotoFrameStorage`: `.photoframe` preset packages, asset binding (SlotResolver), platform catalog, built-in presets | ✅ Done |
-| `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService | In progress |
-| `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done (pending merge) |
-| CLI, MCP, GUI, … | Not started |
+| `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService (presets, inspect, validate, preview, submit, status, cancel); wired to the rendering module, shared by GUI / CLI / MCP | ✅ Done |
+| `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done |
+| CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset …` (list, import, export, duplicate, rename, delete), `asset …` (asset library and bindings); see [docs/CLI.md](docs/CLI.md) | ✅ Done |
+| MCP, GUI | Not started |
 
 Alpha / Beta builds are not code-signed; whether to notarize will be decided before V1.0.
 
@@ -128,7 +130,7 @@ Alpha / Beta builds are not code-signed; whether to notarize will be decided bef
 
 Requires macOS 26+, Apple Silicon and Xcode 26 (Swift 6.2 or later).
 
-Each module is a standalone Swift Package under `Packages/`, built and tested on its own:
+Each module is a standalone Swift Package under `Packages/`, and the command-line tool lives in `Tools/photoframe`; each is built and tested on its own:
 
 ```bash
 cd Packages/PhotoFrameCore

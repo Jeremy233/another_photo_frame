@@ -94,7 +94,7 @@ public struct AtomicExporter: Sendable {
     /// - Parameter protectedSources: 队列中所有任务的源文件。覆盖时目标目录里含有其中任何一个就拒绝；
     ///   本任务的源文件总会加进来。
     public func publish(
-        _ result: RenderResult,
+        _ result: JobRenderResult,
         spec: JobSpec,
         jobId: JobID,
         staging: StagingArea,
@@ -114,7 +114,7 @@ public struct AtomicExporter: Sendable {
         } catch {
             throw ApplicationError.stagingFailed(error.localizedDescription)
         }
-        var staged: [(output: RenderedOutput, name: String, size: Int64, hash: String?)] = []
+        var staged: [(output: JobRenderedOutput, name: String, size: Int64, hash: String?)] = []
         for output in outputs {
             if isCanceled() { throw CancellationError() }
             let name = OutputNaming.fileName(for: output.role, format: format, outputCount: outputs.count)
@@ -171,9 +171,9 @@ public struct AtomicExporter: Sendable {
     }
 
     /// 检查渲染器返回的输出项，按轮播顺序排列。
-    func checkedOutputs(_ outputs: [RenderedOutput], staging: StagingArea, format: OutputSettings.Format) throws(ApplicationError) -> [RenderedOutput] {
+    func checkedOutputs(_ outputs: [JobRenderedOutput], staging: StagingArea, format: OutputSettings.Format) throws(ApplicationError) -> [JobRenderedOutput] {
         guard !outputs.isEmpty else { throw .noOutputs() }
-        var seen: Set<OutputRole> = []
+        var seen: Set<JobOutputRole> = []
         let renderDir = staging.renderDirectory.resolvingSymlinksInPath().standardizedFileURL.path + "/"
         for output in outputs {
             if case .slide(let p) = output.role, p < 1 { throw .invalidRole(output.role) }
