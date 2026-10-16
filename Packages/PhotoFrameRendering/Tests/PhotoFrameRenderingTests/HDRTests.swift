@@ -116,6 +116,66 @@ struct HDRTests {
         }
     }
 
+    // MARK: - 「明确是 HDR」的判定（D-62）
+
+    /// PQ 编码值（ST 2084），nits → 0…1。
+    static func pq(nits: Double) -> Double {
+        let m1 = 2610.0 / 16384, m2 = 2523.0 / 4096 * 128, c1 = 3424.0 / 4096, c2 = 2413.0 / 4096 * 32, c3 = 2392.0 / 4096 * 32
+        let y = pow(nits / 10000, m1)
+        return pow((c1 + c2 * y) / (1 + c3 * y), m2)
+    }
+
+    /// 32 位浮点线性 TIFF（extended linear sRGB），像素值恒为 `value`。
+    static func writeFloatTIFF(value: Float, to url: URL) throws {
+        let w = 64, h = 32
+        var px = [Float](repeating: value, count: w * h * 4)
+        for i in 0..<(w * h) { px[i * 4 + 3] = 1 }
+        let data = px.withUnsafeBufferPointer { Data(buffer: $0) }
+        let info = CGImageAlphaInfo.last.rawValue | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order32Little.rawValue
+        let img = CGImage(width: w, height: h, bitsPerComponent: 32, bitsPerPixel: 128, bytesPerRow: w * 16,
+                          space: WorkingColor.extendedLinearSRGB, bitmapInfo: CGBitmapInfo(rawValue: info),
+                          provider: CGDataProvider(data: data as CFData)!, decode: nil, shouldInterpolate: false,
+                          intent: .defaultIntent)!
+        try writeImage(img, to: url, type: .tiff)
+    }
+
+    @Test("标为 HDR（PQ）但峰值 ≤ SDR 白：仍是 HDR 源，headroom = 1，SDR 不 tone map，HDR 输出改写 SDR 并警告")
+    func markedHDRWithoutHeadroom() async throws {
+        let dir = try makeTempDirectory()
+        let url = dir.appendingPathComponent("pq_dim.png")
+        let code = UInt16((Self.pq(nits: 100) * 65535).rounded())   // 100 nits < 203 nits（SDR 白）
+        try writeImage(makeImage16(width: 64, height: 32, space: CGColorSpace(name: CGColorSpace.itur_2100_PQ)!) { _, _ in
+            (code, code, code)
+        }, to: url, type: .png)
+
+        let sdr = try await render(url, makePreset(width: 64, height: 32, margin: 0))
+        #expect(sdr.diagnostics.hdrKind == .transferFunction)
+        #expect(sdr.diagnostics.sourceHeadroom == 1)
+        #expect(sdr.diagnostics.sdrMethod == .none)
+
+        let hdr = try await render(url, makePreset(width: 64, height: 32, margin: 0,
+                                                   output: OutputSettings(format: .jpeg, dynamicRange: .hdr)))
+        #expect(hdr.outputs[0].dynamicRange == .sdr)
+        #expect(hdr.warnings.contains { $0.code == "output.hdr_no_headroom" })
+    }
+
+    @Test("没有 HDR 标记：浮点峰值 ≤ 1 按 SDR；浮点峰值 > 1 视为 HDR 数据", arguments: [(Float(0.8), false), (Float(3), true)])
+    func floatWithoutMarker(_ c: (Float, Bool)) async throws {
+        let dir = try makeTempDirectory()
+        let url = dir.appendingPathComponent("float.tif")
+        try Self.writeFloatTIFF(value: c.0, to: url)
+        let result = try await render(url, makePreset(width: 64, height: 32, margin: 0))
+        #expect(result.diagnostics.isFloat)
+        #expect(result.diagnostics.hdrKind == (c.1 ? .floatLinear : .none))
+        if c.1 { #expect(abs((result.diagnostics.sourceHeadroom ?? 0) - 3) < 0.05) }
+    }
+
+    @Test("没有 HDR 标记的 16 位整数 TIFF 按 SDR")
+    func integerWithoutMarker() async throws {
+        let result = try await render(Fixtures.url("chart_srgb_16.tif"), Self.chartPreset())
+        #expect(result.diagnostics.hdrKind == .none)
+    }
+
     // MARK: - Lightroom「最大化兼容性」TIFF（合成）
 
     /// 写一份结构与 Lightroom 相同的 TIFF：IFD0 = 16 位 sRGB SDR 底图，SubIFD = 8 位 RGB gain map

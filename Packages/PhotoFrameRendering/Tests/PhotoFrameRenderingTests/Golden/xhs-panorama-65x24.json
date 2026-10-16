@@ -583,6 +583,7 @@
     }
   ],
   "preset" : "XHS Panorama",
+  "recordedOn" : "macOS 27.0.1",
   "scenario" : "xhs-panorama-65x24",
   "sdrMethod" : "none",
   "sourceProfileOrigin" : "embedded",

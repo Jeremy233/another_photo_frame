@@ -74,7 +74,19 @@ probe（读属性：尺寸、方向）
 | gain map JPEG（ISO 21496-1 / Apple） | ImageIO 辅助数据 | 文件底图（不 tone map） | 文件元数据（CI 展开后的 `contentHeadroom`） |
 | Lightroom「最大化兼容性」TIFF | 自己解析 SubIFD（Photometric 52553、标签 52557） | IFD0 主图 | 元数据两个 headroom 取大者（Lightroom 32 位文件会写反） |
 | PQ / HLG PNG、TIFF | 颜色空间使用 ITU-R 2100 传递函数 | `CIToneMapHeadroom`，source = 画面峰值，target = 1 | 画面峰值 |
-| 浮点 TIFF，峰值 > 1 | `IsFloat` | 同上 | 画面峰值 |
+| 浮点 TIFF，峰值 > 1 | `IsFloat` 且数据超过 SDR 白 | 同上 | 画面峰值 |
+
+**「明确是 HDR」的判定（D-62）**：源文件满足下面任一条才按 HDR 处理，否则按 SDR。
+
+1. 带 gain map：JPEG 的 ISO 21496-1 或 Apple gain map 辅助数据；TIFF 的 SubIFD gain map（Photometric 52553 或标签 52557）。
+2. 颜色描述使用 HDR 传递函数：ICC 或 PNG `cICP` 为 PQ / HLG（`CGColorSpaceUsesITUR_2100TF` 或 `isHDR()`）。
+3. 浮点数据（16 / 32 位 float）里有超过 SDR 白的值（画面峰值 > 1.0001）。数据本身超出 SDR 范围就是 HDR 内容，
+   按 SDR 处理只能硬截断，违反 §6.7 第 4 条；Lightroom 32 位 HDR TIFF 也没有任何 HDR 标记（坑 16），只能靠这一条识别。
+
+没有标记的整数图（8 / 16 位）一律按 SDR；没有标记、峰值 ≤ 1 的浮点图按 SDR。
+标为 HDR（第 1、2 条）但画面峰值 ≤ SDR 白时：仍记为 HDR 源，headroom 取 1；SDR 输出直接用图像本身、不做 tone map
+（headroom 1 时曲线没有意义，`sdrMethod = none`）；请求 HDR 输出时改写 SDR，警告 `output.hdr_no_headroom`
+（gain map 的增益全为 1 时没有意义）。
 
 - 画面峰值 = 线性 sRGB 分量最大值的 99.95 分位（降到长边 1024 统计），不用 PQ 元数据的默认 4.93。
 - 兼容 TIFF：只支持经典 TIFF、未压缩、交错、条带布局；底图按 ICC 曲线自己线性化（同样绕开坑 20），与 gain map 一起按 `step × step` 盒式平均降采样后按 ISO 21496-1 完全展开（weight = 1）。解析失败时按 SDR 读入，警告 `source.hdr_not_read`。
@@ -99,14 +111,24 @@ probe（读属性：尺寸、方向）
 
 ### 2.5 `metadataText` 占位符
 
-`{camera}`、`{make}`、`{model}`、`{lens}`、`{focalLength}`、`{focalLength35}`、`{aperture}`、`{shutter}`、`{iso}`、`{date}`，取自 EXIF / TIFF 字典；`RenderJob.metadataOverrides` 优先。缺失的占位符替换为空并警告 `overlay.metadata_missing`。
+`{camera}`、`{make}`、`{model}`、`{lens}`、`{focalLength}`、`{focalLength35}`、`{aperture}`、`{shutter}`、`{iso}`、`{date}`，取自 EXIF / TIFF 字典；`RenderJob.metadataOverrides` 优先。缺失的字段连同它旁边多余的分隔符一起去掉（D-64），并警告 `overlay.metadata_missing`：
+
+- 分隔符是两个占位符之间的文字；有值的占位符按原顺序拼接，每个值前面用它自己左侧的分隔符，第一个有值的不带分隔符。`{a} · {b} · {c}` 缺 b → `A · C`。
+- 前缀跟随第一个占位符、后缀跟随最后一个占位符，对应的值缺失时一起去掉：`Shot on {camera} ({lens})` 缺 lens → `Shot on Z 8`。
+- 逐行处理；一个值都没有的行整行去掉。整段都空了就不画这个图层（另有 `overlay.empty_text` 警告）。
 
 ### 2.6 编码与元数据（§6.8、D-06）
 
 - SDR：CI 把页面渲染成 sRGB 8-bit（超出 sRGB 的颜色逐通道截断），再交给 ImageIO 编码（坑 3：只有 sRGB 8-bit 输入时 ImageIO 不改像素）。JPEG 质量 = `quality / 100`（默认 Q100）。
 - HDR（只支持 JPEG）：`CIContext.jpegRepresentation` + `.hdrImage`，HDR 图显式 `settingContentHeadroom(源 headroom)`，`.hdrGainMapAsRGB`（坑 4、5、17）。源图不是 HDR 时按 SDR 输出并警告 `output.hdr_source_not_hdr`；HDR + PNG 报 `render.hdr_format_unsupported`。
 - ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
-- 元数据默认全部不写出；方向不写（像素已校正）。「保留拍摄参数」只复制 Make、Model 与曝光／镜头相关的 EXIF 键；「保留 GPS」复制 GPS 字典。序列号、机主、MakerNote、用户注释、XMP / IPTC、缩略图从不复制。HDR 文件在不丢 gain map 的前提下无损合并元数据，做不到时省略并警告。
+- 元数据默认全部不写出；方向不写（像素已校正）。三个独立开关（预设 `output.metadata`）：
+  - `keepShootingInfo`「保留拍摄参数」：Make、Model 与曝光／镜头相关的 EXIF 键。
+  - `keepGps`「保留 GPS」：GPS 字典。
+  - `keepAuthorAndCopyright`「保留作者和版权」（D-63，默认 false，旧预设缺字段时为 false）：作者取 TIFF Artist → IPTC By-line → XMP `dc:creator` 中第一个非空值，版权取 TIFF Copyright → IPTC CopyrightNotice → XMP `dc:rights`；写成 TIFF Artist / Copyright 与 IPTC By-line / CopyrightNotice。ImageIO 写文件时把 Artist 存成 XMP `dc:creator`，读回时要看 XMP。
+  - 序列号、机主、MakerNote、用户注释、其他 XMP / IPTC 字段、缩略图从不复制。
+- ImageIO 必写的结构性 EXIF（ColorSpace、像素尺寸）不算 D-06 的「元数据」（D-57）。
+- HDR 文件只有在不丢 gain map 的前提下才写入元数据，做不到时省略并警告 `output.metadata_dropped`（D-66）。
 
 ### 2.7 预览模式（§6.1 第 3 条、§6.6、§11.2、D-18）
 
@@ -140,9 +162,36 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
 | `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 
-更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。黄金文件是在 macOS 27 上记录的；CI 是 macOS 26，若编码器差异超出容差，需要在 26 上重录（与 D-19 的基线问题相同）。
+更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。
 
-## 4. 尚未实现
+**Golden 基准（D-68）**：以用户本机（macOS 27）为标定基准，只在这台机器上重录，不按其他系统版本重录。每个黄金文件的 `recordedOn` 记录录制时的系统版本（如 `macOS 27.0.1`）。
+
+- 当前系统的**主版本号**与 `recordedOn` 相同：严格比较，结构不同或采样超出容差（3 个码值）时测试失败。
+- 主版本号不同（例如 CI 的 macOS 26）：只把差异打印成 `[golden 仅报告] …`，测试不失败。其他测试照常。
+- 环境变量 `PHOTOFRAME_GOLDEN_STRICT=1` 强制严格比较。
+
+## 4. 已确定的决策（D-56 … D-69）
+
+实现时提出的 14 个问题已由用户确认，规范 §16 中的编号如下：
+
+| 编号 | 决策 |
+|---|---|
+| D-56 | JPEG 始终嵌入 sRGB ICC（ImageIO 不嵌时自己插入 APP2） |
+| D-57 | ImageIO 必写的结构性 EXIF（ColorSpace、像素尺寸）不算 D-06 的元数据 |
+| D-58 | TRC 为 BT.709 / BT.2020 逆 OETF 参数曲线的 ICC，按文件里的曲线解码（改写为采样曲线，不用 ColorSync 的 γ2.4 解释） |
+| D-59 | 超出 sRGB 的颜色逐通道截断，作为 V1 策略 |
+| D-60 | HDR headroom：gain map 源用文件值，PQ / HLG / 浮点源用画面实测峰值 |
+| D-61 | SDR 源请求 HDR 输出 → 输出 SDR 并警告；HDR + PNG 报错 |
+| D-62 | 「明确是 HDR」才按 HDR，否则 SDR；判定规则见 §2.2 |
+| D-63 | 新增独立开关「保留作者和版权」`keepAuthorAndCopyright`，默认关闭 |
+| D-64 | EXIF 文字缺失字段连同多余分隔符一起去掉；整行为空则不画图层，仍警告 |
+| D-65 | 文字、素材在图层框内的排布：文字只缩小不放大、水平对齐跟随锚点、竖直居中、找不到字体用系统字体并警告；PNG / SVG 等比放入并居中 |
+| D-66 | HDR 输出只有在 gain map 能保住时才写入元数据，否则去掉元数据并警告 |
+| D-67 | 全景预设设置了比例裁切 → 忽略裁切并警告 |
+| D-68 | Golden 以用户本机 macOS 27 为基准；其他主版本只报告差异 |
+| D-69 | 压缩的「最大化兼容性」TIFF 按 SDR 读入，提示「HDR 部分未读取」 |
+
+## 5. 尚未实现
 
 - 预览缓存（§12.1「缩略图缓存」）：每次 `renderPreview` 都重新解码源图。只改图层或背景时可以复用解码结果，留给 GUI／Application 层按需要加。
 - gain map JPEG 的 HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样。

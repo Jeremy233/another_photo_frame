@@ -28,7 +28,7 @@ func samplePreset() -> ExportPreset {
         ],
         assetSlots: [AssetSlot(slotId: "camera.badge", required: false, label: "相机线稿", acceptedFormats: [.svg])],
         output: OutputSettings(format: .jpeg, quality: 95, dynamicRange: .hdr,
-                               metadata: .init(keepShootingInfo: true, keepGps: false)))
+                               metadata: .init(keepShootingInfo: true, keepGps: false, keepAuthorAndCopyright: true)))
 }
 
 func jsonData(_ s: String) -> Data { Data(s.utf8) }
@@ -70,6 +70,7 @@ struct PresetSerializationTests {
         #expect(p.output == OutputSettings())
         #expect(p.output.quality == 100)
         #expect(p.output.metadata.keepGps == false && p.output.metadata.keepShootingInfo == false)
+        #expect(p.output.metadata.keepAuthorAndCopyright == false, "旧预设缺字段时默认 false")
         #expect(p.validate().errors.isEmpty)
     }
 

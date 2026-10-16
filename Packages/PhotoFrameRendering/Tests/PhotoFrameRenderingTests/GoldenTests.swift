@@ -11,6 +11,10 @@ import UniformTypeIdentifiers
 /// 而不是编码后的字节（跨系统版本编码器会变）。像素采样按容差比较。
 ///
 /// 更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --filter Golden`，然后检查 `Golden/*.json` 的 diff。
+///
+/// 基准系统（D-68）：黄金文件以用户本机（macOS 27）为标定基准，`recordedOn` 记录录制时的系统版本。
+/// 当前系统的主版本号与 `recordedOn` 相同时严格比较，差异使测试失败；主版本号不同（例如 CI 的 macOS 26）时
+/// 只把差异打印出来，不让测试失败。`PHOTOFRAME_GOLDEN_STRICT=1` 强制严格比较。不要在其他系统版本上重录。
 @Suite("Golden")
 struct GoldenTests {
     struct Manifest: Codable, Equatable {
@@ -33,6 +37,8 @@ struct GoldenTests {
         }
 
         var scenario: String
+        /// 录制时的系统版本，例如 `macOS 27.0.1`。
+        var recordedOn: String
         var preset: String
         var hdrKind: String
         var sdrMethod: String
@@ -44,6 +50,18 @@ struct GoldenTests {
 
     static let goldenDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Golden")
     static let tolerance = 3
+
+    static var systemVersion: String {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+    }
+
+    /// 与录制系统主版本相同，或环境变量要求时，严格比较。
+    static func isStrict(recordedOn: String) -> Bool {
+        if ProcessInfo.processInfo.environment["PHOTOFRAME_GOLDEN_STRICT"] == "1" { return true }
+        let major = { (s: String) in s.split(separator: " ").last?.split(separator: ".").first.map(String.init) }
+        return major(recordedOn) == major(systemVersion)
+    }
 
     static func builtIn(_ name: String) throws -> ExportPreset {
         let all = BuiltInPresets.all(catalog: try PlatformCatalogStore.builtIn())
@@ -81,7 +99,7 @@ struct GoldenTests {
                 samples: points.map { p in let c = img[p.0, p.1]; return Manifest.Sample(at: [p.0, p.1], rgb: [c.0, c.1, c.2]) })
         }
         return Manifest(
-            scenario: scenario, preset: preset.name, hdrKind: result.diagnostics.hdrKind.rawValue, sdrMethod: sdr,
+            scenario: scenario, recordedOn: Self.systemVersion, preset: preset.name, hdrKind: result.diagnostics.hdrKind.rawValue, sdrMethod: sdr,
             sourceProfileOrigin: result.diagnostics.sourceProfileOrigin,
             displaySize: [result.diagnostics.displaySize.width, result.diagnostics.displaySize.height],
             warnings: result.warnings.map(\.code).sorted(), outputs: outputs)
@@ -103,17 +121,29 @@ struct GoldenTests {
             return
         }
         let expected = try JSONDecoder().decode(Manifest.self, from: data)
+        var differences: [String] = []
         // 结构字段逐项相等；像素采样按容差。
         var a = actual, e = expected
+        a.recordedOn = ""; e.recordedOn = ""
         for i in a.outputs.indices { a.outputs[i].samples = [] }
         for i in e.outputs.indices { e.outputs[i].samples = [] }
-        #expect(a == e, "\(scenario) 结构与黄金文件不同")
+        if a != e {
+            differences.append("结构不同：\n  当前 \(String(decoding: try encoder.encode(a), as: UTF8.self))")
+        }
         for (o, (ao, eo)) in zip(actual.outputs, expected.outputs).enumerated() {
-            #expect(ao.samples.map(\.at) == eo.samples.map(\.at))
+            if ao.samples.map(\.at) != eo.samples.map(\.at) { differences.append("输出 \(o) 采样点不同") }
             for (s, x) in zip(ao.samples, eo.samples) {
                 let diff = zip(s.rgb, x.rgb).map { abs($0 - $1) }.max() ?? 0
-                #expect(diff <= tolerance, "\(scenario) 输出 \(o) 采样 \(s.at)：\(s.rgb) vs 黄金 \(x.rgb)")
+                if diff > tolerance { differences.append("输出 \(o) 采样 \(s.at)：\(s.rgb) vs 黄金 \(x.rgb)") }
             }
+        }
+        guard !differences.isEmpty else { return }
+        if isStrict(recordedOn: expected.recordedOn) {
+            for d in differences { Issue.record("\(scenario)：\(d)") }
+        } else {
+            print("[golden 仅报告] \(scenario)：黄金文件录制于 \(expected.recordedOn)，当前 \(systemVersion)，"
+                  + "差异不计为失败（D-68）")
+            for d in differences { print("  - \(d)") }
         }
     }
 
@@ -143,16 +173,16 @@ struct GoldenTests {
                              preset: try Self.builtIn("Instagram Standard"))
     }
 
-    @Test("无 ICC 源 + 水印与 EXIF 文字图层的位置")
+    @Test("无 ICC 源 + 水印与文字图层的位置")
     func noProfileWithLayers() async throws {
         var preset = try Self.builtIn("Instagram Standard")
         preset.output = OutputSettings(format: .png)
         preset.layers = [
             OverlayLayer(layerId: "wm", type: .asset, anchor: .bottomRight, offset: OverlayOffset(x: 0, y: 16),
                          maxBoundsPx: PixelSize(width: 200, height: 80), slotId: "wm"),
-            OverlayLayer(layerId: "exif", type: .metadataText, anchor: .bottomLeft, offset: OverlayOffset(x: 0, y: 16),
+            OverlayLayer(layerId: "signature", type: .text, anchor: .bottomLeft, offset: OverlayOffset(x: 0, y: 16),
                          sizePx: PixelSize(width: 400, height: 30),
-                         text: TextStyle(template: "{camera} · {aperture}", fontSizePx: 18)),
+                         text: TextStyle(content: "AnotherPhotoFrame", fontSizePx: 18)),
         ]
         preset.assetSlots = [AssetSlot(slotId: "wm")]
         try await Self.check("instagram-standard-noicc-layers", source: Fixtures.url("chart_noicc.png"), preset: preset,

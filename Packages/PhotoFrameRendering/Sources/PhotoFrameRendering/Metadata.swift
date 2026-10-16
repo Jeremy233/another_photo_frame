@@ -50,18 +50,45 @@ enum MetadataText {
         return v
     }
 
-    /// 替换模板中的 `{name}`；缺失的占位符替换为空，并返回它们的名字。
+    /// 填写模板（D-64）。缺失的占位符连同它旁边多余的分隔符一起去掉，不留下「35mm ·  · 1/250s」。
+    ///
+    /// 规则（逐行处理，`\n` 分行）：
+    /// - 一行切成「前缀 + 占位符 + 分隔符 + 占位符 … + 后缀」，分隔符是两个占位符之间的文字。
+    /// - 有值的占位符按原顺序拼接，每个值前面用它自己左侧的分隔符；第一个有值的不带分隔符。
+    ///   例：`{a} · {b} · {c}` 缺 b → `A · C`；缺 a → `B · C`。
+    /// - 前缀跟随第一个占位符、后缀跟随最后一个占位符：对应的值缺失时一起去掉。
+    ///   例：`Shot on {camera} ({lens})` 缺 lens → `Shot on Z 8`。
+    /// - 一个值都没有的行整行去掉。没有占位符的行原样保留。
+    /// - 全部行都去掉后结果为空字符串，调用方不画这个图层（仍给警告）。
     static func fill(_ template: String, values: [String: String]) -> (text: String, missing: [String]) {
-        var out = "", missing: [String] = []
-        var rest = Substring(template)
-        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
-            out += rest[..<open]
-            let key = String(rest[rest.index(after: open)..<close])
-            if let value = values[key] { out += value } else { missing.append(key) }
-            rest = rest[rest.index(after: close)...]
+        var missing: [String] = []
+        var lines: [String] = []
+        for line in template.components(separatedBy: "\n") {
+            var literals: [String] = []   // literals[i] 在第 i 个占位符之前；最后一个是后缀
+            var keys: [String] = []
+            var rest = Substring(line)
+            while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
+                literals.append(String(rest[..<open]))
+                keys.append(String(rest[rest.index(after: open)..<close]))
+                rest = rest[rest.index(after: close)...]
+            }
+            literals.append(String(rest))
+            guard !keys.isEmpty else { lines.append(line); continue }
+            var body = ""
+            var any = false
+            for (i, key) in keys.enumerated() {
+                guard let value = values[key], !value.isEmpty else { missing.append(key); continue }
+                if any { body += literals[i] }
+                body += value
+                any = true
+            }
+            guard any else { continue }
+            let present = { (k: String) in !(values[k] ?? "").isEmpty }
+            let prefix = present(keys[0]) ? literals[0] : ""
+            let suffix = present(keys[keys.count - 1]) ? literals[keys.count] : ""
+            lines.append(prefix + body + suffix)
         }
-        out += rest
-        return (out, missing)
+        return (lines.joined(separator: "\n"), missing)
     }
 
     private static func number(_ any: Any?) -> Double? {
@@ -78,9 +105,55 @@ enum MetadataText {
     }
 }
 
-/// 输出元数据策略（§6.8、§12.3、D-06）：默认全部不写出；「保留拍摄参数」「保留 GPS」两个独立开关。
+/// 源文件中的作者与版权（TIFF、IPTC、XMP 三处取第一个非空值）。
+struct AuthorInfo: Hashable {
+    var author: String?
+    var copyright: String?
+
+    /// - Parameter xmp: 源文件的 XMP（`CGImageSourceCopyMetadataAtIndex`），取 `dc:creator`、`dc:rights`。
+    init(properties: [CFString: Any], xmp: CGImageMetadata?) {
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        let iptc = properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any] ?? [:]
+        func text(_ any: Any?) -> String? {
+            let s: String? = switch any {
+            case let s as String: s
+            case let a as [Any]: a.compactMap { $0 as? String }.first
+            default: nil
+            }
+            return s.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        }
+        author = text(tiff[kCGImagePropertyTIFFArtist]) ?? text(iptc[kCGImagePropertyIPTCByline])
+            ?? xmp.flatMap { Self.xmpString($0, "dc:creator") }
+        copyright = text(tiff[kCGImagePropertyTIFFCopyright]) ?? text(iptc[kCGImagePropertyIPTCCopyrightNotice])
+            ?? xmp.flatMap { Self.xmpString($0, "dc:rights") }
+    }
+
+    /// XMP 标签的第一个字符串值（数组、语言替代项都取第一项）。
+    static func xmpString(_ meta: CGImageMetadata, _ path: String) -> String? {
+        guard let tag = CGImageMetadataCopyTagWithPath(meta, nil, path as CFString) else { return nil }
+        func first(_ value: CFTypeRef?) -> String? {
+            switch value {
+            case let s as String: return s.isEmpty ? nil : s
+            case let a as [Any]:
+                for item in a {
+                    let ref = item as CFTypeRef
+                    let value = CFGetTypeID(ref) == CGImageMetadataTagGetTypeID()
+                        ? CGImageMetadataTagCopyValue(ref as! CGImageMetadataTag) : ref
+                    if let s = first(value) { return s }
+                }
+                return nil
+            default: return nil
+            }
+        }
+        return first(CGImageMetadataTagCopyValue(tag))
+    }
+}
+
+/// 输出元数据策略（§6.8、§12.3、D-06、D-63）：默认全部不写出；「保留拍摄参数」「保留 GPS」
+/// 「保留作者和版权」三个独立开关。
 ///
-/// 从不复制：MakerNote、序列号、机主姓名、用户注释、缩略图、XMP / IPTC、Orientation（输出像素已校正方向）。
+/// 从不复制：MakerNote、序列号、机主姓名、用户注释、缩略图、Orientation（输出像素已校正方向）。
+/// 作者和版权写成 TIFF Artist / Copyright 与 IPTC By-line / CopyrightNotice（ImageIO 会同步到 XMP 的对应字段）。
 enum OutputMetadata {
     static var shootingExifKeys: [CFString] { [
         kCGImagePropertyExifExposureTime, kCGImagePropertyExifFNumber, kCGImagePropertyExifExposureProgram,
@@ -94,7 +167,9 @@ enum OutputMetadata {
     static var shootingTIFFKeys: [CFString] { [kCGImagePropertyTIFFMake, kCGImagePropertyTIFFModel] }
 
     /// 交给 `CGImageDestinationAddImage` 的属性字典（不含编码参数）。
-    static func properties(from source: [CFString: Any], policy: OutputSettings.Metadata) -> [CFString: Any] {
+    static func properties(
+        from source: [CFString: Any], author: AuthorInfo, policy: OutputSettings.Metadata
+    ) -> [CFString: Any] {
         var out: [CFString: Any] = [:]
         if policy.keepShootingInfo {
             let exif = source[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
@@ -103,6 +178,14 @@ enum OutputMetadata {
             let t = Dictionary(uniqueKeysWithValues: shootingTIFFKeys.compactMap { k in tiff[k].map { (k, $0) } })
             if !e.isEmpty { out[kCGImagePropertyExifDictionary] = e }
             if !t.isEmpty { out[kCGImagePropertyTIFFDictionary] = t }
+        }
+        if policy.keepAuthorAndCopyright {
+            var tiff = out[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+            var iptc: [CFString: Any] = [:]
+            if let a = author.author { tiff[kCGImagePropertyTIFFArtist] = a; iptc[kCGImagePropertyIPTCByline] = [a] }
+            if let c = author.copyright { tiff[kCGImagePropertyTIFFCopyright] = c; iptc[kCGImagePropertyIPTCCopyrightNotice] = c }
+            if !tiff.isEmpty { out[kCGImagePropertyTIFFDictionary] = tiff }
+            if !iptc.isEmpty { out[kCGImagePropertyIPTCDictionary] = iptc }
         }
         if policy.keepGps, let gps = source[kCGImagePropertyGPSDictionary] as? [CFString: Any], !gps.isEmpty {
             out[kCGImagePropertyGPSDictionary] = gps

@@ -151,6 +151,7 @@
     }
   ],
   "preset" : "Instagram Standard",
+  "recordedOn" : "macOS 27.0.1",
   "scenario" : "instagram-standard-chart16",
   "sdrMethod" : "none",
   "sourceProfileOrigin" : "embedded",

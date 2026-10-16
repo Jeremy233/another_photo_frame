@@ -151,6 +151,7 @@
     }
   ],
   "preset" : "Instagram Standard",
+  "recordedOn" : "macOS 27.0.1",
   "scenario" : "instagram-standard-pq",
   "sdrMethod" : "toneMapHeadroom(9.0→1)",
   "sourceProfileOrigin" : "embedded",

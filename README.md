@@ -34,7 +34,10 @@ AnotherPhotoFrame 是一个免费、开源、完全在本地运行的 macOS 摄�
 |---|---|
 | 产品与技术规范 | 审阅中（Draft） |
 | `PhotoFrameCore`：画布几何（Fit、比例裁切、全景切片） | ✅ 已完成 |
-| 存储、色彩管线、CLI、GUI 等 | 未开始或进行中 |
+| `PhotoFrameStorage`：`.photoframe` 预设包、素材绑定（SlotResolver）、平台配置、内置预设 | ✅ 已完成 |
+| `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService | 进行中 |
+| `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成（待合并） |
+| CLI、MCP、GUI 等 | 未开始 |
 
 Alpha / Beta 版本不做代码签名；V1.0 发布前再决定是否公证。
 
@@ -63,6 +66,8 @@ swift test
 - [UI 设计](Another%20Photo%20Frame%20UI%20Design.md)
 - [规范插图](docs/illustrations/README.md)
 - [PhotoFrameCore 说明](Packages/PhotoFrameCore/README.md)
+- [PhotoFrameStorage 说明](Packages/PhotoFrameStorage/README.md)
+- [PhotoFrameRendering 说明](Packages/PhotoFrameRendering/README.md)与[渲染管线](docs/RenderingPipeline.md)
 
 ### 参与贡献
 
@@ -112,7 +117,10 @@ The project is in the **specification stage**; there is no usable app yet.
 |---|---|
 | Product and technical specification | In review (draft) |
 | `PhotoFrameCore`: canvas geometry (fit, aspect crop, panorama slicing) | ✅ Done |
-| Storage, color pipeline, CLI, GUI, … | Not started or in progress |
+| `PhotoFrameStorage`: `.photoframe` preset packages, asset binding (SlotResolver), platform catalog, built-in presets | ✅ Done |
+| `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService | In progress |
+| `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done (pending merge) |
+| CLI, MCP, GUI, … | Not started |
 
 Alpha / Beta builds are not code-signed; whether to notarize will be decided before V1.0.
 
@@ -143,6 +151,8 @@ The documents are currently written in Chinese.
 - [UI design](Another%20Photo%20Frame%20UI%20Design.md)
 - [Specification illustrations](docs/illustrations/README.md)
 - [PhotoFrameCore notes](Packages/PhotoFrameCore/README.md)
+- [PhotoFrameStorage notes](Packages/PhotoFrameStorage/README.md)
+- [PhotoFrameRendering notes](Packages/PhotoFrameRendering/README.md) and [rendering pipeline](docs/RenderingPipeline.md)
 
 ### Contributing
 

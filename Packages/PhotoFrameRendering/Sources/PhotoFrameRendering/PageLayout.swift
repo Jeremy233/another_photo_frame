@@ -196,6 +196,7 @@ enum OverlayPlanner {
             }
             text = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
+                // metadataText 的字段全部缺失时整个图层不画（D-64），上面已给出 overlay.metadata_missing。
                 warnings.append(RenderWarning(code: "overlay.empty_text", message: "文字为空，已跳过", layerId: layer.layerId))
                 return nil
             }
