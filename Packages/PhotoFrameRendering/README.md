@@ -21,6 +21,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 |---|---|
 | `RenderJob.swift` | 对外类型：`RenderJob`、`RenderAsset`、`RenderProgress`、`RenderedOutput`、`RenderDiagnostics`、`RenderWarning`、`RenderError` |
 | `PhotoFrameRenderer.swift` | 入口 `render(job:progress:)` 与 `renderPreview(_:)`：共用的前半段、阶段、进度、取消、清理 |
+| `Inspection.swift` | 只读入口：`inspect(_:)` 检查源图（格式、ICC、HDR 判定、EXIF 摘要），`plan(sourceURL:preset:)` 预估输出页（不解码像素） |
 | `Preview.swift` | 预览类型：`PreviewRequest`、`PreviewSize`、`PreviewColorMode`、`PreviewResult`、`PreviewPage`；导出 → 预览坐标映射 |
 | `PageLayout.swift` | 预设 → 每页参数（调用 Core 的 Fit / Crop / Panorama / OverlayPlacement）；图层内容准备 |
 | `SourceDecoder.swift` | 解码、降采样、输入 ICC 决策、HDR 识别、画面峰值 |

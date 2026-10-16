@@ -16,13 +16,13 @@ struct OverwriteTests {
     @discardableResult
     func export(_ exporter: AtomicExporter, _ spec: JobSpec, slides: Int, marker: UInt8, protected: [URL] = []) throws -> OutputManifest {
         let area = try exporter.makeStaging(destinationRoot: spec.destination.rootDirectory, attemptId: AttemptID())
-        let roles: [OutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
+        let roles: [JobOutputRole] = [.cover] + (0..<slides).map { .slide(position: $0 + 1) }
         let outputs = try roles.enumerated().map { i, role in
             let url = area.renderDirectory.appending(path: "f\(i)")
             try Data([0xFF, 0xD8, 0xFF, marker]).write(to: url)
-            return RenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB")
+            return JobRenderedOutput(role: role, fileURL: url, pixelSize: PixelSize(width: 1080, height: 1440), colorProfile: "sRGB")
         }
-        return try exporter.publish(RenderResult(outputs: outputs), spec: spec, jobId: JobID(), staging: area,
+        return try exporter.publish(JobRenderResult(outputs: outputs), spec: spec, jobId: JobID(), staging: area,
                                     startedAt: Date(), protectedSources: protected)
     }
 

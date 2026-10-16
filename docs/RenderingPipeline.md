@@ -45,6 +45,16 @@ preview.roles     // 导出会写出的全部页，供 [Cover] [Slide 1] … 切
 preview.scaleX / scaleY, preview.diagnostics, preview.warnings
 ```
 
+只读入口（§11.2 `inspectSource`、`validate`）：
+
+```swift
+let info = try renderer.inspect(source)       // InspectedSource：格式、尺寸、方向、位深、ICC 来源、HDR 判定（D-62）、EXIF 摘要、有无 GPS / 作者
+let plan = try renderer.plan(sourceURL: source, preset: presetSnapshot, maxCarouselItems: 20)
+plan.pages                                    // [PlannedPage]：与 render(job:) 相同的版式，只读文件属性、不解码像素
+```
+
+应用层通过 `PhotoFrameEngine.RenderingBackend` 使用这些入口（任务队列的 `JobRenderer`、服务的 `ImageAnalyzer`）。
+
 ## 2. 流程
 
 ```text
