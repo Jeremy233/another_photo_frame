@@ -1,4 +1,4 @@
-# PhotoFrame — V1.0 产品与技术规范（Review Draft）
+# AnotherPhotoFrame — V1.0 产品与技术规范（Review Draft）
 
 > **状态：供逐条审阅 · Draft 0.1**  
 > **基线日期：2026-10-12**  
@@ -70,8 +70,8 @@
 | ID | 功能 | V1 要求 | 状态 |
 |---|---|---|---|
 | FR-01 | macOS GUI | Compressor 风格三栏、自适应窗口、自由拖动分隔条 | 【已确定】 |
-| FR-02 | 图像输入与预览 | JPG/PNG/TIFF/HEIC；正确方向、ICC、缩略图 | 【建议：输入列表】 |
-| FR-03 | 画布引擎 | 任意目标尺寸、背景颜色、最小边距、Fit/居中 | 【已确定】 |
+| FR-02 | 图像输入与预览 | JPG/PNG/TIFF（含 HDR 变体）；HEIC 稍后；正确方向、ICC、缩略图 | 【已确定：D-02】 |
+| FR-03 | 画布引擎 | 任意目标尺寸、背景颜色、最小边距、Fit/居中；可选比例裁切模式 | 【已确定：D-21】 |
 | FR-04 | 全景轮播 | 完整封面 + 无裁切、左右补底色的连续切片 | 【已确定】 |
 | FR-05 | 平台预设 | Instagram、XHS、Douyin（用户可修改） | 【已确定】 |
 | FR-06 | 排版图层 | 签名、水印、相机贴图、EXIF 信息等可选图层 | 【已确定】 |
@@ -96,7 +96,7 @@
 | 抖音 Photo / Video | 1080 × 1920，9:16 | `#FAFAF8` | 60 px | 完整图／横向平移视频可选 |
 
 - 【已确定】当前摄影风格为 **Modern Fine Art Landscape Photography**：中性暖白底、照片为主体、装饰克制。
-- 【已确定】原图封面**完整嵌入**画布；不是自动裁切填满。
+- 【已确定】原图封面**完整嵌入**画布；不是自动裁切填满。比例裁切仅作为用户主动开启的可选模式（D-21）。
 - 【已确定】“60 px”是**最小安全边距**，不是强制照片四周始终恰好 60 px。
 - 【已确定】全景连续切片内部的接缝**不能**出现每页独立的 60 px 白边；轮播切片使用独立的全景版式规则。
 - 【待确认】各平台允许的图片比例、轮播张数、文件大小、压缩策略会变化；需要把限制写在可更新平台配置中，而不是依赖永久固定的常数。上传前用户仍需检查平台实际预览。
@@ -277,7 +277,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ## 6. 摄影级色彩处理管线
 
-> **本节为 V1 高优先级技术规范。**目标是可复现的**SDR 摄影发布工作流**，而非追求“看起来差不多”。涉及 ColorSync、ImageIO、Core Image / Core Graphics 的交界行为须通过带 ICC 的测试图实测确认。
+> **本节为 V1 高优先级技术规范。**目标是可复现的 **SDR + HDR 摄影发布工作流**（D-05），而非追求“看起来差不多”。涉及 ColorSync、ImageIO、Core Image / Core Graphics 的交界行为须通过带 ICC 的测试图实测确认。
 
 ### 6.1 核心不变量
 
@@ -295,12 +295,12 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 |---|---|---|
 | 8-bit JPEG / PNG | 必须 | ICC、EXIF Orientation、透明通道（PNG） |
 | 16-bit TIFF | 必须 | 嵌入 ICC、高精度转换、避免 8-bit 中途量化 |
-| HEIC / HEIF | 建议 | 正确识别 SDR/Wide Gamut，和系统解码器版本有关 |
+| HEIC / HEIF | 首个 Alpha 不含（D-02） | 正确识别 SDR/Wide Gamut，和系统解码器版本有关 |
 | 16-bit PNG | 建议 | 验证系统解码管线是否保留预期精度 |
 | Adobe RGB / Display P3 / ProPhoto ICC | 必须测试 | 无提示色域失真不可接受 |
 | 无 ICC 的图像 | 必须 | 明确默认假设、提示和人工覆盖途径 |
 | 带 Alpha 图层的 PNG | 必须 | 不出现黑边、白晕及预乘错误 |
-| HDR/HLG/PQ/float32 TIFF | **明确受限** | V1 默认 SDR 输出；需显式 tone map 或清楚拒绝，不可简单剪裁/静默降级 |
+| HDR：gain map JPEG、PQ/HLG PNG、PQ/HLG/float TIFF | **必须**（D-05） | 保留 HDR 动态范围进入工作空间；按输出设置导出 HDR 或经 tone map 输出 SDR，不可简单剪裁/静默降级 |
 | 相机 RAW（NEF/CR3/DNG 等） | 【V1 不做】 | 用户先在其他软件显影导出 TIFF/JPEG |
 
 **无 ICC 策略【建议】：** 默认解释为 sRGB，并在 Inspector / 日志显示 `Source profile missing — assumed sRGB`；用户可针对**源文件或任务**显式选择另一个输入色彩空间。不得把“无 profile”默默标记为准确的 sRGB 摄影数据。扫描照片尤其需要人工检查。
@@ -366,23 +366,24 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ### 6.7 SDR / HDR 边界
 
-**【建议作为 V1 决议】V1 默认目标是 SDR 社交平台成品。** 对 HDR 源：
+**【已确定：D-05】V1 支持 HDR 输入与输出。**
 
-- 在文件识别阶段检测 HDR 指示或非标准动态范围；标记 `requiresToneMapping`。
-- 如果用户明确开启受支持的 `HDR → SDR` tone mapping，则需选定算法、记录参数并进行可视化验收。
-- 如果尚未实现经过测试的映射，应阻止导出，提示“该输入需要 SDR 转换”，**不能无声地把高亮直接 clip 到白色**。
-- SDR 视频输出 H.264 也必须写入一致的 Rec.709 / SDR 色彩描述，并进行播放器验证；不要在 v1 假设 HDR/HLG 视频输出已支持。
+- 输入：在文件识别阶段检测 gain map、PQ/HLG 转移函数、float 数据等 HDR 指示，标记 `isHDR` 与 headroom，全程以 extended-range 浮点保留高光，不在 `[0,1]` 截断。
+- 输出：HDR 是**可选导出项**。平台配置（§5.4）声明该平台支持的 HDR 输出格式（例如带 ISO 21496-1 gain map 的 JPEG，SDR 底图 + gain map，不支持 HDR 的设备自动退回 SDR）；用户选择 HDR 时按平台配置导出对应格式。
+- SDR 输出：HDR 源选择 SDR 输出时，使用选定并记录参数的 tone mapping 算法，**不能无声地把高亮直接 clip 到白色**。
+- 合成：背景、水印、文字等 SDR 元素在 HDR 输出中按参考白（SDR 白点）放置，不随 headroom 一起变亮。
+- 视频：V1 视频仍输出 SDR H.264，写入一致的 Rec.709 色彩描述并进行播放器验证；HDR 视频不在 V1 范围内。
 
 ### 6.8 输出与元数据
 
 | 输出类型 | 色彩/编码默认 | Metadata |
 |---|---|---|
-| JPEG | sRGB，8-bit，质量 95（数值由编码器映射） | 嵌入正确 ICC；EXIF 按策略保留白名单字段 |
+| JPEG | sRGB，8-bit，最高质量 Q100（D-06）；可选 HDR gain map | 嵌入正确 ICC；EXIF 默认全部不写出，可选「保留拍摄参数」「保留 GPS（带隐私警告）」 |
 | PNG | sRGB + ICC 或等价标准颜色描述；支持透明输出配置 | 不传播与实际渲染不符的旧 ICC |
 | HEIC | 【待确认】8-bit/10-bit 模式与 ICC 支持测试 | 由系统编码器能力决定 |
 | MP4 | H.264、SDR Rec.709、建议 30fps，9:16 | 颜色 primaries / transfer / matrix 明确标识 |
 
-**EXIF Orientation：** 输出像素统一为正确方向，写出 Orientation=1 或不写该字段，防止社交平台再次旋转。对源图的镜头、焦距、光圈、快门等展示用参数，应与**是否复制到输出元数据**分别控制。GPS 默认不写入成品，避免隐私泄露。
+**EXIF Orientation：** 输出像素统一为正确方向，写出 Orientation=1 或不写该字段，防止社交平台再次旋转。对源图的镜头、焦距、光圈、快门等展示用参数，应与**是否复制到输出元数据**分别控制。输出元数据默认全部不写出；「保留拍摄参数」与「保留 GPS」为独立可选项，「保留 GPS」旁显示隐私警告（D-06）。
 
 ### 6.9 色彩管理验收测试（必做）
 
@@ -394,7 +395,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 - [ ] EXIF Orientation 1、3、6、8 的内容方向与尺寸正确且不重复旋转。
 - [ ] 预览与导出的像素／颜色计算保持一致；明确允许预览缩放及 JPEG 编码误差。
 - [ ] 对 P3 屏幕与普通 sRGB 显示器观察同一 sRGB 输出，行为符合 macOS 色彩管理预期。
-- [ ] HDR 源或 float32 TIFF 进入受控映射／清晰拒绝路径，不发生无提示高光剪裁。
+- [ ] HDR 源（gain map JPEG、PQ/HLG PNG、float TIFF）保留动态范围；HDR 输出在 HDR 屏幕正确显示、在 SDR 设备正确回退；SDR 输出经 tone map，不发生无提示高光剪裁。
 - [ ] 输出 JPEG 嵌入 sRGB ICC，文件再次在 Photoshop/Preview 中打开不出现系统性色偏。
 
 > **【待确认】** 色差门槛（如 CIEDE2000 的样本分位数阈值）、对照标准图集、不同系统版本基线、HDR→SDR 策略；须在核心 PoC 阶段确定，不宜在没有样本的情况下声称具体数值已可达成。
@@ -481,9 +482,10 @@ My Landscape.photoframe   # ZIP container, versioned
   ],
   "output": {
     "format": "jpeg",
-    "quality": 95,
+    "quality": 100,
     "colorSpace": "sRGB",
-    "stripGps": true
+    "dynamicRange": "sdr",
+    "metadata": {"keepShootingInfo": false, "keepGps": false}
   }
 }
 ```
@@ -772,13 +774,13 @@ photoframe mcp serve
 ### 12.3 隐私默认值
 
 - 无账户、无隐性上传、默认不启用分析追踪或远程请求。
-- JPEG 元数据默认移除精确 GPS；EXIF 作者、序列号、时间等字段由用户策略控制。
+- 输出元数据默认全部不写出；拍摄参数与 GPS 为独立可选项，GPS 选项旁显示隐私警告（D-06）。
 - 预设导出默认不包含私人签名源文件、相机贴图、本地路径、用户身份信息。
 - 程序应提供明确的「导出前元数据预览」或隐私说明。
 
 ### 12.4 平台与兼容
 
-- 【待确认】最小系统：建议 macOS 13+ 或 14+，以 AppKit 交互、Swift 并发与 ImageIO/AVFoundation 能力测试决定。
+- 【已确定：D-01】最低系统 macOS 26，仅支持 Apple Silicon；UI 采用 macOS 26 的系统设计语言。
 - 深色/浅色、不同显示器 DPI、不同 locale、中文与英文 UI、键盘操作、VoiceOver。
 - CI 在受支持 macOS / Swift 工具链上运行；签名与 Apple 公证可能需要付费开发者账号，**免费开源 ≠ 一定能免费完成 Apple 公证**。
 
@@ -845,7 +847,7 @@ photoframe mcp serve
 | **Beta 2** | 视频、性能、颜色回归、安全审查 | SDR 视频与大 TIFF 达标 |
 | **V1.0** | 跨入口一致性、文档、安装包、许可证、测试 | 本文 V1 Checklist 全部完成或经公开版本说明明确取舍 |
 
-> 【建议】MVP 可优先做 **CLI-first 的最小渲染闭环**，再接 GUI；但 V1 的产品入口仍是原生 macOS GUI。
+> 【已确定：D-08】CLI 与 GUI 同时开发；GUI 的每项操作都必须能通过 CLI 完成，以便脚本与 AI 调用。GUI 基本参照 Compressor 界面。
 
 ### 14.2 开源与发布
 
@@ -879,14 +881,15 @@ photoframe mcp serve
 
 ### P0 — 开始编码前
 
-- [ ] **D-01** 最低系统版本：macOS 13 还是 14？是否要求 Apple Silicon，还是也支持 Intel？
-- [ ] **D-02** 首批输入格式：JPEG/PNG/TIFF/HEIC 是否全部在首个公开 Alpha 开启？
-- [ ] **D-03** 工作色域与高精度像素格式：使用哪种 extended-linear 工作空间，如何确保广色域数值不提前裁断？
-- [ ] **D-04** 无源 ICC 处理：默认警告并假设 sRGB，可手动覆盖，是否认可？
-- [ ] **D-05** V1 对 HDR 源：暂不支持并明确拒绝，还是实现明确的 HDR→SDR tone map？
-- [ ] **D-06** 输出默认：sRGB JPEG Q95、默认剥离 GPS，是否认可？
-- [ ] **D-07** 预设包格式：ZIP `.photoframe` + `manifest.json`，是否认可？
-- [ ] **D-08** MVP 是否 CLI-first 完成内核再开发 GUI？
+- [x] **D-01** 最低系统版本：**macOS 26+，仅 Apple Silicon**（使用最新系统 UI 设计语言）。【已确定 2026-10-16】
+- [x] **D-02** 首批输入格式：**JPEG / PNG / TIFF**；HEIC 不在首个 Alpha。三种格式的 HDR 变体须在首版支持（见 D-05）。【已确定 2026-10-16】
+- [ ] **D-03** 工作色域与高精度像素格式：因 D-05 要求 HDR 输入/输出，工作空间**必须是 extended-range linear 浮点**（至少 `RGBAh`），不能在 `[0,1]` 截断；具体色域（extended linear sRGB / Display P3 / Rec.2020）由色彩 PoC 实测后定。【待 PoC】
+- [x] **D-04** 无源 ICC：**默认假设 sRGB，显示警告，允许按源图或任务覆盖**。【已确定 2026-10-16】
+- [x] **D-05** HDR：**V1 支持 HDR 输入与输出**。输入支持所有受支持格式中的 HDR 形式（如 gain map JPEG、PQ/HLG PNG、float/PQ TIFF）；HDR 输出作为可选导出项，由**平台配置决定对应的 HDR 输出格式**（例如带 gain map 的 JPEG），并始终可选择 SDR 输出。【已确定 2026-10-16；具体格式矩阵见 D-17】
+- [x] **D-06** 输出默认：**sRGB JPEG，最高质量（Q100）**。EXIF 输出为可选项：「保留拍摄参数」「保留 GPS」，**默认全部隐藏（不写出）**；「保留 GPS」旁显示隐私警告。【已确定 2026-10-16】
+- [x] **D-07** 预设包格式：**ZIP `.photoframe` + `manifest.json`**。【已确定 2026-10-16】
+- [x] **D-08** 开发顺序：**CLI 与 GUI 同时开发**；GUI 的所有操作都必须能通过 CLI 完成，以便 AI 调用；GUI 基本参照 Compressor 界面。【已确定 2026-10-16】
+- [x] **D-21** 裁切：**默认 Fit 完整嵌入，不裁切**；按比例裁切作为用户主动开启的可选模式，预览中须显示裁切范围。全景切片模式始终不裁切。【已确定 2026-10-16】
 
 ### P1 — Alpha 期间
 
@@ -964,7 +967,9 @@ photoframe mcp serve
 
 **已确定：** Mac 原生优先、免费开源、前后端模块分离、Compressor 三栏可缩放、照片完整嵌入、IG 3:4 / XHS 1:1 / Douyin 9:16、默认 `#FAFAF8` 和 60px 最小封面边距、无裁切全景连续切片、可选水印/相机贴图/EXIF、本地素材与 Slot、可分享预设、批量任务、CLI、本地 stdio MCP、摄影级色彩管理。
 
-**尚待技术定稿：** 精确工作空间与 HDR 输入策略、支持的 SVG/HEIC/视频编码范围、macOS 最低版本、跨进程任务模型、色彩容差基线、许可和签名方式。
+**已确定（2026-10-16 P0 审阅）：** macOS 26+ / Apple Silicon、JPEG/PNG/TIFF 输入、HDR 输入与可选 HDR 输出、无 ICC 假设 sRGB 并警告、JPEG Q100 且元数据默认不写出、ZIP `.photoframe`、CLI 与 GUI 同步开发、默认不裁切（裁切可选）。
+
+**尚待技术定稿：** 精确工作空间（D-03，待色彩 PoC）、各平台 HDR 输出格式矩阵、支持的 SVG/HEIC/视频编码范围、跨进程任务模型、色彩容差基线、许可和签名方式。
 
 **V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布。
 
