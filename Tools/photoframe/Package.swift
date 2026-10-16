@@ -14,7 +14,7 @@ let package = Package(
         .package(path: "../../Packages/PhotoFrameCore"),
         .package(path: "../../Packages/PhotoFrameStorage"),
         .package(path: "../../Packages/PhotoFrameApplication"),
-        .package(path: "../../Packages/PhotoFrameEngine"),
+        .package(path: "../../Packages/PhotoFrameRendering"),
     ],
     targets: [
         .target(
@@ -23,7 +23,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),
-                .product(name: "PhotoFrameEngine", package: "PhotoFrameEngine"),
+                .product(name: "PhotoFrameRendering", package: "PhotoFrameRendering"),
             ]),
         .executableTarget(name: "photoframe", dependencies: ["PhotoFrameCLI"]),
         .testTarget(
@@ -33,7 +33,7 @@ let package = Package(
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
                 .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),
-                .product(name: "PhotoFrameEngine", package: "PhotoFrameEngine"),
+                .product(name: "PhotoFrameRendering", package: "PhotoFrameRendering"),
                 // 让 `swift test` 先构建可执行文件，端到端测试以子进程运行它。
                 "photoframe",
             ]),

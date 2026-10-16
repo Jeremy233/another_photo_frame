@@ -1,8 +1,9 @@
 # PhotoFrameApplication
 
 任务队列、原子导出和 `PhotoFrameService`（规范 §9、§10.3、§11.1–11.2、§12.2）。
-依赖 `PhotoFrameCore`、`PhotoFrameStorage`；**不依赖** `PhotoFrameRendering`：渲染通过 `JobRenderer` 协议、检查 / 预估 / 预览通过
-`ImageAnalyzer` 协议接入，真正的实现在 `Packages/PhotoFrameEngine`。GUI、CLI、MCP 都用 `PhotoFrameEngine.makeService()` 取服务。
+依赖 `PhotoFrameCore`、`PhotoFrameStorage`、`PhotoFrameRendering`。GUI、CLI、MCP 都用 `LocalPhotoFrameService.makeDefault()` 取服务。
+队列只通过 `JobRenderer` 协议渲染、服务只通过 `ImageAnalyzer` 协议检查 / 预估 / 预览，正常实现是 `RenderingBackend`（用 PhotoFrameRendering）；
+测试换成假的渲染器。
 
 与渲染模块同名的类型在这里都加了 `Job` 前缀（`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress`、
 `JobOutputRole`、`JobRenderStage`），同时导入两个模块时不会冲突。
@@ -25,6 +26,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Model/OutputManifest.swift` | `JobOutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
 | `Model/ApplicationError.swift` | `ApplicationError`（`code` + `message` + `hint`）、`ApplicationWarning`、`ApplicationErrorConvertible` |
 | `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress` |
+| `Rendering/RenderingBackend.swift` | 用 PhotoFrameRendering 实现 `JobRenderer` 与 `ImageAnalyzer`：类型转换、进度翻译、错误码 |
 | `Export/OutputNaming.swift` | §9.2 目录与文件命名、版本后缀、文件名清理 |
 | `Export/AtomicExporter.swift` | 临时目录、校验、原子发布、清理 |
 | `Export/Overwrite.swift` | 显式覆盖（D-49）：发布标记、替换前检查、挪开 / 就位 / 恢复 |
@@ -33,7 +35,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Queue/JobQueue.swift` | `actor JobQueue`：并发与内存限制、暂停、取消、重试、事件流、等待 |
 | `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 / 素材来源 |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（§11.2 全部接口）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
-| `Service/PresetCatalog.swift` | 预设来源 `PresetProvider`（内置、合并；以后接用户预设库）、`PresetReference`（ID / 名称 / 文件）、`PresetFileLoader`、`PresetListing` |
+| `Service/PresetCatalog.swift` | 预设来源 `PresetProvider`（内置、合并；以后接用户预设库）、`PresetReference`（ID / 名称 / 文件）、`PresetFileLoader`、`CatalogPresetSummary` |
 | `Service/Providers.swift` | 素材来源 `AssetProvider`（现阶段 `NoAssetLibrary`；以后接素材库）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
 | `Service/Validation.swift` | `ValidationResult`；队列 `validating` 与服务 `validate` 共用的检查 |
 | `Queue/JobEvent.swift` | 事件（Codable） |
@@ -102,7 +104,16 @@ struct Renderer: JobRenderer {
 
 错误实现 `ApplicationErrorConvertible` 可以带稳定错误码，否则记为 `render.failed`。
 
-PhotoFrameRendering 的适配器是 `PhotoFrameEngine.RenderingBackend`，它同时实现 `ImageAnalyzer`。
+PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageAnalyzer`：
+
+| 应用层 | 渲染层 | 转换 |
+|---|---|---|
+| `JobRenderRequest` | `RenderJob` | 源图、预设快照、平台轮播上限、输入色彩空间覆盖；`slots` 经 `AssetProvider.fileURL(for:)` 换成素材文件 |
+| `JobOutputRole` | `OutputRole` | `.single` / `.cover` → `.cover`；`.slide(k)` → `.slide(position: k + 1)`（D-27） |
+| `JobRenderProgress`（async 事件） | `RenderProgress`（同步快照） | `ProgressTranslator`：阶段只前进；计划输出数出现或变化时报告一次；已写出数每加 1 报告一个 `.outputFinished`。事件按顺序放进一条流、逐条 `await` 报告，`render` 返回前全部报告完 |
+| `ApplicationError` | `RenderError` | 同 code、message、hint；取消原样抛出 |
+
+渲染层写 `00.<ext>`、`01.<ext>`…；`AtomicExporter` 发布时按角色改名为 `00_Cover.jpg`、`01_Slide.jpg`…（D-46–D-48）。
 
 ## 服务（§11.2）
 
@@ -111,6 +122,7 @@ PhotoFrameRendering 的适配器是 `PhotoFrameEngine.RenderingBackend`，它同
 | `listPresets()` | 内置预设 + 本服务读过的 `.photoframe` 文件（以后加上用户预设库） |
 | `resolvePreset(_:)` | `PresetReference`：presetId、名称（不区分大小写，空格 / 下划线 / 连字符等价，`instagram-panorama`）、文件（只读，不安装）。找不到 `preset.not_found`，同名多个 `preset.ambiguous` |
 | `addSource(_:)` / `sources()` | 登记源图（只检查存在与扩展名，D-02） |
+| `ExportRequest.sourceColorOverride` / `JobSpec.sourceColorOverride` | 没有 ICC 的源图按什么色彩空间解释（D-04）；源图自带 ICC 时渲染层忽略并警告 `source.override_ignored` |
 | `inspectSource(_:)` | 格式、尺寸、方向、ICC、HDR 判定、EXIF 摘要；GPS 与作者只报告有无 |
 | `validate(_:)` | 不渲染、不写文件：每个任务的源图、预设与平台、输出目录（不存在时只检查能否创建）、素材槽、预估输出（文件名与尺寸）、推算的作品目录（版本后缀；覆盖时检查能否替换、同一请求是否有两个任务指向同一目录 `request.duplicate_output`） |
 | `renderPreview(_:)` | 与导出同一条管线，返回 sRGB PNG |

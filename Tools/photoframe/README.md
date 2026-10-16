@@ -8,7 +8,7 @@
 | `Sources/photoframe` | 可执行文件入口：安装 SIGINT / SIGTERM 处理，运行命令，返回退出码 |
 | `Tests/PhotoFrameCLITests` | 参数解析、退出码、各命令的 JSON、端到端导出（代码合成的图片）、子进程测试 |
 
-服务来自 `Packages/PhotoFrameEngine`，与 GUI、MCP 共用。
+服务来自 `LocalPhotoFrameService.makeDefault()`（PhotoFrameApplication），与 GUI、MCP 共用。
 
 ```bash
 swift build --scratch-path "$TMPDIR/photoframe-build"

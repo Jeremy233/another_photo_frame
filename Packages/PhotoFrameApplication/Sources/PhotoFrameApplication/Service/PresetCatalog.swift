@@ -3,7 +3,7 @@ import PhotoFrameCore
 import PhotoFrameStorage
 
 /// 预设从哪里来。JSON：`{"kind": "builtIn"}`、`{"kind": "file", "path": "/…/Minimal.photoframe"}`、`{"kind": "library"}`。
-public enum PresetOrigin: Hashable, Sendable, Codable {
+public enum CatalogPresetOrigin: Hashable, Sendable, Codable {
     /// 应用内置（`BuiltInPresets`）。
     case builtIn
     /// 直接从 `.photoframe` 文件读取，没有安装进预设库（CLI `--preset ./x.photoframe`）。
@@ -37,13 +37,13 @@ public enum PresetOrigin: Hashable, Sendable, Codable {
 }
 
 /// 一个可用的预设及其来源。
-public struct PresetEntry: Hashable, Sendable {
+public struct CatalogPreset: Hashable, Sendable {
     public var preset: ExportPreset
-    public var origin: PresetOrigin
+    public var origin: CatalogPresetOrigin
     /// 读取时的非阻止性问题（例如从旧 schema 迁移、HDR 待实测）。
     public var warnings: [ApplicationWarning]
 
-    public init(preset: ExportPreset, origin: PresetOrigin, warnings: [ApplicationWarning] = []) {
+    public init(preset: ExportPreset, origin: CatalogPresetOrigin, warnings: [ApplicationWarning] = []) {
         self.preset = preset
         self.origin = origin
         self.warnings = warnings
@@ -52,7 +52,7 @@ public struct PresetEntry: Hashable, Sendable {
 
 /// 预设来源。现阶段只有内置预设；用户预设库以后实现这个协议接进来（§8、§11.2 `listPresets`）。
 public protocol PresetProvider: Sendable {
-    func presets() async throws(ApplicationError) -> [PresetEntry]
+    func presets() async throws(ApplicationError) -> [CatalogPreset]
 }
 
 /// 内置预设（D-31、D-32），画布尺寸取自平台配置。
@@ -63,8 +63,8 @@ public struct BuiltInPresetProvider: PresetProvider {
         self.catalog = catalog
     }
 
-    public func presets() async throws(ApplicationError) -> [PresetEntry] {
-        BuiltInPresets.all(catalog: catalog).map { PresetEntry(preset: $0, origin: .builtIn) }
+    public func presets() async throws(ApplicationError) -> [CatalogPreset] {
+        BuiltInPresets.all(catalog: catalog).map { CatalogPreset(preset: $0, origin: .builtIn) }
     }
 }
 
@@ -76,9 +76,9 @@ public struct CompositePresetProvider: PresetProvider {
         self.providers = providers
     }
 
-    public func presets() async throws(ApplicationError) -> [PresetEntry] {
+    public func presets() async throws(ApplicationError) -> [CatalogPreset] {
         var seen: Set<UUID> = []
-        var all: [PresetEntry] = []
+        var all: [CatalogPreset] = []
         for provider in providers {
             for entry in try await provider.presets() where seen.insert(entry.preset.presetId).inserted {
                 all.append(entry)
@@ -126,7 +126,7 @@ public enum PresetReference: Hashable, Sendable, Codable {
     }
 
     /// 在已知预设中查找（不处理 `.file`）。
-    public func match(in entries: [PresetEntry]) throws(ApplicationError) -> PresetEntry {
+    public func match(in entries: [CatalogPreset]) throws(ApplicationError) -> CatalogPreset {
         switch self {
         case .id(let id):
             guard let hit = entries.first(where: { $0.preset.presetId == id }) else { throw .presetNotFound(id.uuidString) }
@@ -145,7 +145,7 @@ public enum PresetReference: Hashable, Sendable, Codable {
 
 /// 直接读取 `.photoframe` 文件（只读，不安装）。导入检查与预设库相同（§8.3、D-26、D-33、D-34）。
 public enum PresetFileLoader {
-    public static func load(_ url: URL, platforms: PlatformCatalog?) throws(ApplicationError) -> PresetEntry {
+    public static func load(_ url: URL, platforms: PlatformCatalog?) throws(ApplicationError) -> CatalogPreset {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
             throw .presetFileNotFound(url.path)
@@ -153,7 +153,7 @@ public enum PresetFileLoader {
         do {
             let data = try PresetPackage.readFile(at: url)
             let imported = try PresetPackage.importPreset(data, options: PresetImportOptions(platforms: platforms))
-            return PresetEntry(
+            return CatalogPreset(
                 preset: imported.preset, origin: .file(url),
                 warnings: imported.warnings.map { ApplicationWarning(code: $0.code, message: "\($0.path)：\($0.message)") })
         } catch {
@@ -163,7 +163,7 @@ public enum PresetFileLoader {
 }
 
 /// `listPresets` 返回的摘要（§11.2 `PresetSummary`），可直接 JSON 输出给 CLI / MCP。
-public struct PresetListing: Hashable, Sendable, Codable {
+public struct CatalogPresetSummary: Hashable, Sendable, Codable {
     public struct Panorama: Hashable, Sendable, Codable {
         public var cover: Bool
         /// 固定张数；nil 为自动（D-11）。
@@ -177,7 +177,7 @@ public struct PresetListing: Hashable, Sendable, Codable {
     public var slug: String
     public var platform: String?
     public var platformName: String?
-    public var origin: PresetOrigin
+    public var origin: CatalogPresetOrigin
     public var canvas: PixelSize
     public var mode: CanvasSettings.Mode
     public var background: String
@@ -190,7 +190,7 @@ public struct PresetListing: Hashable, Sendable, Codable {
     public var layerCount: Int
     public var slotIds: [String]
 
-    public init(_ entry: PresetEntry, catalog: PlatformCatalog?) {
+    public init(_ entry: CatalogPreset, catalog: PlatformCatalog?) {
         let p = entry.preset
         presetId = p.presetId
         name = p.name

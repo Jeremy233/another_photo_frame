@@ -213,6 +213,29 @@ struct ExportCommandTests {
         #expect(!FileManager.default.fileExists(atPath: box.exports.path))
     }
 
+    @Test("--assume-profile：没有 ICC 的源图按指定色彩空间解释；有 ICC 时忽略并警告（D-04）")
+    func assumeProfile() async throws {
+        let box = try Sandbox()
+        try box.photo("Scan.png", width: 1200, height: 800, type: .png, profile: false)
+        try box.photo("Tagged.jpg", width: 1200, height: 800)
+
+        func warnings(_ args: [String]) async throws -> [Set<String>] {
+            let result = await runCLI(args + ["-o", "Exports", "--json", "-q", "--preset", "xhs-standard"], in: box.root)
+            #expect(result.status == 0, "\(result.stderr.value)")
+            let jobs = try #require(try result.stdout.json()["jobs"] as? [[String: Any]])
+            return jobs.map { Set(($0["warnings"] as? [[String: String]] ?? []).compactMap { $0["code"] }) }
+        }
+        #expect(try await warnings(["export", "Scan.png"])[0].contains("source.profile_missing"))
+        let assumed = try await warnings(["export", "Scan.png", "Tagged.jpg", "--assume-profile", "display-p3"])
+        #expect(!assumed[0].contains("source.profile_missing") && !assumed[0].contains("source.override_ignored"))
+        #expect(assumed[1].contains("source.override_ignored"))
+
+        let preview = await runCLI(["preview", "Tagged.jpg", "--preset", "xhs-standard", "-o", "p", "--max-edge", "200",
+                                    "--assume-profile", "adobe-rgb"], in: box.root)
+        #expect(preview.status == 0)
+        #expect(preview.stderr.value.contains("source.override_ignored"))
+    }
+
     @Test("预设文件：--preset 直接给 .photoframe 路径")
     func presetFile() async throws {
         let box = try Sandbox()

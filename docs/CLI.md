@@ -2,7 +2,7 @@
 
 > 对应规范 §10.3、§11.1–11.3、§12.2、§14.1（D-08：GUI 的每项操作都能通过 CLI 完成）。
 > 代码在 `Tools/photoframe`：命令在 `PhotoFrameCLI` 库里，可执行文件只处理信号与退出码。
-> 后端是 `Packages/PhotoFrameEngine` 组装的 `PhotoFrameService`，GUI 和以后的 MCP 用的是同一个服务。
+> 后端是 `LocalPhotoFrameService.makeDefault()`（`Packages/PhotoFrameApplication`），GUI 和以后的 MCP 用的是同一个服务。
 
 ## 构建
 
@@ -28,8 +28,10 @@ swift build -c release
 
 ```text
 photoframe export <图片...> --preset <id|名称|文件> [--preset ...] --output <目录>
+                  [--assume-profile srgb|display-p3|adobe-rgb]
                   [--overwrite] [--dry-run] [--json] [--quiet] [--jobs <n>]
 photoframe preview <图片> --preset <id|名称|文件> --output <目录>
+                  [--assume-profile srgb|display-p3|adobe-rgb]
                   [--max-edge <px>] [--page <n> ...] [--overwrite] [--json]
 photoframe image inspect <图片> [--json]
 photoframe preset list [--json]
@@ -63,6 +65,7 @@ photoframe --help | --version
 |---|---|
 | `--preset` | 可重复；重复的预设只算一次 |
 | `-o, --output` | 输出根目录，不存在时创建 |
+| `--assume-profile` | 没有 ICC 的源图按什么色彩空间解释：`srgb`、`display-p3`、`adobe-rgb`。见下文「输入色彩空间」 |
 | `--overwrite` | 作品目录已存在时替换，而不是加版本后缀。只替换本软件之前导出的目录（目录上有扩展属性 `org.anotherphotoframe.published`，里面只有本软件命名的图片）；否则拒绝，退出码 5（D-49） |
 | `--dry-run` | 只校验并列出将写出的文件，不渲染、不写任何文件（连输出目录都不创建） |
 | `--json` | stdout 输出 JSON |
@@ -96,8 +99,19 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 
 | 选项 | 说明 |
 |---|---|
+| `--assume-profile` | 同 `export` |
 | `--max-edge <px>` | 预览页长边上限，默认 1200，不会大于导出尺寸 |
 | `--page <n>` | 只预览这些轮播页（0 = 封面，切片 k 是 k + 1，D-27）。可重复；默认全部 |
+
+### 输入色彩空间：`--assume-profile`
+
+D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解释，并警告 `source.profile_missing`；用户可以按任务指定另一个色彩空间
+（例如丢了 ICC 的 Display P3 扫描图）。
+
+- 只对**没有 ICC** 的源图生效。源图自带 ICC 时以文件为准，忽略这个选项，并警告 `source.override_ignored`（一次导出多张图时，
+  有 ICC 的那几张照常按自己的 ICC 处理）。
+- 作用于本次命令的所有任务，记录在任务里（`JobSpec.sourceColorOverride`），重试也沿用。
+- 用 `image inspect` 先看 `colorProfile.origin`：`assumedSRGB` 表示没有 ICC。
 
 ### `image inspect`
 
@@ -237,6 +251,16 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 ```
 
 `positions` 是导出会写出的全部轮播位置；`files` 只有请求的页。
+
+### 输入色彩空间：`--assume-profile`
+
+D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解释，并警告 `source.profile_missing`；用户可以按任务指定另一个色彩空间
+（例如丢了 ICC 的 Display P3 扫描图）。
+
+- 只对**没有 ICC** 的源图生效。源图自带 ICC 时以文件为准，忽略这个选项，并警告 `source.override_ignored`（一次导出多张图时，
+  有 ICC 的那几张照常按自己的 ICC 处理）。
+- 作用于本次命令的所有任务，记录在任务里（`JobSpec.sourceColorOverride`），重试也沿用。
+- 用 `image inspect` 先看 `colorProfile.origin`：`assumedSRGB` 表示没有 ICC。
 
 ### `image inspect`
 

@@ -53,7 +53,7 @@ let plan = try renderer.plan(sourceURL: source, preset: presetSnapshot, maxCarou
 plan.pages                                    // [PlannedPage]：与 render(job:) 相同的版式，只读文件属性、不解码像素
 ```
 
-应用层通过 `PhotoFrameEngine.RenderingBackend` 使用这些入口（任务队列的 `JobRenderer`、服务的 `ImageAnalyzer`）。
+应用层通过 `PhotoFrameApplication.RenderingBackend` 使用这些入口（任务队列的 `JobRenderer`、服务的 `ImageAnalyzer`）。
 
 ## 2. 流程
 
@@ -72,7 +72,7 @@ probe（读属性：尺寸、方向）
 |---|---|---|
 | 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
 | 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 34675 | 坑 1 |
-| 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖 | D-04 |
+| 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖（只对缺 ICC 的源图生效；有 ICC 时忽略并警告 `source.override_ignored`） | D-04 |
 | 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
 | 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
 | BT.709/2020 参数曲线 ICC | TRC 为 `para` type 3、g≈2.222、d≈0.081 时改写成 4096 点 `curv`，按 ICC 本身解码 | 坑 20（ColorSync 当 γ2.4 解码，偏暗约 16%） |

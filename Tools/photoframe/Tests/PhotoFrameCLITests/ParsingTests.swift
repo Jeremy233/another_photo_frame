@@ -16,6 +16,12 @@ struct ParsingTests {
         #expect(command.output == "out")
         #expect(command.overwrite && command.dryRun && command.json && command.quiet)
         #expect(command.jobs == 2)
+        #expect(command.assumeProfile == nil)
+        for (value, expected) in [("srgb", AssumedProfile.srgb), ("display-p3", .displayP3), ("adobe-rgb", .adobeRGB)] {
+            let parsed = try #require(try RootCommand.parseAsRoot(
+                ["export", "a.png", "--preset", "x", "-o", "o", "--assume-profile", value]) as? ExportCommand)
+            #expect(parsed.assumeProfile == expected)
+        }
 
         let defaults = try #require(try RootCommand.parseAsRoot(["export", "a.tif", "--preset", "x", "--output", "o"]) as? ExportCommand)
         #expect(!defaults.overwrite && !defaults.dryRun && !defaults.json && !defaults.quiet && defaults.jobs == nil)
@@ -26,7 +32,7 @@ struct ParsingTests {
         let preview = try #require(try RootCommand.parseAsRoot([
             "preview", "a.tif", "--preset", "xhs-panorama", "-o", "p", "--max-edge", "640", "--page", "0", "--page", "2",
         ]) as? PreviewCommand)
-        #expect(preview.maxEdge == 640 && preview.pages == [0, 2] && !preview.overwrite)
+        #expect(preview.maxEdge == 640 && preview.pages == [0, 2] && !preview.overwrite && preview.assumeProfile == nil)
         let inspect = try #require(try RootCommand.parseAsRoot(["image", "inspect", "a.tif", "--json"]) as? ImageCommand.InspectCommand)
         #expect(inspect.image == "a.tif" && inspect.json)
         let list = try #require(try RootCommand.parseAsRoot(["preset", "list"]) as? PresetCommand.ListCommand)
@@ -39,6 +45,7 @@ struct ParsingTests {
         ["export", "--preset", "x", "-o", "out"],                // 缺图片
         ["export", "a.tif", "--preset", "x", "-o", "o", "--jobs", "0"],
         ["preview", "a.tif", "--preset", "x", "-o", "o", "--max-edge", "0"],
+        ["export", "a.png", "--preset", "x", "-o", "o", "--assume-profile", "prophoto"],
         ["frobnicate"],
         ["preset", "import", "x.photoframe"],                    // 这一版没有
         ["mcp", "serve"],

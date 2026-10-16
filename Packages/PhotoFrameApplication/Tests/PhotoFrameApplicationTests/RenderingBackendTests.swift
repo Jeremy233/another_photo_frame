@@ -1,10 +1,9 @@
 import Foundation
-import PhotoFrameApplication
 import PhotoFrameCore
 import PhotoFrameRendering
 import PhotoFrameStorage
 import Testing
-@testable import PhotoFrameEngine
+@testable import PhotoFrameApplication
 
 @Suite("进度翻译")
 struct ProgressTranslatorTests {
@@ -68,7 +67,7 @@ struct RenderingBackendTests {
     func panoramaExport() async throws {
         let box = try Sandbox()
         let photo = try box.photo("Badlands.jpg", width: 3000, height: 1000)
-        let service = try PhotoFrameEngine.makeService()
+        let service = try LocalPhotoFrameService.makeDefault()
         let events = EventLog(await service.events())
         let source = try await service.addSource(photo)
         let ids = try await service.submit(ExportRequest(
@@ -93,7 +92,7 @@ struct RenderingBackendTests {
             #expect(info.profile == "sRGB IEC61966-2.1")
             #expect(item.colorProfile == "sRGB IEC61966-2.1")
         }
-        #expect(box.tree().allSatisfy { !$0.contains(".photoframe-staging") })
+        #expect(box.exportTree().allSatisfy { !$0.contains(".photoframe-staging") })
 
         // 事件：outputFinished 的角色按轮播顺序，与清单一致；阶段事件严格按流水线顺序。
         await eventually { events.all.contains { if case .attemptFinished = $0 { true } else { false } } }
@@ -112,7 +111,7 @@ struct RenderingBackendTests {
         let box = try Sandbox()
         let fake = box.root.appending(path: "NotAPhoto.jpg")
         try Data("plain text".utf8).write(to: fake)
-        let service = try PhotoFrameEngine.makeService()
+        let service = try LocalPhotoFrameService.makeDefault()
         let source = try await service.addSource(fake)
         let ids = try await service.submit(ExportRequest(
             sourceIds: [source.sourceId], presets: [Self.preset("XHS Standard")],
@@ -120,14 +119,14 @@ struct RenderingBackendTests {
         let record = try #require(await service.waitUntilFinished(ids).first)
         #expect(record.status == .failed)
         #expect(record.error?.code == "render.unsupported_format")
-        #expect(box.tree().isEmpty)
+        #expect(box.exportTree().isEmpty)
     }
 
     @Test("取消正在渲染的任务：状态 canceled，不发布，临时目录删除")
     func cancelWhileRendering() async throws {
         let box = try Sandbox()
         let photo = try box.photo("Wide.jpg", width: 9000, height: 1500)
-        let service = try PhotoFrameEngine.makeService()
+        let service = try LocalPhotoFrameService.makeDefault()
         let source = try await service.addSource(photo)
         let ids = try await service.submit(ExportRequest(
             sourceIds: [source.sourceId], presets: [Self.preset("XHS Panorama")],
@@ -138,16 +137,16 @@ struct RenderingBackendTests {
         // 渲染很快时任务可能在取消前已发布；两种结果都要求临时目录干净。
         #expect(record.status == .canceled || record.status == .completed)
         if record.status == .canceled {
-            #expect(!box.tree().contains { $0.hasPrefix("Xiaohongshu/") })
+            #expect(!box.exportTree().contains { $0.hasPrefix("Xiaohongshu/") })
         }
-        #expect(box.tree().allSatisfy { !$0.contains(".photoframe-staging") })
+        #expect(box.exportTree().allSatisfy { !$0.contains(".photoframe-staging") })
     }
 
     @Test("检查源图、预估输出、预览")
     func analyzer() async throws {
         let box = try Sandbox()
         let photo = try box.photo("Gradient.jpg", width: 1200, height: 800)
-        let service = try PhotoFrameEngine.makeService()
+        let service = try LocalPhotoFrameService.makeDefault()
 
         let info = try await service.inspectSource(.file(photo))
         #expect(info.format == "jpeg")
@@ -177,10 +176,45 @@ struct RenderingBackendTests {
         #expect(page.pngData.starts(with: [0x89, 0x50, 0x4E, 0x47]))
     }
 
+    @Test("源图色彩空间覆盖（D-04）：只对没有 ICC 的源图生效；有 ICC 时忽略并警告")
+    func colorOverride() async throws {
+        let box = try Sandbox()
+        let bare = try box.photo("Scan.png", width: 1200, height: 800, type: .png, profile: false)
+        let tagged = try box.photo("Tagged.jpg", width: 1200, height: 800)
+        let service = try LocalPhotoFrameService.makeDefault()
+        let a = try await service.addSource(bare)
+        let b = try await service.addSource(tagged)
+
+        let plain = try await service.submit(ExportRequest(
+            sourceIds: [a.sourceId], presets: [Self.preset("XHS Standard")], destination: ExportDestination(rootDirectory: box.exports)))
+        let plainRecord = try #require(await service.waitUntilFinished(plain).first)
+        #expect(plainRecord.currentAttempt.warnings.contains { $0.code == "source.profile_missing" })
+
+        let ids = try await service.submit(ExportRequest(
+            sourceIds: [a.sourceId, b.sourceId], presets: [Self.preset("XHS Standard")],
+            destination: ExportDestination(rootDirectory: box.exports), sourceColorOverride: .displayP3))
+        let records = await service.waitUntilFinished(ids)
+        #expect(records.allSatisfy { $0.status == .completed })
+        #expect(records.allSatisfy { $0.spec.sourceColorOverride == .displayP3 })
+        let codes = records.map { Set($0.currentAttempt.warnings.map(\.code)) }
+        #expect(!codes[0].contains("source.profile_missing") && !codes[0].contains("source.override_ignored"))
+        #expect(codes[1].contains("source.override_ignored"))
+
+        // 不同解释得到不同的像素：同一张无 ICC 图按 P3 解释与按 sRGB 解释的输出文件不同。
+        let p3 = try Data(contentsOf: try #require(records[0].manifest?.items.first?.fileURL))
+        let srgb = try Data(contentsOf: try #require(plainRecord.manifest?.items.first?.fileURL))
+        #expect(p3 != srgb)
+
+        let preview = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(b.sourceId), preset: Self.preset("XHS Standard"), options: PreviewOptions(maxLongEdge: 200),
+            sourceColorOverride: .adobeRGB))
+        #expect(preview.warnings.contains { $0.code == "source.override_ignored" })
+    }
+
     @Test("检查不支持的文件：错误码稳定")
     func inspectErrors() async throws {
         let box = try Sandbox()
-        let service = try PhotoFrameEngine.makeService()
+        let service = try LocalPhotoFrameService.makeDefault()
         let heic = box.root.appending(path: "Phone.heic")
         try Data([0, 0, 0, 0x18] + Array("ftypheic".utf8)).write(to: heic)
         await #expect { try await service.inspectSource(.file(heic)) } throws: { ($0 as? ApplicationError)?.code == "source.unsupported_format" }

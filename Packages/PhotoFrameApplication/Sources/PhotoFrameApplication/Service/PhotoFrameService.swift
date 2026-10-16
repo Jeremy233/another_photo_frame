@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 import PhotoFrameStorage
 
 /// 导出请求（§11.1 `ExportRequest`）：多张源图 × 多个预设快照，每个组合生成一个任务（§3.1）。
@@ -10,12 +11,18 @@ public struct ExportRequest: Hashable, Sendable, Codable {
     public var destination: ExportDestination
     /// 单任务素材绑定，作用于本请求生成的每个任务（D-14）。
     public var assetBindings: [String: UUID]
+    /// 没有 ICC 的源图按什么色彩空间解释（D-04），作用于本请求的每个任务。
+    public var sourceColorOverride: SourceColorOverride?
 
-    public init(sourceIds: [SourceID], presets: [ExportPreset], destination: ExportDestination, assetBindings: [String: UUID] = [:]) {
+    public init(
+        sourceIds: [SourceID], presets: [ExportPreset], destination: ExportDestination, assetBindings: [String: UUID] = [:],
+        sourceColorOverride: SourceColorOverride? = nil
+    ) {
         self.sourceIds = sourceIds
         self.presets = presets
         self.destination = destination
         self.assetBindings = assetBindings
+        self.sourceColorOverride = sourceColorOverride
     }
 }
 
@@ -24,9 +31,9 @@ public struct ExportRequest: Hashable, Sendable, Codable {
 /// 所有类型都可序列化、与界面无关，以后可以在进程间适配器后面提供同一个接口。
 public protocol PhotoFrameService: Sendable {
     /// 可用的预设：内置 + 本服务读过的 `.photoframe` 文件（以后加上用户预设库）。
-    func listPresets() async throws(ApplicationError) -> [PresetListing]
+    func listPresets() async throws(ApplicationError) -> [CatalogPresetSummary]
     /// 按 ID、名称或文件找到预设。文件只读取、不安装。
-    func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> PresetEntry
+    func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset
     /// 检查源图：格式、尺寸、方向、ICC、HDR、EXIF 摘要。不登记源图。
     func inspectSource(_ source: SourceReference) async throws(ApplicationError) -> SourceInspection
     /// 校验导出请求，不渲染、不写文件（`--dry-run`）。请求本身无效（没有源图或预设、源图未登记）时抛出；
@@ -69,7 +76,7 @@ public protocol PhotoFrameService: Sendable {
 
 /// 进程内实现：源图登记 + 预设来源 + ``JobQueue`` + 图像分析。GUI、CLI、MCP 各自在自己的进程里创建一个（D-13）。
 ///
-/// 渲染与图像分析由调用方注入（PhotoFrameEngine 用 PhotoFrameRendering 实现），应用层不依赖渲染模块。
+/// 正常使用 ``makeDefault(_:)``（用 PhotoFrameRendering 渲染）。渲染与图像分析也可以注入别的实现，测试用假的渲染器。
 public actor LocalPhotoFrameService: PhotoFrameService {
     public let queue: JobQueue
     private let analyzer: (any ImageAnalyzer)?
@@ -78,7 +85,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
     private var sourcesById: [SourceID: PhotoSource] = [:]
     private var sourceOrder: [SourceID] = []
     /// 通过文件路径读过的预设，之后也出现在 `listPresets` 里。
-    private var filePresets: [PresetEntry] = []
+    private var filePresets: [CatalogPreset] = []
 
     public init(
         queue: JobQueue, configuration: QueueConfiguration = QueueConfiguration(),
@@ -103,6 +110,57 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                   analyzer: analyzer, presets: presets)
     }
 
+    /// ``makeDefault(_:)`` 的设置。
+    public struct Options: Sendable {
+        /// 同时执行的任务数；nil 用默认值（D-53）。
+        public var maxConcurrentJobs: Int?
+        /// 内存预算；nil 用默认值（物理内存一半，D-53）。
+        public var memoryBudgetBytes: Int64?
+        /// GUI 先排队再开始时为 true；CLI 为 false。
+        public var startsPaused: Bool
+        /// 平台配置；nil 用应用附带的 `platforms.json`。
+        public var platformCatalog: PlatformCatalog?
+        /// 预设来源；nil 只有内置预设。用户预设库做好后从这里接入。
+        public var presets: (any PresetProvider)?
+        /// 素材来源；nil 表示没有素材库。素材库做好后从这里接入。
+        public var assets: (any AssetProvider)?
+
+        public init(
+            maxConcurrentJobs: Int? = nil, memoryBudgetBytes: Int64? = nil, startsPaused: Bool = false,
+            platformCatalog: PlatformCatalog? = nil, presets: (any PresetProvider)? = nil, assets: (any AssetProvider)? = nil
+        ) {
+            self.maxConcurrentJobs = maxConcurrentJobs
+            self.memoryBudgetBytes = memoryBudgetBytes
+            self.startsPaused = startsPaused
+            self.platformCatalog = platformCatalog
+            self.presets = presets
+            self.assets = assets
+        }
+    }
+
+    /// 用 PhotoFrameRendering 渲染的服务。GUI、CLI、MCP 各自在自己的进程里调用一次（D-13）。
+    public static func makeDefault(_ options: Options = Options()) throws(ApplicationError) -> LocalPhotoFrameService {
+        let catalog: PlatformCatalog
+        if let given = options.platformCatalog {
+            catalog = given
+        } else {
+            do {
+                catalog = try PlatformCatalogStore.builtIn()
+            } catch {
+                throw ApplicationError(code: error.code, message: "无法读取平台配置：\(error)")
+            }
+        }
+        let assets = options.assets ?? NoAssetLibrary()
+        let backend = RenderingBackend(assets: assets)
+        let configuration = QueueConfiguration(
+            maxConcurrentJobs: options.maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs,
+            memoryBudgetBytes: options.memoryBudgetBytes ?? QueueConfiguration.defaultMemoryBudgetBytes,
+            startsPaused: options.startsPaused, platformCatalog: catalog, assets: assets)
+        return LocalPhotoFrameService(
+            renderer: backend, analyzer: backend, presets: options.presets ?? BuiltInPresetProvider(catalog: catalog),
+            configuration: configuration)
+    }
+
     private static func defaultPresets(_ catalog: PlatformCatalog?) -> any PresetProvider {
         guard let catalog = catalog ?? (try? PlatformCatalogStore.builtIn()) else { return CompositePresetProvider([]) }
         return BuiltInPresetProvider(catalog: catalog)
@@ -112,18 +170,18 @@ public actor LocalPhotoFrameService: PhotoFrameService {
 
     // MARK: - 预设
 
-    public func listPresets() async throws(ApplicationError) -> [PresetListing] {
+    public func listPresets() async throws(ApplicationError) -> [CatalogPresetSummary] {
         let catalog = self.catalog
-        return try await allPresets().map { PresetListing($0, catalog: catalog) }
+        return try await allPresets().map { CatalogPresetSummary($0, catalog: catalog) }
     }
 
-    private func allPresets() async throws(ApplicationError) -> [PresetEntry] {
+    private func allPresets() async throws(ApplicationError) -> [CatalogPreset] {
         let provided = try await presetProvider.presets()
         let ids = Set(provided.map(\.preset.presetId))
         return provided + filePresets.filter { !ids.contains($0.preset.presetId) }
     }
 
-    public func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> PresetEntry {
+    public func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset {
         if case .file(let url) = reference {
             let entry = try PresetFileLoader.load(url, platforms: catalog)
             filePresets.removeAll { $0.origin == entry.origin }
@@ -231,7 +289,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 var outputs: [ValidationItem.PlannedFile] = []
                 if errors.isEmpty, let analyzer {
                     let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: preset,
-                                               platform: platform, slots: slots?.0)
+                                               platform: platform, slots: slots?.0, sourceColorOverride: request.sourceColorOverride)
                     do {
                         let plan = try await analyzer.plan(job)
                         warnings += plan.warnings
@@ -299,7 +357,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
             configuration.currentSlotResolver(), preset: request.preset, bindings: request.assetBindings)
         let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: request.preset,
-                                   platform: platform, slots: slots)
+                                   platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride)
         do {
             var preview = try await analyzer.preview(job, options: request.options)
             preview.warnings = presetWarnings + slotWarnings + preview.warnings
@@ -317,7 +375,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         for sourceId in request.sourceIds {
             guard let source = sourcesById[sourceId] else { throw .unknownSource(sourceId) }
             for preset in request.presets {
-                specs.append(JobSpec(source: source, preset: preset, destination: request.destination, assetBindings: request.assetBindings))
+                specs.append(JobSpec(source: source, preset: preset, destination: request.destination,
+                                     assetBindings: request.assetBindings, sourceColorOverride: request.sourceColorOverride))
             }
         }
         return await queue.submit(specs).map(\.jobId)

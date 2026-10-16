@@ -70,7 +70,7 @@ struct PresetCommand: AsyncParsableCommand {
         func run() async throws {
             let ctx = CommandContext(command: "preset list", json: json)
             let service = try ctx.makeService()
-            let presets: [PresetListing]
+            let presets: [CatalogPresetSummary]
             do {
                 presets = try await service.listPresets()
             } catch {

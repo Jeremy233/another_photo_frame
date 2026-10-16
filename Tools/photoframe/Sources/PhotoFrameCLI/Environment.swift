@@ -1,6 +1,5 @@
 import Foundation
 import PhotoFrameApplication
-import PhotoFrameEngine
 import Synchronization
 
 /// 一路文本输出（stdout 或 stderr）。测试里换成内存缓冲。
@@ -56,7 +55,7 @@ public final class InterruptMonitor: Sendable {
 
 /// 命令运行环境：输出、当前目录、中断、服务。可执行文件用 ``standard``，测试注入自己的。
 public struct CLIEnvironment: Sendable {
-    public typealias ServiceFactory = @Sendable (PhotoFrameEngine.Options) throws(ApplicationError) -> any PhotoFrameService
+    public typealias ServiceFactory = @Sendable (LocalPhotoFrameService.Options) throws(ApplicationError) -> any PhotoFrameService
 
     public var stdout: TextSink
     public var stderr: TextSink
@@ -66,7 +65,7 @@ public struct CLIEnvironment: Sendable {
 
     public init(
         stdout: TextSink, stderr: TextSink, currentDirectory: URL, interrupts: InterruptMonitor = InterruptMonitor(),
-        makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try PhotoFrameEngine.makeService(options) }
+        makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try LocalPhotoFrameService.makeDefault(options) }
     ) {
         self.stdout = stdout
         self.stderr = stderr

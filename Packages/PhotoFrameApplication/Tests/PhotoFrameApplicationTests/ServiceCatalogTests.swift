@@ -36,8 +36,8 @@ struct FakeAnalyzer: ImageAnalyzer {
 
 /// 固定的预设列表。
 struct ListPresetProvider: PresetProvider {
-    var entries: [PresetEntry]
-    func presets() async throws(ApplicationError) -> [PresetEntry] { entries }
+    var entries: [CatalogPreset]
+    func presets() async throws(ApplicationError) -> [CatalogPreset] { entries }
 }
 
 extension ExportPreset {
@@ -84,7 +84,7 @@ struct PresetCatalogTests {
         var b = a
         b.presetId = UUID()
         let service = LocalPhotoFrameService(renderer: FakeRenderer(), presets: ListPresetProvider(entries: [
-            PresetEntry(preset: a, origin: .library), PresetEntry(preset: b, origin: .library),
+            CatalogPreset(preset: a, origin: .library), CatalogPreset(preset: b, origin: .library),
         ]))
         await #expect { try await service.resolvePreset(.name("instagram standard")) } throws: { ($0 as? ApplicationError)?.code == "preset.ambiguous" }
     }
@@ -115,11 +115,13 @@ struct PresetCatalogTests {
         }
     }
 
-    @Test("PresetOrigin 的 JSON 形式")
+    @Test("CatalogPresetOrigin 的 JSON 形式")
     func originCoding() throws {
-        let data = try JSONEncoder().encode([PresetOrigin.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let data = try encoder.encode([CatalogPresetOrigin.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
         #expect(String(decoding: data, as: UTF8.self) == #"[{"kind":"builtIn"},{"kind":"file","path":"\/a\/b.photoframe"},{"kind":"library"}]"#)
-        #expect(try JSONDecoder().decode([PresetOrigin].self, from: data) == [.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
+        #expect(try JSONDecoder().decode([CatalogPresetOrigin].self, from: data) == [.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
     }
 }
 
