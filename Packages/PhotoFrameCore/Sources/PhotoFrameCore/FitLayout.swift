@@ -8,7 +8,8 @@ public struct FitLayout: Hashable, Sendable, Codable {
     public var scale: Double
     /// 连续坐标下的精确照片矩形。
     public var exactRect: Rect
-    /// 栅格化用的整数照片矩形，左右、上下留白严格对称且 ≥ 最小边距。
+    /// 栅格化用的整数照片矩形（D-22）：尺寸为精确值四舍五入，留白 ≥ 最小边距，
+    /// 两侧相差 ≤ 1 px，多出的 1 px 在右／下。
     public var pixelRect: PixelRect
     /// 源图显示坐标 → 画布像素坐标，与 `pixelRect` 一致。
     public var transform: ScaleTranslateTransform

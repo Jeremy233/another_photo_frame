@@ -1,4 +1,4 @@
-/// 切片张数：自动取最少张数，或用户手动指定（D-11）。
+/// 切片张数：自动取最少张数，或用户手动指定（D-11：只能 ≥ 自动张数）。
 public enum SlideCount: Hashable, Sendable, Codable {
     case automatic
     case manual(Int)
@@ -8,22 +8,18 @@ public enum SlideCount: Hashable, Sendable, Codable {
 public enum PanoramaWarning: Hashable, Sendable, Codable {
     /// 竖图或方图（R ≤ 1），全景切片通常没有意义（§5.3 关键边界）。
     case notLandscape(aspectRatio: Double)
-    /// 自动张数只有 1 张，整张照片放得进一张切片，切片没有意义。
-    case fitsSingleSlide
+    /// 横图，但渲染宽度不超过 2 张切片宽（自动张数 ≤ 2，即 R ≤ 2·W/(H−2v)），切片意义不大。
+    case notWideEnough(automaticSlideCount: Int)
     /// 封面 + 切片总数超过平台轮播上限（§5.3、D-18）。
     case exceedsCarouselLimit(totalItems: Int, limit: Int)
-    /// 手动张数少于自动张数：全景整体缩小、上下补底色（D-11）。
-    /// `scaleFactor` 是相对自动张数时的缩放比例（< 1）。
-    case reducedSlideCount(automatic: Int, requested: Int, scaleFactor: Double)
     /// 手动张数多于自动张数：长卷两端补更多底色（D-11）。
     case increasedSlideCount(automatic: Int, requested: Int)
 
     public var code: String {
         switch self {
         case .notLandscape: "panorama.not_landscape"
-        case .fitsSingleSlide: "panorama.fits_single_slide"
+        case .notWideEnough: "panorama.not_wide_enough"
         case .exceedsCarouselLimit: "panorama.exceeds_carousel_limit"
-        case .reducedSlideCount: "panorama.reduced_slide_count"
         case .increasedSlideCount: "panorama.increased_slide_count"
         }
     }
@@ -61,7 +57,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
     public var stripSize: PixelSize
     /// 连续坐标下照片在长卷中的精确矩形。
     public var exactImageRect: Rect
-    /// 栅格化用的照片矩形（全局坐标），左右补边严格对称。
+    /// 栅格化用的照片矩形（全局坐标，D-22）：左右补边相差 ≤ 1 px，多出的在右侧。
     public var pixelImageRect: PixelRect
     /// 源图显示坐标 → 长卷全局坐标。所有切片共用。
     public var transform: ScaleTranslateTransform
@@ -73,7 +69,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         (exactImageRect.minX, Double(stripSize.width) - exactImageRect.maxX)
     }
 
-    /// 栅格化后的左右补边（相等）。
+    /// 栅格化后的左右补边（左 = floor，右 = 剩余）。
     public var pixelPadding: (left: Int, right: Int) {
         (pixelImageRect.minX, stripSize.width - pixelImageRect.maxX)
     }
@@ -86,7 +82,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
     ///   - tile: 单张切片尺寸 W × H，同时也是封面画布尺寸。
     ///   - coverMinimumMargin: 封面 Fit 的最小边距。
     ///   - verticalMargin: 所有切片共用的上下边距 v（D-10），渲染高度为 H − 2v。
-    ///   - slideCount: 自动或手动张数（D-11）。
+    ///   - slideCount: 自动或手动张数；手动值小于自动张数时抛出 `slideCountBelowMinimum`（D-11）。
     ///   - maxCarouselItems: 平台轮播最多项数（含封面）；nil 表示不检查。
     public init(
         tile: PixelSize,
@@ -114,11 +110,15 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         let n: Int
         switch slideCount {
         case .automatic: n = automatic
-        case .manual(let requested): n = requested
+        case .manual(let requested):
+            guard requested >= automatic else {
+                throw .slideCountBelowMinimum(requested: requested, minimum: automatic)
+            }
+            n = requested
         }
 
-        // 长卷内框 = 宽 N·W、高 H − 2v。scale = min(高度约束, 宽度约束)：
-        // 自动或改多时高度贴边；改少时宽度贴边、上下补底色。
+        // 长卷内框 = 宽 N·W、高 H − 2v。N ≥ 自动张数，所以高度贴边；
+        // 取 min 只是为了吸收容差内的超出（如 4320.00001 → 4320），不会出现上下补底色。
         let strip = PixelSize(width: n * tile.width, height: tile.height)
         let placement = centeredPlacement(
             source: source, container: strip, insetX: 0, insetY: verticalMargin)
@@ -127,14 +127,10 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         var warnings: [PanoramaWarning] = []
         if aspect <= 1 {
             warnings.append(.notLandscape(aspectRatio: aspect))
-        } else if automatic == 1 {
-            warnings.append(.fitsSingleSlide)
+        } else if automatic <= 2 {
+            warnings.append(.notWideEnough(automaticSlideCount: automatic))
         }
-        if n < automatic {
-            warnings.append(.reducedSlideCount(
-                automatic: automatic, requested: n,
-                scaleFactor: placement.scale / (renderHeight / Double(source.height))))
-        } else if n > automatic {
+        if n > automatic {
             warnings.append(.increasedSlideCount(automatic: automatic, requested: n))
         }
         if let limit = maxCarouselItems, n + 1 > limit {

@@ -2,6 +2,7 @@ import Testing
 @testable import PhotoFrameCore
 
 /// 切片拼回长卷的不变量：无缝、无重叠、补边只在两端、所有切片共用一套全局变换。
+/// N ≥ 自动张数，所以照片总是铺满 H − 2v。
 func expectSeamless(_ p: PanoramaLayout, sourceLocation: SourceLocation = #_sourceLocation) {
     let w = p.tile.width
     #expect(p.slices.count == p.slideCount, sourceLocation: sourceLocation)
@@ -49,10 +50,9 @@ func expectSeamless(_ p: PanoramaLayout, sourceLocation: SourceLocation = #_sour
     let img = p.pixelImageRect
     #expect(img.minX >= 0 && img.maxX <= p.stripSize.width, sourceLocation: sourceLocation)
     #expect(img.minY >= p.verticalMargin && img.maxY <= p.tile.height - p.verticalMargin, sourceLocation: sourceLocation)
-    #expect(p.pixelPadding.left == p.pixelPadding.right, sourceLocation: sourceLocation)
-    #expect(img.minY == p.tile.height - img.maxY, sourceLocation: sourceLocation)
-    #expect(p.exactImageRect.width < 2 || abs(Double(img.width) - p.exactImageRect.width) <= 1, sourceLocation: sourceLocation)
-    #expect(p.exactImageRect.height < 2 || abs(Double(img.height) - p.exactImageRect.height) <= 1, sourceLocation: sourceLocation)
+    #expect((0...1).contains(p.pixelPadding.right - p.pixelPadding.left), sourceLocation: sourceLocation)
+    #expect(img.minY == p.verticalMargin && img.height == p.tile.height - 2 * p.verticalMargin, sourceLocation: sourceLocation)
+    #expect(p.exactImageRect.width < 0.5 || abs(Double(img.width) - p.exactImageRect.width) <= 0.5 + 1e-9, sourceLocation: sourceLocation)
 
     // 封面独立 Fit。
     expectFitInvariants(p.cover)
@@ -91,16 +91,19 @@ struct PanoramaLayoutTests {
         expectSeamless(p)
     }
 
-    @Test("AC-03：65:24 → XHS，3 张，补边约 157.5，统一栅格化")
+    @Test("AC-03：65:24 → XHS，3 张，照片宽 2925，左右补边 157 / 158")
     func ac03() throws {
         let p = try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 6500, height: 2400))
         #expect(p.slideCount == 3)
         #expect(p.stripSize == PixelSize(width: 3240, height: 1080))
         #expect(abs(p.exactImageRect.width - 2925) < 1e-9)
         #expect(abs(p.exactPadding.left - 157.5) < 1e-9 && abs(p.exactPadding.right - 157.5) < 1e-9)
-        // 2925 与 3240 奇偶不同：取 2924，左右各 158，对称。
-        #expect(p.pixelImageRect == PixelRect(x: 158, y: 0, width: 2924, height: 1080))
-        #expect(p.pixelPadding == (158, 158))
+        // 不动照片，只动 padding：剩余 315，左 floor = 157，右 158。
+        #expect(p.pixelImageRect == PixelRect(x: 157, y: 0, width: 2925, height: 1080))
+        #expect(p.pixelPadding == (157, 158))
+        #expect(p.slices.map(\.backgroundLeft) == [157, 0, 0])
+        #expect(p.slices.map(\.backgroundRight) == [0, 0, 158])
+        #expect(p.warnings.isEmpty)
         expectSeamless(p)
     }
 
@@ -139,10 +142,11 @@ struct PanoramaLayoutTests {
         let over = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3001, height: 1000))
         #expect(over.automaticSlideCount == 5)
         expectSeamless(over)
-        // 略小 → 4 张，两端补少量底色。
+        // 略小 → 4 张：精确宽 4318.56 → 4319，剩余 1 px 补在右侧。
         let under = try PanoramaLayout(tile: instagram, source: PixelSize(width: 2999, height: 1000))
         #expect(under.automaticSlideCount == 4)
-        #expect(under.pixelPadding.left == 1)
+        #expect(under.pixelImageRect.width == 4319)
+        #expect(under.pixelPadding == (0, 1))
         expectSeamless(under)
     }
 
@@ -163,20 +167,18 @@ struct PanoramaLayoutTests {
         expectSeamless(q)
     }
 
-    @Test("手动改少：整体缩小到 N·W 宽，上下补底色并提示")
-    func manualFewer() throws {
-        let p = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), slideCount: .manual(3))
-        #expect(p.stripSize.width == 3240)
-        #expect(p.pixelImageRect == PixelRect(x: 0, y: 180, width: 3240, height: 1080))
-        guard case .reducedSlideCount(let auto, let req, let factor) = p.warnings.first else {
-            Issue.record("缺少改少提示"); return
+    @Test("手动改少：返回错误（D-11 只能改多）")
+    func manualFewer() {
+        #expect(throws: GeometryError.slideCountBelowMinimum(requested: 3, minimum: 4)) {
+            try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), slideCount: .manual(3))
         }
-        #expect(auto == 4 && req == 3 && abs(factor - 0.75) < 1e-12)
-        expectSeamless(p)
-
-        let one = try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 6500, height: 2400), slideCount: .manual(1))
-        #expect(one.pixelImageRect.width == 1080)
-        expectSeamless(one)
+        #expect(throws: GeometryError.slideCountBelowMinimum(requested: 2, minimum: 3)) {
+            try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 6500, height: 2400), slideCount: .manual(2))
+        }
+        // 等于自动张数可以。
+        #expect(throws: Never.self) {
+            try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), slideCount: .manual(4))
+        }
     }
 
     // MARK: 上下边距 v（D-10）
@@ -198,10 +200,13 @@ struct PanoramaLayoutTests {
         #expect(r.pixelImageRect.minY == 100 && r.pixelImageRect.height == 1240)
         expectSeamless(r)
 
-        // v 与改少同时生效：照片仍不越过 v。
-        let s = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), verticalMargin: 100, slideCount: .manual(2))
-        #expect(s.pixelImageRect.height == 720 && s.pixelImageRect.minY == 360)
-        expectSeamless(s)
+        // v 让自动张数增加后，原来合法的手动张数可能变成「改少」。
+        #expect(throws: GeometryError.slideCountBelowMinimum(requested: 3, minimum: 4)) {
+            try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), verticalMargin: 100, slideCount: .manual(3))
+        }
+        #expect(throws: Never.self) {
+            try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), verticalMargin: 180, slideCount: .manual(3))
+        }
     }
 
     @Test("非法上下边距与张数")
@@ -228,7 +233,7 @@ struct PanoramaLayoutTests {
         expectSeamless(extreme)
     }
 
-    @Test("竖图、方图、放得进一张：提示但仍可计算")
+    @Test("竖图、方图、不足 2 张宽：提示但仍可计算")
     func unsuitable() throws {
         let portrait = try PanoramaLayout(tile: instagram, source: PixelSize(width: 4000, height: 6000))
         #expect(portrait.warnings.first?.code == "panorama.not_landscape")
@@ -240,8 +245,21 @@ struct PanoramaLayoutTests {
         expectSeamless(square)
 
         let single = try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 2000, height: 1000), verticalMargin: 300)
-        #expect(single.warnings == [.fitsSingleSlide])
+        #expect(single.warnings == [.notWideEnough(automaticSlideCount: 1)])
+        #expect(single.warnings.first?.code == "panorama.not_wide_enough")
         expectSeamless(single)
+
+        // 边界：R = 2·W/(H−2v) 时渲染宽正好 2W，仍警告；稍宽一点、需要 3 张时不警告。
+        let exactlyTwo = try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 2000, height: 1000))
+        #expect(exactlyTwo.automaticSlideCount == 2)
+        #expect(exactlyTwo.warnings == [.notWideEnough(automaticSlideCount: 2)])
+        let fourThree = try PanoramaLayout(tile: instagram, source: PixelSize(width: 4000, height: 3000))
+        #expect(fourThree.warnings == [.notWideEnough(automaticSlideCount: 2)])
+        let three = try PanoramaLayout(tile: xiaohongshu, source: PixelSize(width: 2001, height: 1000))
+        #expect(three.automaticSlideCount == 3 && three.warnings.isEmpty)
+        // 上下边距改变渲染高度，也改变判定：3:1 发 IG 加 v = 360 → 渲染宽 2160 = 2W。
+        let withV = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), verticalMargin: 360)
+        #expect(withV.warnings == [.notWideEnough(automaticSlideCount: 2)])
     }
 
     @Test("EXIF 方向影响全景判断")
@@ -257,9 +275,16 @@ struct PanoramaLayoutTests {
             for v in [0, 1, 37, 200] {
                 for (sw, sh) in [(3000, 1000), (6500, 2400), (12345, 1001), (99991, 7), (5, 3), (1000, 1000), (1000, 4000)] {
                     let source = PixelSize(width: sw, height: sh)
-                    for count in [SlideCount.automatic, .manual(1), .manual(2), .manual(7)] {
-                        let p = try PanoramaLayout(tile: tile, source: source, verticalMargin: v, slideCount: count)
+                    let auto = try PanoramaLayout(tile: tile, source: source, verticalMargin: v)
+                    expectSeamless(auto)
+                    for extra in [1, 2, 7] {
+                        let p = try PanoramaLayout(tile: tile, source: source, verticalMargin: v, slideCount: .manual(auto.slideCount + extra))
                         expectSeamless(p)
+                    }
+                    if auto.slideCount > 1 {
+                        #expect(throws: GeometryError.self) {
+                            try PanoramaLayout(tile: tile, source: source, verticalMargin: v, slideCount: .manual(auto.slideCount - 1))
+                        }
                     }
                 }
             }
