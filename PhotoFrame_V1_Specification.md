@@ -1070,7 +1070,7 @@ photoframe mcp serve
 
 ### P5 — CLI 与本地库（2026-10-16 审阅）
 
-> 实现 CLI、服务接线（D-70–D-77）和用户预设库、素材库（D-78–D-92）时遇到的规范歧义。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
+> 实现 CLI、服务接线（D-70–D-77、D-93–D-96）和用户预设库、素材库（D-78–D-92）时遇到的规范歧义。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
 
 - [x] **D-70** 不单独建组装层包。Rendering 到任务队列的适配器和创建服务的入口放在 PhotoFrameApplication 里，Application 直接依赖 PhotoFrameRendering；保留 `JobRenderer` 协议，队列测试继续用假渲染器。GUI、CLI、MCP 都直接从 Application 取得服务。理由：代码尽量简洁。备选：单独的 PhotoFrameEngine 包，Application 不依赖 Rendering。【已确定 2026-10-16】
 - [x] **D-71** CLI 退出码：0 成功、1 内部错误、2 用法错误、3 找不到输入、4 输入无效、5 输出不可用、6 有导出任务失败、130 被中断（Ctrl-C）。以后保持稳定。备选：BSD sysexits（64–78）。【已确定 2026-10-16】
@@ -1095,6 +1095,10 @@ photoframe mcp serve
 - [x] **D-90** 用户默认绑定按槽名（slotId）全局生效：不同预设里同名的槽共用一个默认素材。备选：按槽的类型（kind）匹配。【已确定 2026-10-16】
 - [x] **D-91** 库里已存的预设内容校验不通过时照常列出并警告，用户可以在 GUI 里修好；用它导出时在校验阶段报错。文件损坏或版本过新的预设跳过并警告，不改、不删。备选：校验不通过的也不列出。【已确定 2026-10-16】
 - [x] **D-92** 预设在库里存成 JSON（存储格式版本、来源、时间 + 与 `manifest.json` 完全相同的内容），每个预设一个文件；导出时再打包成 `.photoframe`。备选：库里直接存 `.photoframe` ZIP。【已确定 2026-10-16】
+- [x] **D-93** 逐项修改预设内容（画布、图层、输出）的 CLI 命令和 MCP 工具一起设计，两边用同一种字段路径写法（如 `preset set <预设> canvas.marginPx 80`）。在此之前，CLI 用 `preset export` → 修改 `manifest.json` → `preset import --replace`。备选：现在就加 `preset set`。【已确定 2026-10-16】
+- [x] **D-94** CLI 提供 `preset move <预设> --to user|imported`，在「用户保存」和「导入」两组之间移动（D-81、D-08）；内置预设不能移动。备选：只在 GUI 里拖放。【已确定 2026-10-16】
+- [x] **D-95** CLI 提供 `asset set-category <素材> signature|watermark|camera-badge`，修改素材分组（D-89、D-08）。备选：只在 GUI 里修改。【已确定 2026-10-16】
+- [x] **D-96** CLI 只用环境变量 `PHOTOFRAME_LIBRARY` 指定本地库目录，不加命令行参数；不设置时用 D-78 的默认目录。备选：再加全局参数 `--library`。【已确定 2026-10-16】
 
 ---
 
