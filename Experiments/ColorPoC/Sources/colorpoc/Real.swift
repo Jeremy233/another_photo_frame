@@ -44,8 +44,8 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
             let p = Pipeline(ws)
             let img = p.load(url)
             // headroom 未知（如 float TIFF）时由内容计算
-            let headroom = img.contentHeadroom > 1 ? img.contentHeadroom
-                : (isHDR ? max(p.ctx.calculateHDRStats(for: img)?.contentHeadroom ?? 1, 1) : 1)
+            // headroom 未知（如 float TIFF）时由内容估计；CI 的 calculateHDRStats 对非 HDR 颜色空间只返回 1
+            let headroom = img.contentHeadroom > 1 ? img.contentHeadroom : (isHDR ? p.estimateHeadroom(img) : 1)
             let (comp, pl, wmRect) = composeMain(p, photo: img, env: env)
             let photoRect = CGRect(origin: pl.origin, size: pl.size)
             // 工作空间内：需要 extended 的像素比例（<0 或 >1）
@@ -71,7 +71,7 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
             } else { ref2020 = f }
 
             // SDR 输出：SDR 源直接输出；HDR 源有 gain map 用原底图，否则 CIToneMapHeadroom
-            let base = url.deletingPathExtension().lastPathComponent
+            let base = url.lastPathComponent.replacingOccurrences(of: ".", with: "_")   // 同名 .jpg / .tif 不能互相覆盖
             let sdrComp: CIImage
             var sdrMethod = "直接"
             if isHDR {
@@ -94,35 +94,59 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
 
             // HDR 输出与读回
             if isHDR {
-                let hdrURL = realOut.appendingPathComponent("\(ws.id)/\(base)_hdr.jpg")
-                try p.writeJPEG(sdrComp, to: hdrURL, colorSpace: sRGB, hdr: comp)
-                let back = p.load(hdrURL)
-                let bf = p.renderFloat(back, rect: CGRect(origin: .zero, size: canvasIG))
-                var relAll: [Double] = [], relHi: [Double] = []
-                for y in Swift.stride(from: r.ys.lowerBound, to: r.ys.upperBound, by: 3) {
-                    for x in Swift.stride(from: r.xs.lowerBound, to: r.xs.upperBound, by: 3) {
-                        let yo = (ws.math.toXYZ * f.rgb(x, y)).y, yb = (ws.math.toXYZ * bf.rgb(x, y)).y
-                        guard yo > 0.01 else { continue }
-                        let e = abs(yb / yo - 1)
-                        relAll.append(e)
-                        if yo > 1 { relHi.append(e) }
+                // 两种写法：CI 默认（单通道 gain map，headroom 由 CI 推断）；RGB gain map + 显式标上源 headroom
+                for (variant, rgb, explicit) in [("默认", false, false), ("RGB + 显式 headroom", true, true)] {
+                    let hdrURL = realOut.appendingPathComponent("\(ws.id)/\(base)_hdr\(rgb ? "_rgb" : "").jpg")
+                    let hdrImage = explicit ? comp.settingContentHeadroom(headroom) : comp
+                    try p.writeJPEG(sdrComp, to: hdrURL, colorSpace: sRGB, hdr: hdrImage, rgbGainMap: rgb)
+                    let back = p.load(hdrURL)
+                    let bf = p.renderFloat(back, rect: CGRect(origin: .zero, size: canvasIG))
+                    var relAll: [Double] = [], relHi: [Double] = []
+                    for y in Swift.stride(from: r.ys.lowerBound, to: r.ys.upperBound, by: 3) {
+                        for x in Swift.stride(from: r.xs.lowerBound, to: r.xs.upperBound, by: 3) {
+                            let yo = (ws.math.toXYZ * f.rgb(x, y)).y, yb = (ws.math.toXYZ * bf.rgb(x, y)).y
+                            guard yo > 0.01 else { continue }
+                            let e = abs(yb / yo - 1)
+                            relAll.append(e)
+                            if yo > 1 { relHi.append(e) }
+                        }
                     }
+                    let sdrBack = p.renderRGBA8(p.load(hdrURL, expandHDR: false), rect: CGRect(origin: .zero, size: canvasIG))
+                    let bgBack = backgroundCheck(sdrBack, photo: photoRect, wm: wmRect)
+                    let fi = fileInfo(hdrURL)!
+                    let chroma = highlightChroma(bf, f, ws: ws, rect: photoRect)
+                    let sa = Stats(relAll), sh = Stats(relHi)
+                    let sdrDE = imageDeltaE(sdrBack, sdr, rect: photoRect)
+                    hdrRows.append([name, ws.id, variant, fi.hasISOGainMap ? "ISO ✅" : "❌", fi.profileName ?? "–", f2(Double(headroom)),
+                                    f2(Double(back.contentHeadroom)), "\(f3(sa.median)) / \(f3(sa.p95))",
+                                    relHi.isEmpty ? "无 >1 像素" : "\(f3(sh.median)) / \(f3(sh.p95))（\(relHi.count) 点）",
+                                    "\(f4(chroma.median)) / \(f4(chroma.p95))", "\(bgBack.maxDev)",
+                                    "\(f2(sdrDE.median)) / \(f2(sdrDE.p95))"])
                 }
-                let sdrBack = p.renderRGBA8(p.load(hdrURL, expandHDR: false), rect: CGRect(origin: .zero, size: canvasIG))
-                let bgBack = backgroundCheck(sdrBack, photo: photoRect, wm: wmRect)
-                let fi = fileInfo(hdrURL)!
-                let chroma = highlightChroma(bf, f, ws: ws, rect: photoRect)
-                let sa = Stats(relAll), sh = Stats(relHi)
-                hdrRows.append([name, ws.id, fi.hasISOGainMap ? "ISO ✅" : "❌", fi.profileName ?? "–", f2(Double(headroom)),
-                                f2(Double(back.contentHeadroom)), "\(f3(sa.median)) / \(f3(sa.p95))",
-                                relHi.isEmpty ? "无 >1 像素" : "\(f3(sh.median)) / \(f3(sh.p95))（\(relHi.count) 点）",
-                                "\(f4(chroma.median)) / \(f4(chroma.p95))", "\(bgBack.maxDev)",
-                                "\(f2(imageDeltaE(sdrBack, sdr, rect: photoRect).median)) / \(f2(imageDeltaE(sdrBack, sdr, rect: photoRect).p95))"])
             }
         }
         sdrOutputs[name] = perWS
     }
 
+    // 7.0 解码一致性：CI（缩放到长边 1032）对比 ImageIO 缩略图；float32 源分别测"直接交给 CI"与"先转 RGBAh"
+    var consRows: [[String]] = []
+    for url in files {
+        let isF32 = fileInfo(url).map { $0.isFloat == true && $0.depth == 32 } ?? false
+        for normalize in isF32 ? [false, true] : [true] {
+            Pipeline.normalizeFloat32 = normalize
+            for ws in [WorkingSpace.all[2], WorkingSpace.all[0]] {
+                let c = decodeConsistency(url, ws: ws)
+                consRows.append([url.lastPathComponent, ws.id, isF32 ? (normalize ? "先转 RGBAh" : "直接交给 CI") : "直接交给 CI",
+                                 f4(c.meanAbs), String(format: "%.2f%%", c.badPercent)])
+            }
+        }
+        Pipeline.normalizeFloat32 = true
+    }
+    R.line("### 7.0 解码一致性（Core Image 缩放结果 vs ImageIO 缩略图）")
+    R.line()
+    R.line("两者都缩到长边 1032 后在 extended linear Rec.2020 中比较。坏像素 = G 通道差 > 0.2。正常值只有重采样差异（< 0.3%）。")
+    R.line()
+    R.table(["文件", "工作空间", "送入 CI 的方式", "平均绝对差", "坏像素"], consRows)
     R.line("### 7.1 文件识别")
     R.line()
     R.table(["文件", "尺寸", "位深", "ImageIO ProfileName", "文件内颜色描述", "CIImage.colorSpace", "gain map", "contentHeadroom", "EXIF 方向", "判定"], infoRows)
@@ -151,7 +175,7 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
         R.line()
         R.line("相对误差 = |读回 Y / 写出前合成 Y − 1|。SDR 底图 ΔE = 读回底图 vs 我们的 SDR 渲染。")
         R.line()
-        R.table(["文件", "工作空间", "gain map", "底图 ICC", "源 headroom", "读回 headroom", "全部像素相对误差 中位/P95",
+        R.table(["文件", "工作空间", "写法", "gain map", "底图 ICC", "源 headroom", "读回 headroom", "全部像素相对误差 中位/P95",
                  ">1 高光相对误差 中位/P95", "高光 Δu′v′ 中位/P95", "SDR 底图背景最大偏差", "SDR 底图 ΔE 中位/P95"], hdrRows)
     }
 
@@ -198,4 +222,28 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
         R.line()
         R.table(["照片", "工作空间", "比较", "全部像素 中位/P95", "sRGB 域内 中位/P95", "域外像素占比", "D-19（中位≤1, P95≤2）"], d19Rows)
     }
+}
+
+/// CI 管线的缩放结果与 ImageIO 自己的降采样解码是否一致（用来抓 CI 渲染错误）。
+func decodeConsistency(_ url: URL, ws: WorkingSpace) -> (meanAbs: Double, badPercent: Double) {
+    let src = CGImageSourceCreateWithURL(url as CFURL, nil)!
+    let thumb = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 1032,
+        kCGImageSourceShouldAllowFloat: true] as CFDictionary)!
+    let p = Pipeline(ws)
+    let out2020 = WorkingSpace.all[2].cg
+    let rect = CGRect(x: 0, y: 0, width: thumb.width, height: thumb.height)
+    let ref = p.renderFloat(CIImage(cgImage: thumb), rect: rect, colorSpace: out2020)
+    let img = p.load(url, expandHDR: false)
+    let e = img.extent
+    let s = Double(thumb.width) / e.width
+    let scaled = p.scaled(img.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY)).clampedToExtent(), by: s).cropped(to: rect)
+    let got = p.renderFloat(scaled, rect: rect, colorSpace: out2020)
+    var sum = 0.0, bad = 0
+    for i in Swift.stride(from: 0, to: got.px.count, by: 4) {
+        for c in 0..<3 { sum += Double(abs(got.px[i + c] - ref.px[i + c])) }
+        if abs(got.px[i + 1] - ref.px[i + 1]) > 0.2 { bad += 1 }
+    }
+    let n = got.px.count / 4
+    return (sum / Double(n * 3), 100 * Double(bad) / Double(n))
 }
