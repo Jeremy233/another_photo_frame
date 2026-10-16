@@ -31,6 +31,10 @@ swift test
 | `PanoramaSlice` | 每张切片：`frame`（长卷中 `[kW,(k+1)W)`）、本地 `imageRect`、`backgroundLeft/Right`、本地 `transform`（= 全局变换平移 −kW）、`sourceRegion`（本切片用到的源图区域，供按区域解码）。 |
 | `PanoramaWarning` | `notLandscape`、`notWideEnough`、`exceedsCarouselLimit`、`increasedSlideCount`；每个都带稳定 `code`。 |
 | `GeometryError` | 参数错误，带稳定 `code` 和中文 `message`。 |
+| `OverlayGeometry` | §7.1 装饰图层参数：九宫格 `anchor`、`reference`（`.photo(.outside)` 默认／`.photo(.inside)`／`.canvas`）、`offset`（px）、`size`（`.fixed` 或 `.fitting(内容, maximum:)`）、`visibility`（`.coverOnly` 默认／`.allSlides`／`.selectedSlides`）。 |
+| `OverlayPlacement(fit:geometry:)` / `(crop:geometry:)` / `(canvas:photoRect:geometry:)` | 图层在画布中的像素矩形 `rect` 和 `warnings`（`OverlayWarning`：`exceedsCanvas`、`overlapsPhoto`、`insufficientMargin`）。 |
+| `PanoramaLayout.overlayPlan(for:)` | 图层在封面与各切片上的位置；`missingPages` 列出超出实际页数的指定页码。 |
+| `OverlayError` | 图层参数错误，带稳定 `code` 和中文 `message`。 |
 
 示例：
 
@@ -62,6 +66,19 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 - N ≥ 自动张数，照片总是铺满渲染高度 `H − 2v`，宽度不足的部分只在长卷两端补底色。
 - AC-03（65:24 → 小红书）：照片宽 2925，左右补边精确值 157.5，栅格化为左 157、右 158。
 
+## 装饰图层定位（§7.1、D-12）
+
+- **参照物**：默认以照片边缘为参照（D-12），照片因比例变化移动时图层跟着走；也可以以画布为参照。
+- **内侧／外侧**：外侧 = 留白区域（默认）。锚点在上、下两行时向上／下伸出照片，水平方向仍按左、中、右对齐照片边缘（「照片右下角下方 16 px」= `.bottomRight`、外侧、`offset (0, 16)`）；中间行的左、右锚点向左／右伸出；正中锚点没有外侧，抛 `overlay.center_anchor_outside`。
+- **偏移**：伸出方向上是与照片的间隙，正值远离照片；对齐到边缘的方向上是离该边的距离，正值向中心收；居中的方向上是直接平移，正值向右／下。换锚点时偏移的含义不变。
+- **取整**：照片矩形、偏移、尺寸都是整数，只有居中需要取整：左／上 = floor((参照长度 − 图层长度) / 2)，多出的 1 px 在右／下，与 D-22 一致（图层比参照宽时向负无穷取整）。`.fitting` 缩小后的尺寸取最近整数（.5 进位），不超过最大尺寸。
+- **警告**：`exceedsCanvas` 给出各边超出的像素；`overlapsPhoto` 只在留白模式（`.photo(.outside)` 和 `.canvas`）下检查，恰好贴住照片边缘不算遮挡；`insufficientMargin` 只在照片外侧检查伸出方向，需要量 = 偏移 + 图层尺寸。恰好贴住画布边缘没有警告。
+- **全景切片**：页码是轮播位置，0 = 封面，切片 k 是第 k + 1 页（与预览栏 `[Cover] [1] … [N]` 一致）。
+  在切片上以照片为参照时，参照的是**这张切片里的照片部分**（`PanoramaSlice.imageRect`），不是整张切片：
+  这样「照片内侧右下角」在最外侧切片上会落在照片结束处，而不是落在补边的底色上。整张都是底色的切片上，
+  以照片为参照的图层不绘制（`placement == nil`）；以画布为参照时参照整张切片，照常绘制。
+  切片默认铺满高度（v = 0），照片外侧上下没有留白，会报 `insufficientMargin`；要在切片上显示，一般选照片内侧或画布参照。
+
 ## 已确定
 
 以下规则已由用户确认（2026-10-16），规范 §5.2、§5.3、D-11、D-22 已同步更新：
@@ -81,3 +98,14 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 全部是 `Codable`、`Sendable` 的纯数据。读写 JSON 用 `PresetSchema`（版本检查、迁移、不认识字段的登记），
 内容校验用 `ExportPreset.validate()`。`.photoframe` 打包、导入检查和素材绑定在 `PhotoFrameStorage`，
 字段命名的待确认项见 `PhotoFrameStorage/README.md`。
+
+## 待确认
+
+以下是实现装饰图层定位时发现的规范歧义，目前按括号中的方式实现，未改规范：
+
+1. **角锚点放在外侧时朝哪个方向伸出**（按竖直方向：上／下）。§7.1 只说九宫格 + 外侧，D-12 的例子「照片右下角下方」是竖直方向。是否需要让用户选择水平伸出（照片右侧、底边对齐）或对角伸出？
+2. **以画布为参照时是否算「留白模式」**（算：仍检查是否遮挡照片）。§7.1 把「渲染空间」（画布／留白／照片）和「参照物」（照片／画布）分成两个字段，本实现只用 `reference` 表达：`.photo(.inside)` 对应「照片」渲染空间，其余都按「留白，不遮挡照片」检查。是否需要独立的渲染空间字段，例如以画布为参照但允许叠在照片上？
+3. **偏移的符号约定**（见上文「偏移」）。规范只说 offset 以 px 为单位，没有说正方向。
+4. **全景切片上的参照**（这张切片里的照片部分）。§5.3 只规定默认不在切片上显示；如果改为参照整张切片，外侧锚点在 v = 0 时没有意义。
+5. **`selectedSlides` 的页码基准**（轮播位置，0 = 封面）。规范和 §8.1 示例 `"visibleOn": "coverOnly"` 没有给出指定页的格式；手动张数改动后超出范围的页码目前只在 `missingPages` 中列出，不报错。
+6. **图层尺寸是否随画布缩放**（不缩放，固定 px）。§8.1 示例 `"sizePx": [48, 48]` 是固定像素；同一预设用于 1080 宽以外的画布时是否按比例缩放，规范未说明。
