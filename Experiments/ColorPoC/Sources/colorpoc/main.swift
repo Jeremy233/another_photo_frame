@@ -17,6 +17,8 @@ case "fixtures":
     for f in try FileManager.default.contentsOfDirectory(at: fixtures.dir, includingPropertiesForKeys: nil).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
         if let i = fileInfo(f) { print(String(data: try enc.encode(i), encoding: .utf8)!) }
     }
+case "inspect":
+    inspect(args.dropFirst().map { URL(fileURLWithPath: $0) })
 case "run":
     let only = option("--only")
     let R = Results()
@@ -44,6 +46,7 @@ default:
     print("""
     usage:
       colorpoc fixtures                 生成 fixtures/ 下的测试图
+      colorpoc inspect <文件或目录>...   检查导出的样本（ICC、gain map、headroom、色域）
       colorpoc run [--only a,b] [--real <dir>]
                                         跑全部实验（probes,chart,wide,gradient,alpha,orientation,hdr），
                                         结果写到 out/results*.md|json；--real 额外跑本地真实照片目录（不入库）

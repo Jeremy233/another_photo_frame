@@ -224,13 +224,14 @@ struct FileInfo: Codable {
 }
 
 func fileInfo(_ url: URL) -> FileInfo? {
-    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    // 坑：对 Lightroom 的 gain map JPEG 读过属性后，CGImageSourceGetType 会变成 public.heic，所以必须最先取类型。
+    let type = (CGImageSourceGetType(src) as String?) ?? "?"
+    guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
     let img = CGImageSourceCreateImageAtIndex(src, 0, nil)
     let iso = CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
     let apple = CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
     let dicts = props.compactMap { k, v in v is [CFString: Any] ? (k as String) : nil }.sorted()
-    let type = (CGImageSourceGetType(src) as String?) ?? "?"
     return FileInfo(
         file: url.lastPathComponent, type: type,
         width: props[kCGImagePropertyPixelWidth] as? Int ?? 0, height: props[kCGImagePropertyPixelHeight] as? Int ?? 0,
