@@ -10,7 +10,7 @@
 - 所以选择要看**稳健性**：在 Rec.2020 里，sRGB、Display P3、Adobe RGB 以及 PQ/HLG HDR 内容都落在非负区间，只有 ProPhoto 的极端颜色才是负值；换成 extended linear sRGB，所有 P3 / Adobe RGB 饱和色都会变成负值。负值正是后面最容易出事的地方：非 extended 的 CG 上下文、ImageIO 编码器、Metal unorm 纹理都会截掉负值，自定义的非线性 kernel（tone curve、gain map 比值、色域压缩）遇到负值也会出错。
 - **真实照片验证了同样的结论**（Lightroom 导出的 3 张 HDR × 3 种格式，以及 2 张 SDR × 6 种色彩空间/格式）：三个空间的 SDR 输出之间 ΔE 中位 0.00、P95 ≤ 0.51，没有截断。HDR 写出再读回，亮度误差 P95 ≤ 3.2%（§8）。
 - **D-19：** 合成色卡在 sRGB 色域内的颜色远低于暂定阈值。最差的情况是 8-bit ProPhoto JPEG 输入、JPEG Q100 输出，中位数 0.44、P95 1.04；16-bit TIFF 输入、PNG 输出为 0.05 / 0.27。阈值只能对 sRGB 色域内的颜色定义，超出 sRGB 的颜色需要另定映射策略。真实照片（Lightroom 同一张照片导出四种色彩空间）同样达标：16 位 TIFF 的 ΔE 为 0.00，8 位 JPEG 最差的是 ProPhoto，中位 0.52、P95 1.76（§7）。
-- 同时查到 18 个会悄悄改颜色或出错的坑（§5）。最重要的几个：ImageIO 写 sRGB JPEG **不嵌 ICC**；ImageIO 写 gain map 时如果 CGImage **没带 headroom，HDR 会被静默丢掉**；**Lanczos 缩放会在透明边缘和照片边缘振铃**；**CI 的自动 tone map 只在某些图结构下生效**；**CI 直接使用大尺寸 32 位浮点源图会渲染出错位图块**（Lightroom 32 位 TIFF 实测，需要先转 RGBAh）。
+- 同时查到 20 个会悄悄改颜色或出错的坑（§5）。最重要的几个：ImageIO 写 sRGB JPEG **不嵌 ICC**；ImageIO 写 gain map 时如果 CGImage **没带 headroom，HDR 会被静默丢掉**；**Lanczos 缩放会在透明边缘和照片边缘振铃**；**CI 的自动 tone map 只在某些图结构下生效**；**CI 直接使用大尺寸 32 位浮点源图会渲染出错位图块**（Lightroom 32 位 TIFF 实测，需要先转 RGBAh）。
 
 ## 1. 环境与复现
 
@@ -142,6 +142,8 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 16. **32 位浮点 TIFF 没有 headroom 元数据。** 它的颜色空间 `isHDR() == false`，`contentHeadroom` 为 0，CI 的 `calculateHDRStats` 也只返回 1。如果直接把 headroom 交给 tone map，等于不压缩，高光被硬截断。需要自己根据画面内容估算。
 17. **照片合成之后，CI 写 gain map 时会自己推断出偏低的 headroom。** 合成后的图丢失了 `contentHeadroom`：grand_teton 源 headroom 是 3.28，CI 推成 1.68，导致高光读回误差中位 11%。在写出前用 `settingContentHeadroom` 显式标上源 headroom，并改用 RGB gain map（`.hdrGainMapAsRGB`）后，高光误差降到 0.4%，Δu′v′ 降为约 1/10。
 18. **读过属性后，`CGImageSourceGetType` 会把 Lightroom 的 gain map JPEG 报成 `public.heic`。** 先调用 `CGImageSourceGetType` 再读属性，才能拿到正确的 `public.jpeg`。正式代码判断输入格式时要么最先取类型，要么自己看文件头。
+19. **Lightroom 勾选 Maximize Compatibility 导出的 HDR TIFF，Apple 只读得到 SDR，HDR 被静默丢掉。** 这种 TIFF 的主图（IFD0）是 Lightroom 的 SDR 版本，gain map 放在 SubIFD 里：Photometric 用了 Apple 不认识的值 52553，元数据在私有标签 52557 里，按 ISO 21496-1 二进制格式解析得到 alternate headroom 2.64、RGB 三通道，和同一张照片 JPEG 里的 gain map 一致。ImageIO 和 CI 都忽略这个 SubIFD：`contentHeadroom` 为 1，也不报告 gain map。要支持这种文件，必须自己检测 SubIFD，否则至少要提示"HDR 部分未读取"。
+20. **Apple 会把 Lightroom 16 位 SDR "Rec. 2020" TIFF 解得偏暗。** 这份 ICC（v4，504 B）的 TRC 是 BT.709/2020 OETF 的逆曲线（para type 3，g = 2.222），和像素的实际编码完全吻合（误差 0.1%）。但 CG/ColorSync 和 CI 实际都按 γ2.4 解码：线性值只有正确值的 84%，比 Lightroom 自己的 SDR 版本暗 8.8 个 L*。同样设置导出的 32 位线性 TIFF 不受影响，与 JPEG 的 SDR 底图 ΔE 中位 0.00。
 
 ## 6. D-03 推荐与理由
 
@@ -269,6 +271,17 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 - 按画面峰值设置 headroom 后，`CIToneMapHeadroom` 在三张照片上都最接近 Lightroom 的 SDR 版本，截断也最少，只是暗部比 Lightroom 暗约 2 个 L*。坑 6 里"太暗"的问题，原因是用了 PQ 默认 headroom 4.93，而不是曲线本身。
 - Apple 软肩和 BT.2390 都基本不动中间调，所以比 Lightroom 的 SDR 版本亮（中间调 ΔL* 约 +5 到 +11），高光截断也多。
 - 没有任何全局曲线能完全复现 Lightroom 的 SDR 版本（P95 仍有 6–8）。Lightroom 的 SDR 底图是单独调过的。
+
+### 8.6 Lightroom 勾选 Maximize Compatibility 导出的 HDR TIFF
+
+aurora1 用 TIFF、HDR Rec.2020、勾选 Maximize Compatibility 又导出了 16 位和 32 位两份（`aurora1_hdr_com.tif`、`aurora1_hdr_com32.tif`）。
+
+| | 主图（IFD0） | SubIFD | Apple 读到的内容 | 与 JPEG 里 Lightroom SDR 底图的 ΔE |
+|---|---|---|---|---|
+| 16 位 | SDR 版本，16 位，"Rec. 2020" ICC（逆 OETF 曲线） | ISO 21496-1 RGB gain map（Photometric 52553） | 只有 SDR；按 γ2.4 解码，偏暗（坑 20） | 中位 8.31，ΔL* −8.8 |
+| 32 位 | SDR 版本，32 位线性浮点，"Linear Rec. 2020" | 同上（16 位） | 只有 SDR | **中位 0.00，P95 0.68** |
+
+结论：这种 TIFF 里确实带着 Lightroom 的 SDR 版本，但 Apple 框架读不出其中的 HDR（坑 19）。16 位那份的 SDR 还会被解暗（坑 20）。要做到"TIFF 也用 Lightroom 的 SDR、同时保留 HDR"，需要自己解析 SubIFD 里的 gain map。
 
 ## 9. 对规范其它部分的影响（只列出，不改）
 

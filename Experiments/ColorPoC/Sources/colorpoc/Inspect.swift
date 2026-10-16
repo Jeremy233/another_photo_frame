@@ -73,3 +73,26 @@ func inspect(_ urls: [URL]) {
         print("   超出色域（有负分量）：sRGB \(String(format: "%.2f%%", 100 * Double(negS) / n))  P3 \(String(format: "%.2f%%", 100 * Double(negP3) / n))  Rec.2020 \(String(format: "%.2f%%", 100 * Double(neg2020) / n))")
     }
 }
+
+// MARK: - compare：两张图（都按 SDR 读取，不展开 gain map）缩到长边 1200 后在 sRGB 8-bit 下比较 ΔE2000
+
+func compareSDR(_ a: URL, _ b: URL) {
+    let p = Pipeline(WorkingSpace.all[2])
+    func render(_ u: URL) -> FImage {
+        let img = p.load(u, expandHDR: false)
+        let e = img.extent
+        let s = 1200 / max(e.width, e.height)
+        let rect = CGRect(x: 0, y: 0, width: (e.width * s).rounded(), height: (e.height * s).rounded())
+        let small = p.scaled(img.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY)).clampedToExtent(), by: s).cropped(to: rect)
+        return p.renderRGBA8(small, rect: rect)
+    }
+    let fa = render(a), fb = render(b)
+    guard fa.w == fb.w, fa.h == fb.h else { print("尺寸不同：\(fa.w)×\(fa.h) vs \(fb.w)×\(fb.h)"); return }
+    var de: [Double] = [], dl: [Double] = []
+    for y in 0..<fa.h { for x in 0..<fa.w {
+        let la = lab(fromXYZ: Spaces.srgb.xyz(fromEncoded: fa.rgb(x, y))), lb = lab(fromXYZ: Spaces.srgb.xyz(fromEncoded: fb.rgb(x, y)))
+        de.append(deltaE2000(la, lb)); dl.append(la.x - lb.x)
+    } }
+    let s = Stats(de), l = Stats(dl)
+    print("\(a.lastPathComponent) vs \(b.lastPathComponent)：ΔE 中位 \(f2(s.median)) / P95 \(f2(s.p95)) / max \(f2(s.max))；ΔL* 中位 \(f2(l.median))")
+}
