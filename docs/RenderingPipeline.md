@@ -1,0 +1,119 @@
+# 渲染管线（PhotoFrameRendering）
+
+> 对应规范 §5、§6、§7、§9.1、§13.2。代码在 `Packages/PhotoFrameRendering`，依赖 `PhotoFrameCore`（几何、预设模型）与 `PhotoFrameStorage`（素材解析结果）。
+> 色彩相关的每条规则都来自[色彩 PoC 报告](color-poc-report.md)，文中的「坑 N」指报告 §5 的编号。
+
+## 1. 对外接口
+
+```swift
+let renderer = PhotoFrameRenderer()          // 可被多个任务并发使用
+let result = try await renderer.render(job: RenderJob(
+    sourceURL: source,                       // 只读
+    preset: presetSnapshot,                  // 排队时的预设快照（§8.3）
+    assets: assets,                          // slotId → RenderAsset(fileURL, format)
+    skippedLayerIds: skipped,                // SlotResolution.skippedLayerIds
+    outputDirectory: tempDir,                // 调用方创建的临时目录
+    sourceColorOverride: nil,                // D-04：按源图或任务覆盖输入色彩空间
+    maxCarouselItems: platform.maxCarouselItems,
+    metadataOverrides: ["camera": "Mamiya 7"]
+)) { progress in … }                        // decoding → rendering → encoding
+
+result.outputs      // [RenderedOutput]：角色、文件、尺寸、动态范围、ICC、headroom、字节数、照片矩形、图层矩形
+result.diagnostics  // RenderDiagnostics：源格式、方向、位深、ICC 来源、HDR 类型、tone map 方法、颜色变换步骤
+result.warnings     // [RenderWarning]：稳定 code + 中文 message + 页码 / 图层
+```
+
+- `RenderJob.assets(from: SlotResolution, fileURL:)` 把 `SlotResolver` 的结果和素材库路径拼成素材表。
+- 渲染器只把成品写进 `outputDirectory`，文件名固定：单页／封面 `00.<ext>`，切片 k 为 `<k+1 两位数>.<ext>`。
+  命名、冲突处理、校验后原子发布由 PhotoFrameApplication 负责（§9.2）。目标文件已存在时不覆盖，报 `render.write_failed`。
+- 取消：在阶段之间和每一页之前检查 `Task.isCancelled`；取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
+- 错误：`RenderError(code, message, hint)`，code 稳定（`render.*`，几何与图层错误沿用 Core 的 `geometry.*`、`overlay.*`）。
+
+## 2. 流程
+
+```text
+probe（读属性：尺寸、方向）
+  → PageLayout：FitLayout / CropLayout / PanoramaLayout（PhotoFrameCore，不重算几何）
+  → 解码（按输出所需尺寸的 2 倍降采样，D-18）→ 输入颜色决策 → HDR 识别
+  → 图层：内容 → OverlayLayer.geometry → OverlayPlacement / overlayPlan（Core）→ 绘制
+  → 每页：背景 + 照片 + 图层，在工作空间合成
+  → 编码：SDR（sRGB 8-bit → ImageIO）或 HDR（CI gain map JPEG）→ 补 ICC → 写临时文件
+```
+
+### 2.1 解码与输入颜色（§6.2、D-04）
+
+| 步骤 | 做法 | 依据 |
+|---|---|---|
+| 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
+| 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 34675 | 坑 1 |
+| 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖 | D-04 |
+| 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
+| 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
+| BT.709/2020 参数曲线 ICC | TRC 为 `para` type 3、g≈2.222、d≈0.081 时改写成 4096 点 `curv`，按 ICC 本身解码 | 坑 20（ColorSync 当 γ2.4 解码，偏暗约 16%） |
+
+### 2.2 HDR 识别与 SDR 版本（§6.7）
+
+| 源 | 识别 | SDR 输出 | HDR headroom |
+|---|---|---|---|
+| gain map JPEG（ISO 21496-1 / Apple） | ImageIO 辅助数据 | 文件底图（不 tone map） | 文件元数据（CI 展开后的 `contentHeadroom`） |
+| Lightroom「最大化兼容性」TIFF | 自己解析 SubIFD（Photometric 52553、标签 52557） | IFD0 主图 | 元数据两个 headroom 取大者（Lightroom 32 位文件会写反） |
+| PQ / HLG PNG、TIFF | 颜色空间使用 ITU-R 2100 传递函数 | `CIToneMapHeadroom`，source = 画面峰值，target = 1 | 画面峰值 |
+| 浮点 TIFF，峰值 > 1 | `IsFloat` | 同上 | 画面峰值 |
+
+- 画面峰值 = 线性 sRGB 分量最大值的 99.95 分位（降到长边 1024 统计），不用 PQ 元数据的默认 4.93。
+- 兼容 TIFF：只支持经典 TIFF、未压缩、交错、条带布局；底图按 ICC 曲线自己线性化（同样绕开坑 20），与 gain map 一起按 `step × step` 盒式平均降采样后按 ISO 21496-1 完全展开（weight = 1）。解析失败时按 SDR 读入，警告 `source.hdr_not_read`。
+- tone map 只作用于照片图层；背景、水印、文字是 SDR 元素，按参考白放置（§6.7 第 3 条、坑 10）。
+
+### 2.3 合成（§6.4、§6.5、§5）
+
+- 工作空间 extended linear Rec.2020，`workingFormat = RGBAh`，`cacheIntermediates = false`（D-03）。
+- 照片缩放：`clampedToExtent` → `CILanczosScaleTransform`（x、y 分别缩放到 D-22 的像素尺寸）→ 裁回整数矩形（坑 7）。比例裁切先在源图里平移到裁切框再缩放。
+- 全景：照片在长卷里只缩放一次（`pixelImageRect` 尺寸），每张切片做整数平移后裁出 `[kW, (k+1)W)`。测试验证切片拼起来与整条长卷逐像素相同。
+- 背景：预设 hex 按 sRGB 编码构造 `CIColor`，由 CI 转入工作空间；无损 PNG 输出精确等于原值（测试验证 `#FAFAF8` → `(250,250,248)`）。全景切片用 `padColor`。
+- 图层：按 `zIndex` 升序（同值按预设顺序）。
+  - 文字：Core Text 画进 extended linear Rec.2020 的 RGBAh 上下文（坑 8）；框比文字小时等比缩小，不放大；水平对齐跟随锚点，竖直居中。
+  - PNG：先用 CG 画成预乘 RGBAh，再双线性缩放（坑 7；CI 直接对非预乘 PNG 采样会在浅色背景上出现灰边，测试 `alphaHalo` 覆盖）；等比放进图层框并居中。
+  - SVG：受限解析（下节），矢量直接画到最终尺寸。
+  - 不透明度：只缩放 alpha（CI 颜色滤镜在非预乘值上运算）；50% 白叠在 `#202020` 上得到 189（线性光），不是 144（gamma 空间）。
+
+### 2.4 受限 SVG（D-09）
+
+支持 `svg`、`g`、`path`（全部命令，含圆弧）、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；属性 `fill`、`stroke`、`stroke-width`、各种 `opacity`、`fill-rule`、线帽线接、`transform`、`style` 中的同名声明。
+整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、`script`、`foreignObject`、`image`、`use`、`iframe`、`style` 元素、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 2 MiB 或 20 000 个元素。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
+
+### 2.5 `metadataText` 占位符
+
+`{camera}`、`{make}`、`{model}`、`{lens}`、`{focalLength}`、`{focalLength35}`、`{aperture}`、`{shutter}`、`{iso}`、`{date}`，取自 EXIF / TIFF 字典；`RenderJob.metadataOverrides` 优先。缺失的占位符替换为空并警告 `overlay.metadata_missing`。
+
+### 2.6 编码与元数据（§6.8、D-06）
+
+- SDR：CI 把页面渲染成 sRGB 8-bit（超出 sRGB 的颜色逐通道截断），再交给 ImageIO 编码（坑 3：只有 sRGB 8-bit 输入时 ImageIO 不改像素）。JPEG 质量 = `quality / 100`（默认 Q100）。
+- HDR（只支持 JPEG）：`CIContext.jpegRepresentation` + `.hdrImage`，HDR 图显式 `settingContentHeadroom(源 headroom)`，`.hdrGainMapAsRGB`（坑 4、5、17）。源图不是 HDR 时按 SDR 输出并警告 `output.hdr_source_not_hdr`；HDR + PNG 报 `render.hdr_format_unsupported`。
+- ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
+- 元数据默认全部不写出；方向不写（像素已校正）。「保留拍摄参数」只复制 Make、Model 与曝光／镜头相关的 EXIF 键；「保留 GPS」复制 GPS 字典。序列号、机主、MakerNote、用户注释、XMP / IPTC、缩略图从不复制。HDR 文件在不丢 gain map 的前提下无损合并元数据，做不到时省略并警告。
+
+## 3. 测试（Swift Testing）
+
+```bash
+cd Packages/PhotoFrameRendering
+swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
+```
+
+测试只用代码合成的图片和 `Experiments/ColorPoC/fixtures` 里的合成 fixture。
+
+| 文件 | 覆盖 |
+|---|---|
+| `ColorManagementTests` | §6.9：四种 ICC 色卡 ΔE（16 位 TIFF 与 8 位 JPEG，D-19 暂定阈值）、缺 ICC 警告与覆盖、`#FAFAF8` 精确、16 位精度、透明素材无黑边白边、线性光不透明度、方向 1/3/6/8（含降采样解码）、输出 ICC、坑 20、广色域截断 |
+| `LayoutRenderingTests` | Fit、比例裁切、AC-01 / AC-02 / AC-03、全景切片按位重建长卷、手动张数 |
+| `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
+| `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
+| `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
+
+更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。黄金文件是在 macOS 27 上记录的；CI 是 macOS 26，若编码器差异超出容差，需要在 26 上重录（与 D-19 的基线问题相同）。
+
+## 4. 尚未实现
+
+- 预览模式（§11.2 `renderPreview`：低分辨率、同一管线）。
+- 超出 sRGB 色域的感知映射（目前逐通道截断，§6.9、坑 11）。
+- 压缩的「最大化兼容性」TIFF（需要 LZW / ZIP 解压）。
+- 16 位输出（届时按任务改用 RGBAf，D-03）。
