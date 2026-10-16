@@ -299,7 +299,13 @@ aurora1 用 TIFF、HDR Rec.2020、勾选 Maximize Compatibility 又导出了 16 
 
 **注意：Lightroom 写的元数据有一处不一致。** 32 位文件把两个 headroom 写反了（底图 2.641、目标 0），16 位文件是正常的（0 / 2.641）。两份的 gain map 数据和其它参数完全相同，完全展开时都能得到正确的 HDR。但如果按 ISO 21496-1 的权重公式，根据显示器 headroom 做插值，32 位文件会算出相反的方向。所以读取时不能信任这两个字段的先后顺序，应取较大的那个作为 HDR headroom。
 
-目视检查文件：`Experiments/ColorPoC/out/gainmap-tiff/aurora1_hdr_com_reconstructed_hdr.jpg`。它是 1/4 分辨率、用 CI 写出的 HDR JPEG，可以在 HDR 屏幕上和 `aurora1_hdr.jpg` 并排比较。
+**目视检查（用户，MacBook Pro 14 寸内建 XDR 屏，左右分屏）：**
+
+- 第一次用的是 1/4 分辨率的还原版，其 headroom 元数据按采样峰值写成 5.75（原片为 6.26）。感觉原片最亮的绿色略亮，整体差不多。
+- 用 CI 模拟不同屏幕 headroom 部分展开：屏幕 2–4× 时，还原版最亮 1% 像素反而亮 2–4%；完全展开时两者相差不到 0.5%。完全展开时，sRGB 底图和 P3 底图也没有差别。
+- 换成全分辨率、headroom 与底图色域都和原片一致的还原版（`colorpoc gainmap-tiff --full`，输出 `out/gainmap-tiff/aurora1_hdr_com_reconstructed_hdr_full.jpg`）后，**体感与原片差不多**。
+
+结论：自己还原出的 HDR 在数值和观感上都与 Lightroom 的 HDR JPEG 一致。写 HDR 输出时，headroom 元数据应取源文件的值，不要用采样估出的峰值。
 
 ## 9. 对规范其它部分的影响（只列出，不改）
 
