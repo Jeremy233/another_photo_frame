@@ -5,15 +5,15 @@ let instagram = PixelSize(width: 1080, height: 1440)
 let xiaohongshu = PixelSize(width: 1080, height: 1080)
 let douyin = PixelSize(width: 1080, height: 1920)
 
-/// 检查 Fit 的通用不变量：留白 ≥ m、对称、尺寸与精确值差 ≤ 1 px、至少一边贴住内框。
+/// 检查 Fit 的通用不变量：留白 ≥ m、两侧差 0 或 1 px（多的在右／下）、尺寸为精确值四舍五入、至少一边贴住内框。
 func expectFitInvariants(_ fit: FitLayout, sourceLocation: SourceLocation = #_sourceLocation) {
     let m = fit.margins
     #expect(m.minimum >= fit.minimumMargin, sourceLocation: sourceLocation)
-    #expect(m.left == m.right, sourceLocation: sourceLocation)
-    #expect(m.top == m.bottom, sourceLocation: sourceLocation)
-    // 精确值不足 2 px 的退化情况会被抬到最小 1 或 2 px，其余情况误差 ≤ 1 px。
-    #expect(fit.exactRect.width < 2 || abs(Double(fit.pixelRect.width) - fit.exactRect.width) <= 1, sourceLocation: sourceLocation)
-    #expect(fit.exactRect.height < 2 || abs(Double(fit.pixelRect.height) - fit.exactRect.height) <= 1, sourceLocation: sourceLocation)
+    #expect((0...1).contains(m.right - m.left), sourceLocation: sourceLocation)
+    #expect((0...1).contains(m.bottom - m.top), sourceLocation: sourceLocation)
+    // 精确值不足 0.5 px 的退化情况会被抬到 1 px，其余情况误差 ≤ 0.5 px。
+    #expect(fit.exactRect.width < 0.5 || abs(Double(fit.pixelRect.width) - fit.exactRect.width) <= 0.5 + 1e-9, sourceLocation: sourceLocation)
+    #expect(fit.exactRect.height < 0.5 || abs(Double(fit.pixelRect.height) - fit.exactRect.height) <= 0.5 + 1e-9, sourceLocation: sourceLocation)
     #expect(m.left == fit.minimumMargin || m.top == fit.minimumMargin, sourceLocation: sourceLocation)
     // 变换把源图四角映射到像素矩形四角。
     let br = fit.transform.apply(Point(x: Double(fit.source.width), y: Double(fit.source.height)))
@@ -46,20 +46,31 @@ struct FitLayoutTests {
         expectFitInvariants(fit)
     }
 
-    @Test("65:24 全景封面：非贴边方向的半像素按同奇偶吸附")
+    @Test("65:24 全景封面：非贴边方向四舍五入")
     func panoramaCover() throws {
         let fit = try FitLayout(canvas: instagram, minimumMargin: 60, source: PixelSize(width: 6500, height: 2400))
-        // 精确高 960 × 24/65 = 354.46… → 与 1440 同奇偶最近的是 354。
+        // 精确高 960 × 24/65 = 354.46… → 354；上 floor(1086/2) = 543。
         #expect(fit.exactRect.height > 354 && fit.exactRect.height < 355)
         #expect(fit.pixelRect == PixelRect(x: 60, y: 543, width: 960, height: 354))
         expectFitInvariants(fit)
     }
 
-    @Test("奇数画布尺寸也保持对称")
-    func oddCanvas() throws {
-        let fit = try FitLayout(canvas: PixelSize(width: 1001, height: 777), minimumMargin: 33, source: PixelSize(width: 3000, height: 2000))
-        expectFitInvariants(fit)
-        #expect(fit.pixelRect.width % 2 == 1)
+    @Test("留白奇数时多出的 1 px 在右／下")
+    func oddRemainder() throws {
+        // 内框 960×960，照片 960×639.36 → 639；剩余 441，上 220、下 221。
+        let fit = try FitLayout(canvas: xiaohongshu, minimumMargin: 60, source: PixelSize(width: 6000, height: 3996))
+        #expect(fit.pixelRect == PixelRect(x: 60, y: 220, width: 960, height: 639))
+        #expect(fit.margins == PixelInsets(top: 220, left: 60, bottom: 221, right: 60))
+        let odd = try FitLayout(canvas: PixelSize(width: 1001, height: 777), minimumMargin: 33, source: PixelSize(width: 3000, height: 2000))
+        expectFitInvariants(odd)
+    }
+
+    @Test(".5 进位，且不超过内框")
+    func halfRoundsUp() throws {
+        // 内框 960×960，源 1920×1281 → scale 0.5，精确高 640.5 → 641；剩余 439，上 219、下 220。
+        let fit = try FitLayout(canvas: xiaohongshu, minimumMargin: 60, source: PixelSize(width: 1920, height: 1281))
+        #expect(fit.pixelRect.height == 641)
+        #expect(fit.margins.top == 219 && fit.margins.bottom == 220)
     }
 
     @Test("EXIF 方向 6 交换宽高")
@@ -102,15 +113,14 @@ struct FitLayoutTests {
         }
     }
 
-    @Test("同奇偶吸附")
+    @Test("就近取整")
     func snapping() {
-        #expect(snapSameParity(2925, container: 3240, limit: 3240) == 2924)  // 平局取小
-        #expect(snapSameParity(2925.4, container: 3240, limit: 3240) == 2926)
-        #expect(snapSameParity(959.9999999, container: 1080, limit: 960) == 960)
-        #expect(snapSameParity(960.4, container: 1080, limit: 960) == 960)  // 不越过内框
-        #expect(snapSameParity(0.2, container: 1080, limit: 960) == 2)
-        #expect(snapSameParity(0.2, container: 1081, limit: 961) == 1)
-        #expect(snapSameParity(4.6, container: 1081, limit: 961) == 5)
+        #expect(snapNearest(2925, limit: 3240) == 2925)
+        #expect(snapNearest(2924.9999999, limit: 3240) == 2925)
+        #expect(snapNearest(354.46, limit: 1320) == 354)
+        #expect(snapNearest(640.5, limit: 960) == 641)
+        #expect(snapNearest(960.4, limit: 960) == 960)  // 不越过内框
+        #expect(snapNearest(0.2, limit: 960) == 1)
     }
 }
 

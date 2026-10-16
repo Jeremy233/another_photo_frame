@@ -7,6 +7,8 @@ public enum GeometryError: Error, Hashable, Sendable {
     case marginTooLarge(margin: Int, canvas: PixelSize)
     case invalidVerticalMargin(Int)
     case invalidSlideCount(Int)
+    /// 手动张数少于自动张数（D-11：只能改多）。
+    case slideCountBelowMinimum(requested: Int, minimum: Int)
     case invalidAspectRatio(AspectRatio)
     case invalidAnchor(Point)
 
@@ -18,6 +20,7 @@ public enum GeometryError: Error, Hashable, Sendable {
         case .marginTooLarge: "geometry.margin_too_large"
         case .invalidVerticalMargin: "geometry.invalid_vertical_margin"
         case .invalidSlideCount: "geometry.invalid_slide_count"
+        case .slideCountBelowMinimum: "geometry.slide_count_below_minimum"
         case .invalidAspectRatio: "geometry.invalid_aspect_ratio"
         case .invalidAnchor: "geometry.invalid_anchor"
         }
@@ -31,6 +34,8 @@ public enum GeometryError: Error, Hashable, Sendable {
         case .marginTooLarge(let m, let c): "边距 \(m) px 对画布 \(c) 过大，没有可放置照片的区域"
         case .invalidVerticalMargin(let v): "切片上下边距无效：\(v)"
         case .invalidSlideCount(let n): "切片张数必须 ≥ 1：\(n)"
+        case .slideCountBelowMinimum(let n, let minimum):
+            "切片张数 \(n) 少于完整放下照片所需的 \(minimum) 张；只能增加张数"
         case .invalidAspectRatio(let r): "裁切比例无效：\(r)"
         case .invalidAnchor(let p): "裁切位置必须在 0…1 之间：(\(p.x), \(p.y))"
         }
