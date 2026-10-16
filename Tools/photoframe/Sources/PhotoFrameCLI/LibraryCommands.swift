@@ -28,7 +28,7 @@ struct PresetCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "preset", abstract: "管理预设库（内置、用户保存、导入）。",
         subcommands: [ListCommand.self, ImportCommand.self, ExportCommand.self, DuplicateCommand.self,
-                      RenameCommand.self, DeleteCommand.self])
+                      RenameCommand.self, MoveCommand.self, DeleteCommand.self])
 
     /// `photoframe preset list [--json]`
     struct ListCommand: AsyncParsableCommand {
@@ -180,6 +180,43 @@ struct PresetCommand: AsyncParsableCommand {
         }
     }
 
+    /// 可移动到的分组（D-81、D-94）。
+    enum Group: String, CaseIterable, ExpressibleByArgument {
+        case user
+        case imported
+
+        var origin: PresetOrigin {
+            switch self {
+            case .user: .user
+            case .imported: .imported
+            }
+        }
+    }
+
+    /// `photoframe preset move <preset> --to user|imported [--json]`
+    struct MoveCommand: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "move", abstract: "在「用户保存」和「导入」两组之间移动预设（D-81、D-94）。",
+            discussion: "内容、ID 和时间都不变；已经在目标组时什么也不做。内置预设不能移动（library.builtin_read_only，退出码 4）。")
+
+        @Argument(help: ArgumentHelp("预设：presetId、名称或短名称。", valueName: "预设"))
+        var preset: String
+
+        @Option(help: ArgumentHelp("目标分组。", valueName: "user|imported"))
+        var to: Group
+
+        @Flag(help: "stdout 输出 JSON。")
+        var json = false
+
+        func run() async throws {
+            let ctx = CommandContext(command: "preset move", json: json)
+            let service = try ctx.makeService()
+            let reference = ctx.presetReference(preset)
+            let moved = try await ctx.call { () async throws(ApplicationError) in try await service.movePreset(reference, to: to.origin) }
+            ctx.printPreset(moved)
+        }
+    }
+
     /// `photoframe preset delete <preset> [--json]`
     struct DeleteCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -236,7 +273,7 @@ struct AssetCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "asset", abstract: "管理本地素材库（签名、水印、相机贴图）和素材绑定。",
         discussion: "素材引用：assetId，或显示名称（不区分大小写，必须唯一）。",
-        subcommands: [ListCommand.self, ImportCommand.self, RenameCommand.self, DeleteCommand.self,
+        subcommands: [ListCommand.self, ImportCommand.self, RenameCommand.self, SetCategoryCommand.self, DeleteCommand.self,
                       BindCommand.self, UnbindCommand.self, BindingsCommand.self])
 
     /// `photoframe asset list [--category <分组>] [--json]`
@@ -329,6 +366,36 @@ struct AssetCommand: AsyncParsableCommand {
                 ctx.emit(AssetResultJSON(asset: AssetJSON(info)))
             } else {
                 ctx.env.stdout.line("\(info.assetId.uuidString)  \(info.displayName)")
+            }
+        }
+    }
+
+    /// `photoframe asset set-category <asset> <分组> [--json]`
+    struct SetCategoryCommand: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "set-category", abstract: "改素材分组（D-95）。",
+            discussion: "分组只用于整理，不影响能绑定到哪个素材槽，也不改动已有的绑定（D-89）。")
+
+        @Argument(help: ArgumentHelp("素材：assetId 或名称。", valueName: "素材"))
+        var asset: String
+
+        @Argument(help: ArgumentHelp("新分组。", valueName: "signature|watermark|camera-badge"))
+        var category: AssetCategoryArgument
+
+        @Flag(help: "stdout 输出 JSON。")
+        var json = false
+
+        func run() async throws {
+            let ctx = CommandContext(command: "asset set-category", json: json)
+            let service = try ctx.makeService()
+            let info = try await ctx.call { () async throws(ApplicationError) in
+                let found = try await service.resolveAsset(asset)
+                return try await service.setAssetCategory(found.assetId, to: category.category)
+            }
+            if json {
+                ctx.emit(AssetResultJSON(asset: AssetJSON(info)))
+            } else {
+                ctx.env.stdout.line("\(info.assetId.uuidString)  \(info.displayName)  \(AssetCategoryArgument(info.category).rawValue)")
             }
         }
     }

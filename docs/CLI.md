@@ -2,7 +2,8 @@
 
 > 对应规范 §10.3、§11.1–11.3、§12.2、§14.1（D-08：GUI 的每项操作都能通过 CLI 完成）。
 > 代码在 `Tools/photoframe`：命令在 `PhotoFrameCLI` 库里，可执行文件只处理信号与退出码。
-> 后端是 `LocalPhotoFrameService.makeDefault()`（`Packages/PhotoFrameApplication`），GUI 和以后的 MCP 用的是同一个服务。
+> 后端是 `LocalPhotoFrameService.makeDefault()`（`Packages/PhotoFrameApplication`，D-70），GUI 和以后的 MCP 用的是同一个服务。
+> 本文涉及的决策：D-70～D-77、D-93～D-96（规范 §16），列表见文末「相关决策」。
 
 ## 构建
 
@@ -26,6 +27,7 @@ swift build -c release
 - **本地库**：预设库、素材库和绑定在 App Group 共享容器里（D-78），GUI、CLI、MCP 用同一个库：
   `~/Library/Group Containers/group.org.anotherphotoframe/Library/Application Support/AnotherPhotoFrame/`
   （App Group ID 是占位值，签名时确定）。环境变量 `PHOTOFRAME_LIBRARY=<目录>` 改用别的库（脚本隔离、测试）。
+  只有环境变量，没有命令行参数（D-96）。
 
 ## 命令
 
@@ -43,11 +45,13 @@ photoframe preset import <文件> [--replace] [--json]
 photoframe preset export <预设> --output <文件|目录> [--overwrite] [--json]
 photoframe preset duplicate <预设> [--name <名称>] [--json]
 photoframe preset rename <预设> <新名称> [--json]
+photoframe preset move <预设> --to user|imported [--json]
 photoframe preset delete <预设> [--json]
 
 photoframe asset list [--category signature|watermark|camera-badge] [--json]
 photoframe asset import <文件> --category signature|watermark|camera-badge [--name <名称>] [--json]
 photoframe asset rename <素材> <新名称> [--json]
+photoframe asset set-category <素材> signature|watermark|camera-badge [--json]
 photoframe asset delete <素材> [--json]
 photoframe asset bind <素材> --slot <slotId> [--preset <预设>]
 photoframe asset unbind --slot <slotId> [--preset <预设>]
@@ -58,10 +62,10 @@ photoframe --help | --version
 
 `export` 和 `preview` 还接受 `--bind <slotId>=<素材>`（可重复），见「素材绑定」。
 
-`mcp serve`（做 MCP 时）还没有实现，帮助里也不列出。预设的内容编辑（画布、图层等）是 GUI 的 Inspector 操作，命令行现在可以用
-「导出 → 编辑 manifest → 导入 `--replace`」完成，见「待补」。
+`mcp serve`（做 MCP 时）还没有实现，帮助里也不列出。预设的内容编辑（画布、图层等）是 GUI 的 Inspector 操作，逐项编辑的命令
+和 MCP 一起设计（D-93）；现在可以用「导出 → 编辑 manifest → 导入 `--replace`」完成，见「待补」。
 
-### 指定预设：`--preset <id|名称|文件>`
+### 指定预设：`--preset <id|名称|文件>`（D-76）
 
 | 写法 | 例子 | 规则 |
 |---|---|---|
@@ -107,8 +111,8 @@ photoframe --help | --version
 | `--jobs <n>` | 同时执行的任务数，默认性能核数的一半（1–4，D-53） |
 
 执行顺序：解析全部预设 → 登记全部源图 → **校验全部任务** → 提交 → 等待。校验阶段发现任何问题（源图读不了、预设无效、缺必需素材、
-输出目录不可写、拒绝覆盖、`--overwrite` 时两个任务指向同一目录……）就什么都不写，直接退出。
-校验通过后某个任务渲染或发布失败时，其余任务照常完成，退出码 6。
+输出目录不可写、拒绝覆盖、`--overwrite` 时两个任务指向同一目录……）就什么都不写，直接退出（D-72）。`--overwrite` 时同一请求里两个任务指向同一个作品目录（例如两张同名源图）在校验时报
+`request.duplicate_output`（D-73）。校验通过后某个任务渲染或发布失败时，其余任务照常完成，退出码 6（D-72）。
 
 `--dry-run` 推算的目录名（版本后缀）按当时的磁盘状态计算；真正导出时如果别的程序同时写入，可能不同。
 
@@ -125,7 +129,7 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 [1/2] Badlands.tif × Instagram Panorama: completed → /…/Instagram/Badlands_Panorama
 ```
 
-### `preview`
+### `preview`（D-74）
 
 与 GUI 预览区相同的预览：同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG。用于脚本或 AI 客户端查看版式；不是成品（不带 HDR、不带元数据）。
 
@@ -137,7 +141,7 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 | `--max-edge <px>` | 预览页长边上限，默认 1200，不会大于导出尺寸 |
 | `--page <n>` | 只预览这些轮播页（0 = 封面，切片 k 是 k + 1，D-27）。可重复；默认全部 |
 
-### 输入色彩空间：`--assume-profile`
+### 输入色彩空间：`--assume-profile`（D-75）
 
 D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解释，并警告 `source.profile_missing`；用户可以按任务指定另一个色彩空间
 （例如丢了 ICC 的 Display P3 扫描图）。
@@ -161,6 +165,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | `preset export <预设> -o <文件或目录>` | 导出为 `.photoframe`：只含布局，素材只以 slot 出现，拒绝带本地路径的预设（D-37）。内置预设也能导出。`-o` 是已存在的目录时文件名取预设名称；目标文件已存在时要 `--overwrite`（否则 `preset.export_exists`，退出码 5） | 写出的文件路径 |
 | `preset duplicate <预设> [--name]` | 复制到「用户保存」组，默认名称「原名 Copy」（D-79），本地绑定一起复制（D-84）。内置预设也能复制 | `presetId  名称` |
 | `preset rename <预设> <新名称>` | 内置预设不能改（`library.builtin_read_only`，退出码 4） | `presetId  名称` |
+| `preset move <预设> --to user\|imported` | 在「用户保存」和「导入」两组之间移动（D-81、D-94），内容、ID 和时间不变；已经在目标组时什么也不做。内置预设不能移动（`library.builtin_read_only`，退出码 4）；`.photoframe` 文件不在库里（`library.preset_not_in_library`，退出码 4） | `presetId  名称` |
 | `preset delete <预设>` | 删除库里的预设和它的本地绑定；内置预设不能删 | `presetId  名称` |
 
 ### `asset …`：素材库与绑定
@@ -170,6 +175,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | `asset list [--category]` | 列出素材，**不输出文件路径**（§11.4） | 每行：assetId、名称、分组、格式、尺寸 |
 | `asset import <文件> --category <分组>` | 校验后复制进库：只接受 PNG 和受限 SVG（D-09），按内容校验，上限见 D-85，动画 PNG 拒绝（D-86）。分组只用于整理，不限制能绑定到哪个槽（D-89）。内容与已有素材相同时仍然导入，在 stderr 提示（D-88） | 新素材的 assetId |
 | `asset rename <素材> <新名称>` | | `assetId  名称` |
+| `asset set-category <素材> <分组>` | 改分组（D-95）。分组只用于整理，不影响能绑定到哪个槽，也不改动已有绑定（D-89） | `assetId  名称  分组` |
 | `asset delete <素材>` | 删除素材；指向它的绑定**保留**（D-83），导出时按 D-28 警告并回退。这些绑定以 `binding.asset_deleted` 警告写到 stderr | assetId |
 | `asset bind <素材> --slot <slotId> [--preset <预设>]` | 有 `--preset`：预设本地绑定（检查预设里有这个槽、格式被接受）；没有：用户默认绑定 | （无） |
 | `asset unbind --slot <slotId> [--preset <预设>]` | 清除对应的绑定 | （无） |
@@ -177,7 +183,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 分组的命令行写法：`signature`、`watermark`、`camera-badge`。
 
-## 退出码
+## 退出码（D-71）
 
 | 退出码 | 含义 | 典型错误码 |
 |---|---|---|
@@ -192,7 +198,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 退出码由错误码决定（`PhotoFrameExitCode(for:)`）；错误码本身同样稳定，脚本需要更细的区分时看 JSON 里的 `error.code`。
 
-## JSON 格式
+## JSON 格式（D-77：值为空的可选字段省略）
 
 所有 `--json` 输出都是一个对象，外层字段固定：
 
@@ -376,7 +382,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 `panorama` 只在全景预设上出现；`panorama.slideCount` 只在固定张数时出现（自动张数时没有这个字段，D-11）。
 `origin`：`builtIn`、`user`、`imported`、`file`（本次命令直接读的文件）。`readOnly`：内置预设和文件为 true。
 
-### `preset import` / `duplicate` / `rename`
+### `preset import` / `duplicate` / `rename` / `move`
 
 ```json
 { "command" : "preset import", "conflictResolution" : "saveAsCopy", "exitCode" : 0, "formatVersion" : 1, "ok" : true,
@@ -394,7 +400,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 `preset delete` 没有 `path`。
 
-### `asset list` / `import` / `rename`
+### `asset list` / `import` / `rename` / `set-category`
 
 ```json
 {
@@ -408,7 +414,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 }
 ```
 
-`asset import` / `rename` 输出 `{"asset": {…}}`；`asset import` 另有 `duplicateOf`（内容相同的已有素材的 assetId）和 `warnings`。
+`asset import` / `rename` / `set-category` 输出 `{"asset": {…}}`；`asset import` 另有 `duplicateOf`（内容相同的已有素材的 assetId）和 `warnings`。
 素材的 JSON 不含文件路径。
 
 ### `asset delete` / `bindings`
@@ -423,9 +429,26 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 ## 待补
 
-- **预设内容编辑**：GUI 的 Inspector 能改画布、图层、输出设置等；命令行没有逐项修改的命令。现在可以「`preset export` → 编辑
-  `manifest.json` → `preset import --replace`」。是否要加 `preset set <预设> <字段> <值>` 一类的命令，待定。
+- **预设内容编辑（D-93）**：GUI 的 Inspector 能改画布、图层、输出设置等；命令行没有逐项修改的命令，和 MCP 一起设计。
+  现在可以「`preset export` → 编辑 `manifest.json` → `preset import --replace`」。
 - `mcp serve`：做 MCP 时再加。
+
+## 相关决策
+
+| 编号 | 内容 |
+|---|---|
+| D-70 | 不单独建组装包：渲染适配器和 `makeDefault()` 在 PhotoFrameApplication 里，Application 依赖 Rendering；保留 `JobRenderer` 协议给测试用 |
+| D-71 | 退出码表：0 / 1 / 2 / 3 / 4 / 5 / 6 / 130（见「退出码」） |
+| D-72 | `export` 先校验全部任务，有问题就什么都不写；校验通过后个别任务失败时其余照常完成，退出码 6 |
+| D-73 | `--overwrite` 时同一请求两个任务指向同一作品目录，校验时报 `request.duplicate_output` |
+| D-74 | 保留 `preview` 命令（预览 PNG） |
+| D-75 | `--assume-profile`：只对没有 ICC 的源图生效，有 ICC 时忽略并警告 `source.override_ignored`（D-04） |
+| D-76 | `--preset` 匹配：文件路径，否则由 `PresetLibrary.find` 按 presetId、完整名称、短名称匹配 |
+| D-77 | JSON 里值为空的可选字段省略，不写 `null` |
+| D-93 | 预设内容逐项编辑的命令和 MCP 一起设计 |
+| D-94 | `preset move <预设> --to user\|imported`；内置预设不能移动（`library.builtin_read_only`） |
+| D-95 | `asset set-category <素材> <分组>` |
+| D-96 | 库目录只用环境变量 `PHOTOFRAME_LIBRARY` 指定，不加命令行参数 |
 
 ## 测试
 
