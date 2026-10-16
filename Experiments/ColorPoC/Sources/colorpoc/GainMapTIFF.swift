@@ -123,7 +123,7 @@ struct GainMapMetadata: CustomStringConvertible {
     }
 }
 
-func runGainMapTIFF(_ url: URL, truth: URL?, reference: URL?, env: Env) throws {
+func runGainMapTIFF(_ url: URL, truth: URL?, reference: URL?, full: Bool = false, env: Env) throws {
     print("== \(url.lastPathComponent)")
     let t = try TIFFFile(url)
     let d0 = t.ifd0
@@ -173,23 +173,39 @@ func runGainMapTIFF(_ url: URL, truth: URL?, reference: URL?, env: Env) throws {
     }
 
     // 2) 还原出的 HDR 降到 1/4 分辨率，写成 HDR gain map JPEG，供在 HDR 屏幕上目视对比
-    let step = 4, w = base.w / step, h = base.h / step
-    var f = FImage(w: w, h: h, fill: 1), sdr = FImage(w: w, h: h, fill: 1)
+    // full = true：全分辨率，headroom 元数据取文件里的值、底图用 Display P3，尽量与 Lightroom 的 HDR JPEG 条件一致，便于目视 A/B
+    let step = full ? 1 : 4, w = base.w / step, h = base.h / step
+    // 先拿到裸指针再并行写（各行互不重叠），避免对 Swift 数组的并发独占访问
+    let hb = UnsafeMutableBufferPointer<Float16>.allocate(capacity: w * h * 4), sb = UnsafeMutableBufferPointer<Float16>.allocate(capacity: w * h * 4)
+    defer { hb.deallocate(); sb.deallocate() }
+    hb.initialize(repeating: 1); sb.initialize(repeating: 1)
+    DispatchQueue.concurrentPerform(iterations: h) { y in
+        for x in 0..<w {
+            let v = hdr(x * step, y * step), b = linear(base.px(x * step, y * step))
+            let i = (y * w + x) * 4
+            hb[i] = Float16(v.x); hb[i + 1] = Float16(v.y); hb[i + 2] = Float16(v.z)
+            sb[i] = Float16(b.x); sb[i + 1] = Float16(b.y); sb[i + 2] = Float16(b.z)
+        }
+    }
+    let hdrBuf = Array(hb), sdrBuf = Array(sb)
     var peak = 1.0
-    for y in 0..<h { for x in 0..<w {
-        let v = hdr(x * step, y * step)
-        f[x, y] = SIMD4(Float(v.x), Float(v.y), Float(v.z), 1)
-        let b = linear(base.px(x * step, y * step))
-        sdr[x, y] = SIMD4(b.x, b.y, b.z, 1)
-        peak = max(peak, (Spaces.linear2020.toXYZ * v).y)
-    } }
+    for i in Swift.stride(from: 0, to: hdrBuf.count, by: 4 * 97) {
+        peak = max(peak, 0.2627 * Double(hdrBuf[i]) + 0.6780 * Double(hdrBuf[i + 1]) + 0.0593 * Double(hdrBuf[i + 2]))
+    }
     let p = Pipeline(WorkingSpace.all[2])
-    let hdrImage = CIImage(cgImage: makeCGImage(f, format: .half, colorSpace: p.ws.cg, alpha: true))
-    let sdrImage = CIImage(cgImage: makeCGImage(sdr, format: .half, colorSpace: p.ws.cg, alpha: true))   // 底图同样自己线性化
-    let outURL = env.out.appendingPathComponent("gainmap-tiff/\(url.deletingPathExtension().lastPathComponent)_reconstructed_hdr.jpg")
-    try p.writeJPEG(sdrImage, to: outURL, colorSpace: sRGB,
-                    hdr: hdrImage.settingContentHeadroom(Float(min(peak, pow(2, meta.alternateHeadroom)))), rgbGainMap: true)
-    print("已写出 \(outURL.path)（1/4 分辨率，峰值约 \(f2(peak))×）")
+    func image(_ buf: [Float16]) -> CIImage {
+        let data = buf.withUnsafeBufferPointer { Data(buffer: $0) }
+        let info = CGImageAlphaInfo.last.rawValue | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order16Little.rawValue
+        return CIImage(cgImage: CGImage(width: w, height: h, bitsPerComponent: 16, bitsPerPixel: 64, bytesPerRow: w * 8, space: p.ws.cg,
+                                        bitmapInfo: CGBitmapInfo(rawValue: info), provider: CGDataProvider(data: data as CFData)!,
+                                        decode: nil, shouldInterpolate: false, intent: .defaultIntent)!)
+    }
+    let hdrImage = image(hdrBuf), sdrImage = image(sdrBuf)   // 底图同样自己线性化
+    let fileHeadroom = Float(pow(2, max(meta.baseHeadroom, meta.alternateHeadroom)))   // 两个字段可能写反，取较大者
+    let outURL = env.out.appendingPathComponent("gainmap-tiff/\(url.deletingPathExtension().lastPathComponent)_reconstructed_hdr\(full ? "_full" : "").jpg")
+    try p.writeJPEG(sdrImage, to: outURL, colorSpace: full ? CGColorSpace(name: CGColorSpace.displayP3)! : sRGB,
+                    hdr: hdrImage.settingContentHeadroom(full ? fileHeadroom : Float(min(peak, Double(fileHeadroom)))), rgbGainMap: true)
+    print("已写出 \(outURL.path)（\(full ? "全分辨率，headroom \(f2(Double(fileHeadroom)))，P3 底图" : "1/4 分辨率")，峰值约 \(f2(peak))×）")
 
     // 3) 和 Lightroom 自己的 HDR JPEG（Apple 展开 gain map）在同一块全分辨率区域逐像素比较
     if let reference {
