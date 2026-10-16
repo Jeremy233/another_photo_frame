@@ -283,6 +283,24 @@ aurora1 用 TIFF、HDR Rec.2020、勾选 Maximize Compatibility 又导出了 16 
 
 结论：这种 TIFF 里确实带着 Lightroom 的 SDR 版本，但 Apple 框架读不出其中的 HDR（坑 19）。16 位那份的 SDR 还会被解暗（坑 20）。要做到"TIFF 也用 Lightroom 的 SDR、同时保留 HDR"，需要自己解析 SubIFD 里的 gain map。
 
+**自己读取并还原 HDR 已经验证可行**（`colorpoc gainmap-tiff`）。做法：
+
+1. 用一个约 150 行的 TIFF 结构解析器读出 IFD0、SubIFD 和 52557 标签（目前只支持未压缩的 TIFF；Lightroom 选 ZIP/LZW 压缩时需要 libtiff 或自己解压）。
+2. 按 ISO 21496-1 二进制格式解析元数据。Lightroom 在标准数据前多写了 4 个字节；解析结果是 RGB 三通道、gamma 约 0.77、offset 1/64。
+3. 底图线性化：32 位直接用，16 位按逆 OETF 自己线性化（绕开坑 20）。
+4. 逐像素套用 `HDR = (SDR + offset) × 2^(min + (max − min) × g^(1/γ)) − offset`，权重取 1，即完全展开。
+
+| 输入 | 对比纯 HDR 导出 `aurora1_hdr32.tif`（33 万采样点） | 对比 Lightroom HDR JPEG（Apple 展开，全分辨率 1024×768 区域） |
+|---|---|---|
+| `aurora1_hdr_com32.tif` | 亮度误差中位 / P95 / max 都是 0.0000；高光 Δu′v′ 0 | 中位 0.76%，P95 2.2%（JPEG 压缩误差） |
+| `aurora1_hdr_com.tif` | 中位 0.08%，P95 0.25%，max 0.4%；高光 0.02% / 0.03% | 中位 0.76%，P95 2.2% |
+
+也就是说：一份勾选 Maximize Compatibility 的 TIFF，同时带着 Lightroom 的 SDR 版本和完整的 HDR（与纯 HDR 导出逐像素一致）。只要软件自己读 SubIFD，就能"SDR 用 Lightroom 的、HDR 也不丢"。
+
+**注意：Lightroom 写的元数据有一处不一致。** 32 位文件把两个 headroom 写反了（底图 2.641、目标 0），16 位文件是正常的（0 / 2.641）。两份的 gain map 数据和其它参数完全相同，完全展开时都能得到正确的 HDR。但如果按 ISO 21496-1 的权重公式，根据显示器 headroom 做插值，32 位文件会算出相反的方向。所以读取时不能信任这两个字段的先后顺序，应取较大的那个作为 HDR headroom。
+
+目视检查文件：`Experiments/ColorPoC/out/gainmap-tiff/aurora1_hdr_com_reconstructed_hdr.jpg`。它是 1/4 分辨率、用 CI 写出的 HDR JPEG，可以在 HDR 屏幕上和 `aurora1_hdr.jpg` 并排比较。
+
 ## 9. 对规范其它部分的影响（只列出，不改）
 
 - §6.7 / D-05：HDR→SDR 的 tone map 需要选定并记录。建议：gain map 源直接用它自带的 SDR 底图（摄影师在 Lightroom 里的 SDR 版本）；PQ/HLG/float 源用显式选定的曲线（候选见坑 6）。
