@@ -85,7 +85,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 10. **D-33 额外文件**：不解压，只警告。
 11. **D-34 ZIP 上限**：4 MiB / 32 条 / 单条 1 MiB / 总量 8 MiB。
 12. **D-35 颜色只允许 `#RRGGBB`**，透明度统一用图层的 `opacity`。
-13. **D-36 V1 只输出 JPEG 和 PNG**，`output.format` 已去掉 `heic`（以后可能重新评估）。
+13. **D-36 V1 只输出 JPEG 和 PNG**，`output.format` 已去掉 `heic`。
 14. **D-37 隐私检查**保持当前的启发式规则。
 15. **D-38 Core 允许依赖 Foundation**；「纯 Swift」指不依赖 UI 框架。
 16. **D-39 presetId 冲突**：预览与导入结果的 `idConflictResolutions` 为 `[.saveAsCopy, .replace]`，第一项是默认；实际执行留给 Application 层。
