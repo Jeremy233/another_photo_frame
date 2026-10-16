@@ -4,6 +4,7 @@ import CoreImage.CIFilterBuiltins
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+import simd
 
 /// 候选工作空间。
 struct WorkingSpace {
@@ -47,8 +48,30 @@ final class Pipeline {
         ctx = CIContext(options: [.workingColorSpace: ws.cg, .workingFormat: workingFormat.rawValue, .cacheIntermediates: false])
     }
 
+    /// 坑：Core Image 直接使用大尺寸 RGB float32（96 bpp，无 alpha）的源图时，缩放后会渲染出错位的图块
+    /// （Lightroom 32-bit HDR TIFF 实测坏像素 7–27%，见报告）。所以 32-bit float 源先用 CG 转成 RGBAh 再交给 CI。
+    static var normalizeFloat32 = true
+
     func load(_ url: URL, expandHDR: Bool = true) -> CIImage {
-        CIImage(contentsOf: url, options: [.applyOrientationProperty: true, .expandToHDR: expandHDR])!
+        if Pipeline.normalizeFloat32, let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+           props[kCGImagePropertyIsFloat] as? Bool == true, props[kCGImagePropertyDepth] as? Int == 32,
+           let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+            let o = CGImagePropertyOrientation(rawValue: props[kCGImagePropertyOrientation] as? UInt32 ?? 1) ?? .up
+            return CIImage(cgImage: toRGBAh(cg)).oriented(o)
+        }
+        return CIImage(contentsOf: url, options: [.applyOrientationProperty: true, .expandToHDR: expandHDR])!
+    }
+
+    /// 由内容估计 headroom（float TIFF 等没有 headroom 元数据、CI 的 calculateHDRStats 也只返回 1 的情况）。
+    func estimateHeadroom(_ img: CIImage) -> Float {
+        let e = img.extent
+        let s = min(1, 1024 / max(e.width, e.height))
+        let small = img.transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY).scaledBy(x: s, y: s))
+        let f = renderFloat(small, rect: small.extent.integral)
+        var m = 1.0
+        for y in 0..<f.h { for x in 0..<f.w { m = max(m, (ws.math.toXYZ * f.rgb(x, y)).y) } }
+        return Float(m)
     }
 
     /// 背景：sRGB 编码 (r,g,b)/255，经受管理的转换进入工作空间。
@@ -148,4 +171,13 @@ final class Pipeline {
         f.inputImage = img; f.sourceHeadroom = sourceHeadroom; f.targetHeadroom = 1
         return f.outputImage!
     }
+}
+
+/// 把任意 CGImage 画进同一颜色空间（extended 版本）的 RGBAh 位图，不截断 >1 或负值。
+func toRGBAh(_ img: CGImage) -> CGImage {
+    let cs = img.colorSpace.flatMap { CGColorSpaceCreateExtended($0) } ?? CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+    let info = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order16Little.rawValue
+    let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 16, bytesPerRow: 0, space: cs, bitmapInfo: info)!
+    ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+    return ctx.makeImage()!
 }
