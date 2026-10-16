@@ -28,9 +28,9 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
     var infoRows: [[String]] = [], wsRows: [[String]] = [], hdrRows: [[String]] = []
     var sdrOutputs: [String: [String: (FImage, Placement)]] = [:]   // 文件 → 工作空间 → 输出
 
-    for url in files {
+    for url in files { try autoreleasepool {   // 逐张释放 CI / CG 缓冲，避免内存累积
         let name = url.lastPathComponent
-        guard let info = fileInfo(url) else { continue }
+        guard let info = fileInfo(url) else { return }
         let probe = CIImage(contentsOf: url, options: [.expandToHDR: true, .applyOrientationProperty: true])!
         let isHDR = probe.contentHeadroom > 1 || info.hasISOGainMap || info.hasAppleGainMap || info.isFloat == true
             || (probe.colorSpace.map { $0.isHDR() } ?? false)
@@ -126,22 +126,22 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
             }
         }
         sdrOutputs[name] = perWS
-    }
+    } }
 
     // 7.0 解码一致性：CI（缩放到长边 1032）对比 ImageIO 缩略图；float32 源分别测"直接交给 CI"与"先转 RGBAh"
     var consRows: [[String]] = []
-    for url in files {
+    for url in files { autoreleasepool {
         let isF32 = fileInfo(url).map { $0.isFloat == true && $0.depth == 32 } ?? false
         for normalize in isF32 ? [false, true] : [true] {
             Pipeline.normalizeFloat32 = normalize
-            for ws in [WorkingSpace.all[2], WorkingSpace.all[0]] {
+            for ws in [WorkingSpace.all[2], WorkingSpace.all[0]] { autoreleasepool {
                 let c = decodeConsistency(url, ws: ws)
                 consRows.append([url.lastPathComponent, ws.id, isF32 ? (normalize ? "先转 RGBAh" : "直接交给 CI") : "直接交给 CI",
                                  f4(c.meanAbs), String(format: "%.2f%%", c.badPercent)])
-            }
+            } }
         }
         Pipeline.normalizeFloat32 = true
-    }
+    } }
     R.line("### 7.0 解码一致性（Core Image 缩放结果 vs ImageIO 缩略图）")
     R.line()
     R.line("两者都缩到长边 1032 后在 extended linear Rec.2020 中比较。坏像素 = G 通道差 > 0.2。正常值只有重采样差异（< 0.3%）。")
@@ -198,19 +198,20 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
             }
             for (variant, u) in variants.sorted(by: { $0.key < $1.key }) where u != refURL {
                 guard let o = sdrOutputs[u.lastPathComponent]?[ws.id] else { continue }
-                var all: [Double] = [], inG: [Double] = []
+                var all: [Double] = [], inG: [Double] = [], outG: [Double] = []
                 let r = CGRect(origin: ref.1.origin, size: ref.1.size).inset(3).pixelRange
                 for y in Swift.stride(from: r.ys.lowerBound, to: r.ys.upperBound, by: 2) {
                     for x in Swift.stride(from: r.xs.lowerBound, to: r.xs.upperBound, by: 2) {
                         let de = deltaE(srgb: o.0.rgb(x, y), srgb: ref.0.rgb(x, y))
                         all.append(de)
-                        if !mask[y * ref.0.w + x] { inG.append(de) }
+                        if !mask[y * ref.0.w + x] { inG.append(de) } else { outG.append(de) }
                     }
                 }
-                let sa = Stats(all), si = Stats(inG)
+                let sa = Stats(all), si = Stats(inG), so = Stats(outG)
                 let pass = si.median <= 1 && si.p95 <= 2
                 d19Rows.append([stem, ws.id, "\(variant) vs \(refURL.lastPathComponent)", "\(f2(sa.median)) / \(f2(sa.p95))",
                                 "\(f2(si.median)) / \(f2(si.p95))", String(format: "%.1f%%", 100 * Double(all.count - inG.count) / Double(max(all.count, 1))),
+                                outG.isEmpty ? "–" : "\(f2(so.median)) / \(f2(so.p95)) / \(f2(so.max))",
                                 pass ? "✅" : "❌"])
             }
         }
@@ -218,9 +219,9 @@ func runReal(_ env: Env, _ R: Results, dir: URL) throws {
     if !d19Rows.isEmpty {
         R.line("### 7.5 同一照片不同 ICC 版本 → sRGB 输出的 ΔE2000（D-19）")
         R.line()
-        R.line("基准为 sRGB 版本的输出。“sRGB 域内”剔除了源图超出 sRGB 的像素（这些像素由 Lightroom 与本管线各自做色域映射，不可比）。")
+        R.line("基准为 sRGB 版本的输出。“sRGB 域内”剔除了源图超出 sRGB 的像素；“域外像素”一栏单独统计这些像素，反映 Lightroom 导出 sRGB 时的色域映射与本管线逐通道截断的差别。")
         R.line()
-        R.table(["照片", "工作空间", "比较", "全部像素 中位/P95", "sRGB 域内 中位/P95", "域外像素占比", "D-19（中位≤1, P95≤2）"], d19Rows)
+        R.table(["照片", "工作空间", "比较", "全部像素 中位/P95", "sRGB 域内 中位/P95", "域外像素占比", "域外像素 中位/P95/max", "D-19（中位≤1, P95≤2）"], d19Rows)
     }
 }
 
