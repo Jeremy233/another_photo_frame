@@ -119,6 +119,14 @@ extension ApplicationError {
     static func publishFailed(_ detail: String) -> Self {
         Self(code: "export.publish_failed", message: "发布输出失败：\(detail)", hint: "检查磁盘空间和输出目录权限，然后重试")
     }
+    static func overwriteRefused(_ path: String, _ reason: String) -> Self {
+        Self(code: "export.overwrite_refused", message: "拒绝覆盖 \(path)：\(reason)",
+             hint: "改用默认的加版本后缀，或手动处理这个目录")
+    }
+    static func overwriteContainsSource(_ path: String, _ source: String) -> Self {
+        Self(code: "export.overwrite_contains_source", message: "拒绝覆盖 \(path)：其中含有源文件 \(source)",
+             hint: "源图不能放在输出目录里；把它移到别处再导出")
+    }
     static func versionsExhausted(_ name: String) -> Self {
         Self(code: "export.versions_exhausted", message: "\(name) 的版本号已用尽", hint: "清理输出目录中的旧版本")
     }
