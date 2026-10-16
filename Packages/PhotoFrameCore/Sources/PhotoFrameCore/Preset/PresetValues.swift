@@ -28,7 +28,7 @@ public struct Pair<T: Codable & Hashable & Sendable>: Hashable, Sendable, Codabl
 public struct PresetColor: Hashable, Sendable, Codable {
     /// 目前只支持 `sRGB`；其他值在校验时报 `preset.unsupported_color_space`。
     public var colorSpace: String
-    /// `#RRGGBB` 或 `#RRGGBBAA`。
+    /// `#RRGGBB`。不带 alpha：透明度统一用图层的 `opacity`（D-35）。
     public var hex: String
     public var extensions: ExtensionFields
 
@@ -45,7 +45,7 @@ public struct PresetColor: Hashable, Sendable, Codable {
     public var isValidHex: Bool {
         guard hex.first == "#" else { return false }
         let digits = hex.dropFirst()
-        return (digits.count == 6 || digits.count == 8) && digits.allSatisfy(\.isHexDigit)
+        return digits.count == 6 && digits.allSatisfy(\.isHexDigit)
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable { case colorSpace, hex }
@@ -63,11 +63,4 @@ public struct PresetColor: Hashable, Sendable, Codable {
         try c.encode(hex, forKey: .hex)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
     }
-}
-
-/// 九宫格定位（§7.1）。
-public enum Anchor: String, Hashable, Sendable, Codable, CaseIterable {
-    case topLeft, top, topRight
-    case left, center, right
-    case bottomLeft, bottom, bottomRight
 }

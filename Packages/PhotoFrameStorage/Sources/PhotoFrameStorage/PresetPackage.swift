@@ -78,6 +78,8 @@ public struct ImportedPreset: Sendable, Hashable {
     public var originalSchemaVersion: Int
     /// 不阻止导入的警告（已迁移、ID 冲突、HDR 待实测等）。
     public var warnings: [PresetIssue]
+    /// 与已安装预设 ID 冲突时的可选处理方式，第一项是默认（D-39）。
+    public var idConflictResolutions: [PresetIdConflictResolution]
 }
 
 /// `.photoframe` 预设包：ZIP 容器，根目录只有 `manifest.json`（D-07）。
@@ -130,7 +132,8 @@ public enum PresetPackage {
         return ImportedPreset(
             preset: decoded.preset,
             originalSchemaVersion: decoded.originalSchemaVersion,
-            warnings: result.preview.issues.warnings)
+            warnings: result.preview.issues.warnings,
+            idConflictResolutions: result.preview.idConflictResolutions)
     }
 
     /// 从文件读取。先检查文件大小，避免把超大文件读进内存。
@@ -213,7 +216,8 @@ public enum PresetPackage {
         issues += preset.validate()
         if options.existingPresetIds.contains(preset.presetId) {
             issues.append(PresetIssue(.warning, code: "package.preset_id_exists", path: "presetId",
-                                      message: "已有相同 ID 的预设，导入时需选择替换或另存为副本"))
+                                      message: "已有相同 ID 的预设，默认另存为副本，也可以替换"))
+            preview.idConflictResolutions = [.saveAsCopy, .replace]
         }
         var platformName: String?
         if let platformId = preset.platform, let catalog = options.platforms {

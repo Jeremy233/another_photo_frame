@@ -18,11 +18,12 @@ func samplePreset() -> ExportPreset {
             padColor: .color(PresetColor(hex: "#000000")), verticalMarginPx: 40),
         layers: [
             OverlayLayer(
-                layerId: "badge", type: .cameraBadge, anchor: .bottomRight, reference: .photo,
-                offsetPx: Pair(0, 16), sizePx: Pair(48, 48), opacity: 0.8, zIndex: 2, slotId: "camera.badge"),
+                layerId: "badge", type: .cameraBadge, anchor: .bottomRight, reference: .photo(.outside),
+                offset: OverlayOffset(x: 0, y: 16), sizePx: PixelSize(width: 48, height: 48),
+                opacity: 0.8, zIndex: 2, slotId: "camera.badge"),
             OverlayLayer(
-                layerId: "exif", type: .metadataText, visibleOn: .selectedSlides, slides: [0, 2],
-                anchor: .bottomLeft, maxBoundsPx: Pair(600, 40),
+                layerId: "exif", type: .metadataText, visibility: .selectedSlides([0, 2]),
+                anchor: .bottomLeft, reference: .canvas, maxBoundsPx: PixelSize(width: 600, height: 40),
                 text: TextStyle(template: "{camera} · {focalLength}", fontFamily: "Helvetica Neue", fontSizePx: 18)),
         ],
         assetSlots: [AssetSlot(slotId: "camera.badge", required: false, label: "相机线稿", acceptedFormats: [.svg])],
@@ -80,29 +81,34 @@ struct PresetSerializationTests {
         #expect(throws: DecodingError.self) { try d.decode(PanoramaSettings.TileCount.self, from: jsonData("\"many\"")) }
     }
 
-    @Test("规范 §8.1 示例可以读取；slot 上的几何字段被登记为不认识的字段")
+    /// 从规范 §8.1 中取出示例 JSON，保证规范里的示例始终能被导入（D-24）。
+    static func specExampleJSON() throws -> Data {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let spec = try String(contentsOf: repo.appendingPathComponent("PhotoFrame_V1_Specification.md"), encoding: .utf8)
+        let section = try #require(spec.range(of: "### 8.1 结构与文件格式"))
+        let fence = try #require(spec.range(of: "```json\n", range: section.upperBound..<spec.endIndex))
+        let end = try #require(spec.range(of: "\n```", range: fence.upperBound..<spec.endIndex))
+        return Data(spec[fence.upperBound..<end.lowerBound].utf8)
+    }
+
+    @Test("规范 §8.1 示例能完整导入：没有不认识的字段、通过校验、往返不变")
     func specExample() throws {
-        let json = """
-        {
-          "schemaVersion": 1,
-          "presetId": "7C9E6679-7425-40DE-944B-E07FC1F90AE7",
-          "name": "Instagram Panorama — Gallery",
-          "canvas": {"width": 1080, "height": 1440, "background": {"colorSpace": "sRGB", "hex": "#FAFAF8"},
-                     "minMarginPx": 60, "mode": "fit"},
-          "panorama": {"enabled": true, "cover": true, "tileCount": "auto", "cropPolicy": "never",
-                       "fitHeight": true, "padColor": "canvasBackground"},
-          "assetSlots": [{"slotId": "camera.badge", "kind": "image", "required": false, "anchor": "bottomRight",
-                          "sizePx": [48, 48], "opacity": 1.0, "visibleOn": "coverOnly"}],
-          "output": {"format": "jpeg", "quality": 100, "colorSpace": "sRGB", "dynamicRange": "sdr",
-                     "metadata": {"keepShootingInfo": false, "keepGps": false}}
-        }
-        """
-        let decoded = try PresetSchema.decode(jsonData(json))
-        #expect(decoded.preset.panorama.tileCount == .auto)
-        #expect(decoded.preset.assetSlots.first?.slotId == "camera.badge")
-        #expect(decoded.unknownFieldPaths == [
-            "assetSlots[0].anchor", "assetSlots[0].opacity", "assetSlots[0].sizePx", "assetSlots[0].visibleOn",
-        ])
+        let decoded = try PresetSchema.decode(Self.specExampleJSON())
+        #expect(decoded.unknownFieldPaths.isEmpty)
+        let p = decoded.preset
+        #expect(p.validate().isEmpty, "\(p.validate())")
+        #expect(p.panorama.tileCount == .auto)
+        #expect(p.platform == "instagram")
+        #expect(p.assetSlots.map(\.slotId) == ["camera.badge"])
+        let badge = try #require(p.layers.first { $0.type == .cameraBadge })
+        #expect(badge.slotId == "camera.badge")
+        #expect(badge.anchor == .bottomRight)
+        #expect(badge.reference == .photo(.outside))
+        #expect(badge.offset == OverlayOffset(x: 0, y: 16))
+        #expect(badge.sizePx == PixelSize(width: 48, height: 48))
+        #expect(try PresetSchema.decode(PresetSchema.encode(p)).preset == p)
     }
 }
 
@@ -286,7 +292,8 @@ struct InvalidPresetTests {
         var p = samplePreset()
         p.layers.append(OverlayLayer(layerId: "badge", type: .asset, slotId: "missing"))
         p.layers.append(OverlayLayer(layerId: "logo", type: .asset))
-        p.layers.append(OverlayLayer(layerId: "bad id!", type: .text, visibleOn: .selectedSlides, opacity: 2))
+        p.layers.append(OverlayLayer(layerId: "bad id!", type: .text, visibility: .selectedSlides([]), opacity: 2))
+        p.layers.append(OverlayLayer(layerId: "mid", type: .text, anchor: .center, reference: .photo(.outside), text: TextStyle()))
         p.assetSlots.append(AssetSlot(slotId: "camera.badge"))
         p.canvas.background.hex = "FAFAF8"
         p.canvas.minMarginPx = 600
@@ -298,7 +305,7 @@ struct InvalidPresetTests {
             "preset.duplicate_layer_id", "preset.unknown_slot_reference", "preset.missing_slot_reference",
             "preset.invalid_id", "preset.invalid_opacity", "preset.invalid_slides", "preset.duplicate_slot_id",
             "preset.invalid_color", "preset.margin_too_large", "preset.invalid_quality",
-            "preset.unsupported_color_space", "preset.invalid_tile_count",
+            "preset.unsupported_color_space", "preset.invalid_tile_count", "preset.center_anchor_outside",
         ])
     }
 
@@ -309,5 +316,101 @@ struct InvalidPresetTests {
         let issues = p.validate()
         #expect(issues.errors.isEmpty)
         #expect(issues.warnings.map(\.code) == ["preset.unused_slot"])
+    }
+}
+
+@Suite("图层存储与几何共用一套类型（D-23）")
+struct OverlayLayerModelTests {
+    let head = #""schemaVersion": 1, "presetId": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "name": "n", "canvas": {"width": 1080, "height": 1440}"#
+
+    func layer(_ body: String) throws -> OverlayLayer {
+        try PresetSchema.decode(jsonData("{\(head), \"layers\": [{\"layerId\": \"l\", \"type\": \"text\", \(body)}]}")).preset.layers[0]
+    }
+
+    @Test("JSON 字段映射到共用类型；缺省为照片外侧右下、只在封面")
+    func jsonMapping() throws {
+        let d = try layer(#""text": {"content": "J"}"#)
+        #expect(d.anchor == .bottomRight)
+        #expect(d.reference == .photo(.outside))
+        #expect(d.offset == .zero)
+        #expect(d.visibility == .coverOnly)
+
+        let l = try layer(#""anchor": "top", "reference": "photo", "side": "inside", "offsetPx": [3, -4], "visibleOn": "selectedSlides", "slides": [2, 0]"#)
+        #expect(l.anchor == .top)
+        #expect(l.reference == .photo(.inside))
+        #expect(l.offset == OverlayOffset(x: 3, y: -4))
+        #expect(l.visibility == .selectedSlides([0, 2]))
+
+        #expect(try layer(#""reference": "canvas""#).reference == .canvas)
+        let text = String(decoding: try JSONEncoder().encode(l), as: UTF8.self)
+        #expect(text.contains(#""slides":[0,2]"#))
+        #expect(text.contains(#""anchor":"top""#))
+        #expect(text.contains(#""side":"inside""#))
+    }
+
+    @Test("没有 region 字段（D-41）；矛盾的写法报字段错误")
+    func rejectsContradictions() throws {
+        // region 已删除：现在是不认识的字段。
+        let decoded = try PresetSchema.decode(jsonData("{\(head), \"layers\": [{\"layerId\": \"l\", \"type\": \"text\", \"region\": \"margin\"}]}"))
+        #expect(decoded.unknownFieldPaths == ["layers[0].region"])
+        for body in [#""visibleOn": "coverOnly", "slides": [1]"#, #""reference": "canvas", "side": "outside""#,
+                     #""anchor": "middle""#, #""side": "diagonal""#] {
+            #expect(throws: PresetError.self, "\(body)") { try layer(body) }
+        }
+    }
+
+    @Test("锚点名称与 OverlayAnchor 一一对应")
+    func anchorNames() throws {
+        let names = OverlayAnchor.allCases.map(\.name)
+        #expect(names == ["topLeft", "top", "topRight", "left", "center", "right", "bottomLeft", "bottom", "bottomRight"])
+        for a in OverlayAnchor.allCases {
+            #expect(OverlayAnchor(name: a.name) == a)
+            #expect(try JSONDecoder().decode(OverlayAnchor.self, from: JSONEncoder().encode(a)) == a)
+        }
+    }
+
+    @Test("转换为 OverlayGeometry 后定位：照片右下角下方 16 px（D-12）")
+    func convertAndPlace() throws {
+        let fit = try FitLayout(canvas: PixelSize(width: 1080, height: 1440), minimumMargin: 60, source: PixelSize(width: 6000, height: 4000))
+        let badge = samplePreset().layers[0]
+        let g = try badge.geometry()
+        #expect(g == OverlayGeometry(anchor: .bottomRight, reference: .photo(.outside), offset: OverlayOffset(x: 0, y: 16),
+                                     size: .fixed(PixelSize(width: 48, height: 48)), visibility: .coverOnly))
+        let placement = try OverlayPlacement(fit: fit, geometry: g)
+        // 照片 (60, 400, 960×640)：右边对齐 1020，底边 1040 再往下 16。
+        #expect(placement.rect == PixelRect(x: 972, y: 1056, width: 48, height: 48))
+        #expect(placement.warnings.isEmpty)
+    }
+
+    @Test("没有 sizePx 时用内容尺寸，maxBoundsPx 限制最大尺寸；都没有时报 missingSize")
+    func sizeResolution() throws {
+        var l = OverlayLayer(layerId: "t", type: .text, maxBoundsPx: PixelSize(width: 600, height: 40))
+        #expect(try l.geometry(contentSize: PixelSize(width: 1200, height: 40)).size
+                == .fitting(PixelSize(width: 1200, height: 40), maximum: PixelSize(width: 600, height: 40)))
+        #expect(throws: OverlayError.missingSize) { try l.geometry() }
+        l.maxBoundsPx = nil
+        #expect(try l.geometry(contentSize: PixelSize(width: 10, height: 5)).size == .fixed(PixelSize(width: 10, height: 5)))
+    }
+
+    @Test("全景页面：转换后的图层按轮播页码显示（D-27、D-43、D-44）")
+    func panoramaPages() throws {
+        let pano = try PanoramaLayout(tile: PixelSize(width: 1080, height: 1440),
+                                      source: SourceImage(storedSize: PixelSize(width: 6500, height: 2400)))
+        let l = OverlayLayer(layerId: "t", type: .text, visibility: .selectedSlides([0, 4, 9]), anchor: .bottomRight,
+                             reference: .photo(.inside), sizePx: PixelSize(width: 20, height: 20))
+        let plan = try pano.overlayPlan(for: l.geometry())
+        #expect(plan.pages.map(\.page) == [0, 4])
+        #expect(plan.missingPages == [9])
+    }
+
+    @Test("颜色只接受 #RRGGBB（D-35）；输出格式没有 heic（D-36）")
+    func colorAndFormat() throws {
+        #expect(PresetColor(hex: "#FAFAF8").isValidHex)
+        #expect(!PresetColor(hex: "#FAFAF8FF").isValidHex)
+        #expect(!PresetColor(hex: "#FFF").isValidHex)
+        #expect(OutputSettings.Format.allCases == [.jpeg, .png])
+        #expect(throws: PresetError.self) {
+            try PresetSchema.decode(jsonData("{\(head), \"output\": {\"format\": \"heic\"}}"))
+        }
     }
 }

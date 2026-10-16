@@ -15,7 +15,7 @@ private func preset(required: Bool = false, formats: [AssetSlot.Format] = AssetS
         canvas: CanvasSettings(width: 1080, height: 1080),
         layers: [
             OverlayLayer(layerId: "badge", type: .cameraBadge, slotId: "camera.badge"),
-            OverlayLayer(layerId: "badge2", type: .asset, visibleOn: .allSlides, slotId: "camera.badge"),
+            OverlayLayer(layerId: "badge2", type: .asset, visibility: .allSlides, slotId: "camera.badge"),
             OverlayLayer(layerId: "off", type: .asset, enabled: false, slotId: "signature"),
         ],
         assetSlots: [
@@ -175,9 +175,11 @@ struct PlatformTests {
     func platformCheck() throws {
         let c = try PlatformCatalogStore.builtIn()
         var p = makePreset()
-        p.output.format = .heic
+        p.output.format = .png
         p.output.dynamicRange = .hdr
-        let issues = c.profile(id: "xiaohongshu")!.check(p)
+        var jpegOnly = c.profile(id: "xiaohongshu")!
+        jpegOnly.outputFormats = [.jpeg]
+        let issues = jpegOnly.check(p)
         #expect(issues.map(\.code) == ["platform.unsupported_format", "platform.hdr_unverified"])
         #expect(issues.map(\.severity) == [.error, .warning])
         p.output.format = .jpeg

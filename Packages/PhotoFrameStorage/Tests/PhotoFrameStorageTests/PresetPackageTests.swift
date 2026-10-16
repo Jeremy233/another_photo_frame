@@ -11,7 +11,7 @@ func makePreset() -> ExportPreset {
         canvas: CanvasSettings(width: 1080, height: 1080),
         panorama: PanoramaSettings(enabled: true),
         layers: [
-            OverlayLayer(layerId: "badge", type: .cameraBadge, sizePx: Pair(48, 48), slotId: "camera.badge"),
+            OverlayLayer(layerId: "badge", type: .cameraBadge, sizePx: PixelSize(width: 48, height: 48), slotId: "camera.badge"),
             OverlayLayer(layerId: "sig", type: .text, anchor: .bottomLeft, text: TextStyle(content: "J. Photo")),
         ],
         assetSlots: [AssetSlot(slotId: "camera.badge", label: "相机线稿")],
@@ -189,6 +189,10 @@ struct PresetPreviewTests {
         let preview = try PresetPackage.preview(PresetPackage.export(preset), options: .init(existingPresetIds: [preset.presetId]))
         #expect(preview.canImport)
         #expect(preview.issues.map(\.code) == ["package.preset_id_exists"])
+        #expect(preview.idConflictResolutions == [.saveAsCopy, .replace])
+        let imported = try PresetPackage.importPreset(PresetPackage.export(preset), options: .init(existingPresetIds: [preset.presetId]))
+        #expect(imported.idConflictResolutions.first == .saveAsCopy)
+        #expect(try PresetPackage.preview(PresetPackage.export(preset)).idConflictResolutions.isEmpty)
     }
 
     @Test("不认识的字段：默认拒绝；keep 策略下保留并警告；x- 字段始终放行")
@@ -236,5 +240,25 @@ struct PresetPreviewTests {
         let preview = try PresetPackage.preview(data)
         #expect(preview.canImport)
         #expect(preview.issues.map(\.code) == ["package.ignored_entry"])
+    }
+}
+
+@Suite("规范示例（D-24）")
+struct SpecExamplePackageTests {
+    @Test("把规范 §8.1 示例打包后能直接导入，没有任何问题")
+    func specExampleImports() throws {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let spec = try String(contentsOf: repo.appendingPathComponent("PhotoFrame_V1_Specification.md"), encoding: .utf8)
+        let section = try #require(spec.range(of: "### 8.1 结构与文件格式"))
+        let fence = try #require(spec.range(of: "```json\n", range: section.upperBound..<spec.endIndex))
+        let end = try #require(spec.range(of: "\n```", range: fence.upperBound..<spec.endIndex))
+        let data = package(manifest: String(spec[fence.upperBound..<end.lowerBound]))
+        let catalog = try PlatformCatalogStore.builtIn()
+        let preview = try PresetPackage.preview(data, options: .init(platforms: catalog))
+        #expect(preview.canImport)
+        #expect(preview.issues.isEmpty, "\(preview.issues)")
+        #expect(preview.summary?.platformName == "Instagram")
     }
 }

@@ -78,7 +78,7 @@
 | FR-07 | 素材库与 Slots | 本地自选素材、占位符、预设绑定、缺失处理 | 【已确定】 |
 | FR-08 | 预设管理 | 创建、复制、编辑、导入、导出、分享、schema 版本 | 【已确定】 |
 | FR-09 | 批处理 | 多原图、多预设、队列、进度、取消、重试 | 【已确定】 |
-| FR-10 | 图像导出 | JPEG 必须；PNG/HEIC 等按格式矩阵逐项实现 | 【建议：分级交付】 |
+| FR-10 | 图像导出 | JPEG、PNG；V1 不输出 HEIC | 【已确定：D-36】 |
 | FR-11 | 视频导出 | V1、V2 不做；V2 考虑 Live Photo，V3 及以后再做视频 | 【V1 不做：D-16】 |
 | FR-12 | CLI | 独立可执行文件、可脚本化、JSON 输出 | 【已确定】 |
 | FR-13 | MCP | 本地 stdio MCP Server，供 AI 客户端调用 | 【已确定】 |
@@ -91,9 +91,11 @@
 
 | 平台 / 模式 | 画布 | 背景 | 封面最小边距 | 图像策略 |
 |---|---:|---|---:|---|
-| Instagram Photo / Panorama | 1080 × 1440，3:4 | `#FAFAF8` | 60 px | 完整图等比居中；全景另输出连续切片 |
-| 小红书 XHS Photo / Panorama | 1080 × 1080，1:1 | `#FAFAF8` | 60 px | 同上 |
-| 抖音 Photo | 1080 × 1920，9:16 | `#FAFAF8` | 60 px | 完整图等比居中 |
+| Instagram Standard / Panorama | 1080 × 1440，3:4 | `#FAFAF8` | 60 px | 完整图等比居中；全景另输出连续切片 |
+| 小红书 XHS Standard / Panorama | 1080 × 1080，1:1 | `#FAFAF8` | 60 px | 同上 |
+| 抖音 Douyin Standard / Panorama | 1080 × 1920，9:16 | `#FAFAF8` | 60 px | 同上（Panorama 见 D-31） |
+
+- 【已确定：D-32】内置预设命名为 `<平台> Standard` / `<平台> Panorama`，平台名用英文：`Instagram`、`XHS`、`Douyin`，共 6 个（D-31）。
 
 - 【已确定】当前摄影风格为 **Modern Fine Art Landscape Photography**：中性暖白底、照片为主体、装饰克制。
 - 【已确定】原图封面**完整嵌入**画布；不是自动裁切填满。比例裁切仅作为用户主动开启的可选模式（D-21）。
@@ -286,7 +288,15 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ### 5.4 平台轮播约束
 
-【建议】定义平台能力描述（可更新，不把第三方规则作为不可变真理）：目标比例、最大项数、文件体积限制、图片格式与上传兼容性。上传平台可能自动重采样或统一轮播画幅；PhotoFrame 只能保证**本地导出文件**的几何连续，发布时仍须以平台实机预览验证。
+【已确定】定义平台能力描述（可更新，不把第三方规则作为不可变真理）：目标比例、最大项数、文件体积限制、图片格式与上传兼容性、HDR 输出格式。随应用附带一份平台配置数据，可被更新版本覆盖。
+
+| 平台 | 画布 / 切片 | 轮播上限（含封面） | SDR 格式 | HDR |
+|---|---|---:|---|---|
+| Instagram | 1080 × 1440 | 20 | JPEG；PNG 待用户实测 | gain map JPEG |
+| 小红书 | 1080 × 1080 | 18 | JPEG；PNG 待用户实测 | 待用户实测 |
+| 抖音 | 1080 × 1920 | 35 | JPEG；PNG 待用户实测 | 待用户实测 |
+
+- 【暂定：D-30】轮播上限为暂定值；各平台是否接受 PNG、单文件大小上限，与小红书、抖音的 HDR 一起由用户实测后写入平台配置。上传平台可能自动重采样或统一轮播画幅；PhotoFrame 只能保证**本地导出文件**的几何连续，发布时仍须以平台实机预览验证。
 
 ---
 
@@ -340,7 +350,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
   ↓ (linear-light alpha compositing; high precision; avoid early clipping)
 [Output color transform: working → requested output profile]
   ↓ (e.g. sRGB IEC 61966-2-1; deliberate gamut mapping & quantization)
-[Encoder: JPEG / PNG / HEIC or SDR video]
+[Encoder: JPEG / PNG]   # V1 不输出 HEIC（D-36）、不输出视频（D-16）
   ↓ (Embed CORRECT output ICC and sanitized metadata)
 [File + structured rendering report]
 ```
@@ -404,7 +414,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 |---|---|---|
 | JPEG | sRGB，8-bit，最高质量 Q100（D-06）；可选 HDR gain map | 嵌入正确 ICC；EXIF 默认全部不写出，可选「保留拍摄参数」「保留 GPS（带隐私警告）」 |
 | PNG | sRGB + ICC 或等价标准颜色描述；支持透明输出配置 | 不传播与实际渲染不符的旧 ICC |
-| HEIC | 【待确认】8-bit/10-bit 模式与 ICC 支持测试 | 由系统编码器能力决定 |
+| HEIC | 【V1 不做：D-36】iOS 上传时一般会把 HEIC 转成 JPEG，平台也会重新压缩，输出 HEIC 没有好处；以后可能重新评估 | — |
 
 **EXIF Orientation：** 输出像素统一为正确方向，写出 Orientation=1 或不写该字段，防止社交平台再次旋转。对源图的镜头、焦距、光圈、快门等展示用参数，应与**是否复制到输出元数据**分别控制。输出元数据默认全部不写出；「保留拍摄参数」与「保留 GPS」为独立可选项，「保留 GPS」旁显示隐私警告（D-06）。
 
@@ -432,11 +442,20 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 每个排版元素是可选 `OverlayLayer`，包含：
 
-- 类型：`text`、`asset`、`metadataText`、`cameraBadge`（具体可扩展）。
-- 可见性与适用页面：`coverOnly`（默认）、`allSlides`、`selectedSlides`。
-- Anchor：九宫格定位，默认相对**照片边缘**（D-12），也可选相对画布；offset 使用 px。
-- Size / Max bounds、Opacity、Z-Index、文本字体与行距、颜色、必要的内边距。
-- 渲染空间：相对画布、可用留白或照片（默认**留白区域，不遮挡照片**）。
+- 类型：`text`、`asset`、`metadataText`、`cameraBadge`（具体可扩展）。`asset` / `cameraBadge` 通过 `slotId` 引用素材槽（§8.2）。
+- 可见性与适用页面：`coverOnly`（默认）、`allSlides`、`selectedSlides`。`selectedSlides` 用 `slides` 列出轮播页码：**0 = 封面，切片 k 是第 k + 1 页**（D-27）。页码超出实际页数（例如手动张数改少后）只记录为缺失页，不报错，由 GUI 提示（D-44）。
+- 锚点：九宫格（`topLeft` … `bottomRight`）。
+- 参照物与内外侧（D-12、D-41）：`reference` 为 `photo`（默认）或 `canvas`；以照片为参照时 `side` 为 `outside`（默认，即留白区域）或 `inside`（叠在照片上）；以画布为参照时图层总在画布内侧。不再有单独的「渲染空间」字段。图层遮挡照片时只警告，允许导出。
+- 外侧伸出方向（D-40）：上、下两行的锚点（含四个角）**竖直**伸出照片，水平方向仍按左／中／右对齐照片边缘；中间行的左、右锚点水平伸出；正中锚点没有外侧。V1 不提供水平或对角伸出。
+- 偏移 `offsetPx: [x, y]`，单位 px，正负号约定（D-42）：
+  - 照片外侧的伸出方向：图层与照片边缘的间隙，正值远离照片；
+  - 对齐到边缘的方向（内侧或参照画布）：图层与该边缘的距离，正值向参照矩形中心收；
+  - 居中的方向：直接平移，正值向右／向下。
+  因此换锚点时同一个偏移仍表示「离边缘多远」。例：「照片右下角下方 16 px」= `bottomRight` + 照片外侧 + `[0, 16]`。
+- 尺寸：`sizePx` 是固定像素，**不随画布缩放**（D-45）；没有 `sizePx` 时用内容本身的尺寸，超过 `maxBoundsPx` 时等比缩小。
+- 全景切片（D-43）：以照片为参照时，参照的是**这张切片里的照片部分**；整张都是底色的切片上不画这种图层。以画布为参照时参照整张切片。
+- Opacity（0…1，透明度只在这里表达，颜色不带 alpha，D-35）、Z-Index、文本字体与行距、颜色、必要的内边距。
+- 存储与计算（D-23）：`OverlayLayer` 是预设中的存储形式；渲染前转换成几何参数 `OverlayGeometry`，再计算像素位置。两者共用锚点、参照物、偏移、可见性的类型定义。
 
 **不应在 Inspector 中直接写绘制逻辑**。用户拖动图层时修改的是后端可序列化的布局参数。
 
@@ -471,13 +490,14 @@ My Landscape.photoframe   # ZIP container, versioned
 
 将来如开放包含原创且已获授权资源的分享包，必须显式 opt-in，并标注素材授权与来源；默认模式始终只导出占位符。
 
-**概念 Schema（示例，并非冻结的最终 JSON Schema）：**
+**Schema 示例（schemaVersion 1；字段名已确定，D-24、D-25）：**
 
 ```json
 {
   "schemaVersion": 1,
   "presetId": "7C9E6679-7425-40DE-944B-E07FC1F90AE7",
   "name": "Instagram Panorama — Gallery",
+  "platform": "instagram",
   "canvas": {
     "width": 1080,
     "height": 1440,
@@ -491,17 +511,52 @@ My Landscape.photoframe   # ZIP container, versioned
     "tileCount": "auto",
     "cropPolicy": "never",
     "fitHeight": true,
-    "padColor": "canvasBackground"
+    "padColor": "canvasBackground",
+    "verticalMarginPx": 0
   },
+  "layers": [
+    {
+      "layerId": "camera-badge",
+      "type": "cameraBadge",
+      "enabled": true,
+      "visibleOn": "coverOnly",
+      "anchor": "bottomRight",
+      "reference": "photo",
+      "side": "outside",
+      "offsetPx": [0, 16],
+      "sizePx": [48, 48],
+      "opacity": 1.0,
+      "zIndex": 1,
+      "slotId": "camera.badge"
+    },
+    {
+      "layerId": "exif",
+      "type": "metadataText",
+      "enabled": true,
+      "visibleOn": "coverOnly",
+      "anchor": "bottomLeft",
+      "reference": "photo",
+      "side": "outside",
+      "offsetPx": [0, 16],
+      "maxBoundsPx": [600, 48],
+      "opacity": 1.0,
+      "zIndex": 0,
+      "text": {
+        "template": "{camera} · {focalLength} · {aperture}",
+        "fontSizePx": 18,
+        "lineHeight": 1.2,
+        "color": {"colorSpace": "sRGB", "hex": "#3A3A38"},
+        "paddingPx": 0
+      }
+    }
+  ],
   "assetSlots": [
     {
       "slotId": "camera.badge",
       "kind": "image",
       "required": false,
-      "anchor": "bottomRight",
-      "sizePx": [48, 48],
-      "opacity": 1.0,
-      "visibleOn": "coverOnly"
+      "label": "相机线稿",
+      "acceptedFormats": ["png", "svg"]
     }
   ],
   "output": {
@@ -513,6 +568,16 @@ My Landscape.photoframe   # ZIP container, versioned
   }
 }
 ```
+
+字段说明：
+
+- `platform`：目标平台 ID（§5.4），用于轮播上限、输出格式和 HDR 格式检查；可省略。
+- `canvas.mode`：`fit`（默认）或 `crop`（D-21）。`crop` 时可写 `"crop": {"aspectRatio": [4, 5], "anchor": [0.5, 0.5]}`：`aspectRatio` 省略时取内框比例，`anchor` 取 0…1 表示裁切框位置。
+- `panorama.verticalMarginPx`：所有切片共用的上下边距（D-10）。
+- `layers[]`：图层的全部几何都在这里（§7.1、D-24）。指定页面时写 `"visibleOn": "selectedSlides", "slides": [0, 2]`（D-27）；以画布为参照时写 `"reference": "canvas"`，不写 `side`。
+- `assetSlots[]`：只描述需要什么素材（`slotId`、`kind`、`required`、`label`、`acceptedFormats`），不含位置、尺寸和本地路径（D-24）。
+- 颜色只接受 `#RRGGBB`（D-35）；`output.format` 只有 `jpeg`、`png`（D-36）；`output.colorSpace` 是输出文件的色彩空间，与内部工作空间（D-03）无关。
+- 所有对象都可以带 `x-` 开头的自定义字段，程序原样保留（D-15）。
 
 `presetId` 不表示资产路径；同一个预设可在不同设备绑定不同的相机线稿。`schemaVersion` 支持升级与兼容检查。品牌和第三方平台名称用于识别目标，不代表品牌方背书。
 
@@ -528,9 +593,11 @@ Preset.assetSlots[]  --slotId-->  AssetBinding (user/this job/device)
                                      Renderer
 ```
 
-- Asset Slot 定义作用、位置、尺寸、是否必需；**不包含用户本地绝对路径**。
+- Asset Slot 只描述需要什么素材：用途、类型、可接受格式、是否必需；位置与尺寸在引用它的图层上（D-24）。**不包含用户本地绝对路径**。
 - Asset Binding 定义某一用户或任务把 slot 绑定到哪个本地 asset ID；文件真实路径由 Asset Library 管理。
 - 找不到素材：`required=false` 时给出可见警告、跳过该图层；`required=true` 时阻止输出并给出可修复错误。
+- 只解析被**启用的**图层引用的 slot；没有被启用图层用到的必需 slot 不阻止导出（D-29）。
+- 某一层的绑定失效（素材已删除、格式不被接受）时给出警告，并回退到下一优先级的绑定（D-28）。
 - 安全导入：验证类型、大小、尺寸、编码有效性；导出和分享时不泄露机器用户名、隐私路径、云令牌。
 - 用户可选择「本任务绑定」「保存到此预设的本地绑定」「设为本用户默认绑定」。
 
@@ -542,7 +609,11 @@ Preset.assetSlots[]  --slotId-->  AssetBinding (user/this job/device)
 
 - 导入前预览预设内容：尺寸、图层、slots、目标格式、schema 版本及可能不可用的能力。
 - 不执行任何预设内的代码、命令或脚本；所有字段均为纯数据。
-- 检查 ZIP 解压体积、条目数量、路径穿越、资源名冲突与重复 ID。
+- 检查 ZIP 解压体积、条目数量、路径穿越、资源名冲突与重复 ID。默认上限：压缩包 4 MiB、32 个条目、单条解压 1 MiB、解压总量 8 MiB（D-34）。导入全程在内存中进行，不往磁盘解压。
+- 包里 `manifest.json` 以外的文件不解压，只警告（D-33）。
+- 同一 schema 版本中出现不认识、也不以 `x-` 开头的字段时，默认拒绝导入，错误信息写明字段路径（D-26）。
+- 导出时用启发式规则拒绝疑似本地路径的字符串（如以 `/Users/`、`/Volumes/`、`file:` 开头）（D-37）。
+- 导入的 `presetId` 与已有预设冲突时，默认「另存为副本」（生成新 UUID），也可选择「替换」（D-39）。
 - 预设修改对现有任务采用**快照**语义：已经排队的任务在创建时绑定具体配置版本，避免排队过程中参数悄然变化。【建议】
 - 不兼容的较新 schema：提示升级，不默默丢失字段。
 
@@ -631,7 +702,7 @@ Source (原图)
 ```
 
 - **GUI 不包含业务核心计算**；所有工具共用统一服务协议。
-- `PhotoFrameCore` 尽可能使用跨 Apple 平台可用的纯 Swift 数学、几何和 schema；不依赖 SwiftUI/AppKit。
+- `PhotoFrameCore` 尽可能使用跨 Apple 平台可用的纯 Swift 数学、几何和 schema。「纯 Swift」指不依赖 SwiftUI、AppKit 等 UI 框架；允许依赖 Foundation（D-38）。
 - `PhotoFrameRendering` 可以利用 ColorSync、ImageIO、Core Image、Core Graphics。封装平台实现，避免它们渗入 Core。
 - `PhotoFrameApplication` 管理预设快照、任务、取消、进度、输出清单、权限策略。
 - GUI 的实时预览通过**同一 Renderer** 的 preview mode 完成。
@@ -692,8 +763,8 @@ PhotoFrame/
 | 模型 | 关键字段 |
 |---|---|
 | `PhotoSource` | `sourceId`, file reference, size, orientation, ICC description, metadata |
-| `ExportPreset` | `presetId`, `schemaVersion`, canvas, panorama, overlay, format, color policy |
-| `AssetSlot` | `slotId`, `kind`, geometry, required, binding intent |
+| `ExportPreset` | `presetId`, `schemaVersion`, platform, canvas, panorama, layers, assetSlots, output |
+| `AssetSlot` | `slotId`, `kind`, required, label, acceptedFormats（几何在图层上，D-24） |
 | `AssetBinding` | user-local `assetId`, scoped slot, resolution policy |
 | `ExportRequest` | source(s), preset snapshot(s), overrides, destination, confirmation policy |
 | `JobRecord` | `jobId`, state, progress stages, attempt, errors, result manifest |
@@ -939,6 +1010,34 @@ photoframe mcp serve
   - 签名：【已确定】Alpha/Beta 先不签名；已有 Apple Developer 账号，V1.0 前再决定是否公证。
   - 素材贡献：【已确定】V1 不接受任何素材贡献，仓库只放代码与预设。
 
+### P3 — 实现细节（2026-10-16 审阅）
+
+> 实现预设模型、`.photoframe` 读写和图层定位时遇到的规范歧义。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
+
+- [x] **D-23** 统一图层模型：`OverlayLayer` 是预设中的存储形式，渲染前转换成 `OverlayGeometry` 再计算位置；两者共用锚点、参照物、偏移、可见性的类型定义（§7.1）。备选：存储与几何各自维护一套定义，在边界上手工映射。【已确定 2026-10-16】
+- [x] **D-24** 图层几何只放在 `layers[]` 上；`AssetSlot` 只描述需要什么素材（`slotId`、`kind`、`required`、`label`、`acceptedFormats`）。§8.1 示例已据此改写，并由测试保证示例能被导入。备选：沿用旧示例，把 `anchor`、`sizePx` 等写在 slot 上，或让 slot 携带默认几何。【已确定 2026-10-16】
+- [x] **D-25** 接受预设实现中新增的字段名，并写入 §8.1 示例：顶层 `platform`、`layers`；`canvas.crop`（`aspectRatio`、`anchor`）；`panorama.verticalMarginPx`；图层的 `layerId`、`type`、`enabled`、`visibleOn`、`slides`、`anchor`、`reference`、`side`、`offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`；文字样式的 `content`、`template`、`fontFamily`、`fontSizePx`、`lineHeight`、`color`、`paddingPx`；slot 的 `label`、`acceptedFormats`。（`side` 由 D-41 引入，取代原来的 `region`。）备选：另行设计命名。【已确定 2026-10-16】
+- [x] **D-26** 同一 schema 版本中出现不认识、也不以 `x-` 开头的字段：默认拒绝导入，错误信息写明字段路径（如 `layers[1].blur`）。程序内部保留「保留并警告」的选项。备选：默认保留并警告。【已确定 2026-10-16】
+- [x] **D-27** `selectedSlides` 的页码以轮播位置为准：0 = 封面，切片 k 是第 k + 1 页。备选：只对切片编号，从 0 开始，封面单独控制。【已确定 2026-10-16】
+- [x] **D-28** 绑定的素材失效（已删除，或格式不被该 slot 接受）时给出警告，并回退到下一优先级的绑定（D-14）。备选：直接视为缺失，让用户修复。【已确定 2026-10-16】
+- [x] **D-29** 没有被启用图层用到的必需 slot 不阻止导出。备选：只要声明为必需就必须绑定。【已确定 2026-10-16】
+- [x] **D-30** 平台数值暂定为轮播上限 Instagram 20、小红书 18、抖音 35（都含封面）。各平台是否接受 PNG、单文件大小上限标为「待用户实测」，与小红书、抖音的 HDR（D-17）一起测，结果写入平台配置。备选：上线前逐项查官方文档再定。【已确定 2026-10-16；数值暂定，PNG 与体积待实测】
+- [x] **D-31** 保留 `Douyin Panorama` 内置预设（9:16 切片）。备选：抖音只提供 Standard。【已确定 2026-10-16】
+- [x] **D-32** 内置预设命名为 `<平台> Standard` / `<平台> Panorama`，平台名用英文（`Instagram`、`XHS`、`Douyin`）；规范中原来的「Photo」统一改为 Standard。备选：沿用 Photo，或使用中文平台名。【已确定 2026-10-16】
+- [x] **D-33** 预设包里 `manifest.json` 以外的文件不解压，只警告（仍计入大小与数量上限）。备选：直接拒绝导入。【已确定 2026-10-16】
+- [x] **D-34** ZIP 导入上限：压缩包 4 MiB、32 个条目、单条解压 1 MiB、解压总量 8 MiB。备选：更宽松的上限，为将来附带素材的分享包预留空间。【已确定 2026-10-16】
+- [x] **D-35** 颜色只允许 `#RRGGBB`，不支持 `#RRGGBBAA`；透明度统一用图层的 `opacity`。备选：允许 8 位 alpha，并定义它与 `opacity` 的合成关系。【已确定 2026-10-16】
+- [x] **D-36** V1 输出格式只有 JPEG 和 PNG，`output.format` 去掉 `heic`。理由：iOS 上传时一般会把 HEIC 转成 JPEG，平台也会重新压缩，输出 HEIC 没有好处。以后可能重新评估。备选：保留 HEIC，按系统编码器能力实现。【已确定 2026-10-16】
+- [x] **D-37** 导出时的隐私检查使用启发式规则：拒绝以 `/Users/`、`/Volumes/`、`/private/`、`/home/`、`/var/`、`~/`、`file:` 开头或含 `:\` 的字符串字段。备选：只检查 `x-` 字段，或完全不检查。【已确定 2026-10-16】
+- [x] **D-38** `PhotoFrameCore` 允许依赖 Foundation；§10.1 的「纯 Swift」指不依赖 SwiftUI、AppKit 等 UI 框架。备选：Core 不依赖 Foundation，把 UUID、JSON 编解码挪到其他模块。【已确定 2026-10-16】
+- [x] **D-39** 导入的 `presetId` 与已有预设冲突时，默认「另存为副本」（生成新 UUID），同时提供「替换」。导入预览已给出冲突与默认选项；实际行为由以后的 Application 层实现。备选：默认替换，或要求用户每次选择。【已确定 2026-10-16】
+- [x] **D-40** 角锚点放在照片外侧时竖直伸出（上／下），水平方向仍对齐照片边缘；V1 不提供水平或对角伸出。备选：让用户选择伸出方向。【已确定 2026-10-16】
+- [x] **D-41** 渲染空间只用「参照物（照片／画布）+ 内侧／外侧」表达，去掉单独的 `region` 字段；图层遮挡照片时只警告，允许导出。备选：保留独立的渲染空间字段（画布／留白／照片），或禁止导出遮挡照片的图层。【已确定 2026-10-16】
+- [x] **D-42** 偏移的正负号：照片外侧的伸出方向上是与照片的间隙，正值远离照片；对齐到边缘的方向上是离该边的距离，正值向中心收；居中的方向上直接平移，正值向右／向下（§7.1）。备选：统一用画布坐标（正值向右／下）。【已确定 2026-10-16】
+- [x] **D-43** 在全景切片上，以照片为参照指这张切片里的照片部分；整张都是底色的切片上不画这种图层。备选：参照整张切片。【已确定 2026-10-16】
+- [x] **D-44** 指定页码超出实际页数时，只记为缺失页，不报错；以后由 GUI 显示提示。备选：视为参数错误。【已确定 2026-10-16】
+- [x] **D-45** 图层尺寸是固定像素，不随画布缩放。备选：按画布宽度相对 1080 等比缩放。【已确定 2026-10-16】
+
 ---
 
 ## 17. V1.0 验收 Checklist
@@ -1003,7 +1102,9 @@ photoframe mcp serve
 
 **已确定（2026-10-16 色彩 PoC）：** 工作空间 extended linear Rec.2020 + `RGBAh`（D-03）。
 
-**尚待技术定稿：** 小红书/抖音 HDR 实测结果、色彩阈值定稿（D-19）。许可证已定为 Apache-2.0（D-20）。
+**已确定（2026-10-16 P3 实现细节审阅）：** 统一图层模型、几何只在图层上、预设字段命名、不认识字段默认拒绝、页码 0 = 封面、失效绑定回退、未用必需 slot 不阻止导出、平台数值暂定（IG 20 / 小红书 18 / 抖音 35，PNG 与体积待实测）、保留 Douyin Panorama、Standard / Panorama 命名、额外文件只警告、ZIP 上限、颜色只用 #RRGGBB、V1 不输出 HEIC、启发式隐私检查、Core 可依赖 Foundation、ID 冲突默认另存副本、外侧竖直伸出、参照物 + 内外侧、偏移符号、切片参照该切片的照片部分、缺失页只提示、图层尺寸固定像素（D-23～D-45）。
+
+**尚待技术定稿：** 小红书/抖音 HDR 实测结果、各平台 PNG 与单文件体积实测（D-30）、色彩阈值定稿（D-19）。许可证已定为 Apache-2.0（D-20）。
 
 **V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布、HEIC/HEIF 输入（含 iPhone HDR，放到 V2）、视频输出（V2 考虑 Live Photo，V3 及以后再做视频）。
 

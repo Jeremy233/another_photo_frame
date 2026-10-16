@@ -39,7 +39,42 @@ public struct OverlayAnchor: Hashable, Sendable, Codable, CustomStringConvertibl
         .bottomLeft, .bottom, .bottomRight,
     ]
 
-    public var description: String { "\(horizontal.rawValue)-\(vertical.rawValue)" }
+    /// 预设 JSON 中的名称，例如 `bottomRight`。
+    public var name: String {
+        switch (vertical, horizontal) {
+        case (.start, .start): "topLeft"
+        case (.start, .center): "top"
+        case (.start, .end): "topRight"
+        case (.center, .start): "left"
+        case (.center, .center): "center"
+        case (.center, .end): "right"
+        case (.end, .start): "bottomLeft"
+        case (.end, .center): "bottom"
+        case (.end, .end): "bottomRight"
+        }
+    }
+
+    public init?(name: String) {
+        guard let anchor = Self.allCases.first(where: { $0.name == name }) else { return nil }
+        self = anchor
+    }
+
+    public var description: String { name }
+
+    // 在 JSON 中编码为名称字符串（D-23：预设与几何计算共用这一个类型）。
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        let name = try c.decode(String.self)
+        guard let anchor = OverlayAnchor(name: name) else {
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "不认识的锚点：\(name)")
+        }
+        self = anchor
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(name)
+    }
 }
 
 /// 相对照片放在内侧还是外侧。
@@ -141,6 +176,8 @@ public enum OverlayError: Error, Hashable, Sendable {
     case invalidPage(Int)
     case invalidCanvas(PixelSize)
     case invalidPhotoRect(PixelRect)
+    /// 图层既没有固定尺寸，也没有提供内容尺寸。
+    case missingSize
 
     public var code: String {
         switch self {
@@ -150,6 +187,7 @@ public enum OverlayError: Error, Hashable, Sendable {
         case .invalidPage: "overlay.invalid_page"
         case .invalidCanvas: "overlay.invalid_canvas"
         case .invalidPhotoRect: "overlay.invalid_photo_rect"
+        case .missingSize: "overlay.missing_size"
         }
     }
 
@@ -161,6 +199,7 @@ public enum OverlayError: Error, Hashable, Sendable {
         case .invalidPage(let p): "页码不能为负：\(p)"
         case .invalidCanvas(let s): "画布尺寸必须为正：\(s)"
         case .invalidPhotoRect(let r): "照片矩形必须为正且位于画布内：\(r)"
+        case .missingSize: "图层没有 sizePx，渲染时也没有提供内容尺寸"
         }
     }
 }

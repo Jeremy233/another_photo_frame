@@ -1,10 +1,11 @@
 /// 输出设置（§6.8、§8.1 `output`）。
 ///
 /// 这里的色彩字段只描述**输出意图**（写出的文件是什么色彩空间、SDR 还是 HDR），
-/// 不涉及内部工作空间（D-03 尚待色彩 PoC）。
+/// 不涉及内部工作空间（D-03）。
 public struct OutputSettings: Hashable, Sendable, Codable {
+    /// V1 只输出 JPEG 和 PNG（D-36）。
     public enum Format: String, Hashable, Sendable, Codable, CaseIterable {
-        case jpeg, png, heic
+        case jpeg, png
     }
 
     public enum DynamicRange: String, Hashable, Sendable, Codable, CaseIterable {
