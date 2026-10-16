@@ -19,6 +19,8 @@ case "fixtures":
     }
 case "tonemap":
     try runTonemap(args.dropFirst().map { URL(fileURLWithPath: $0) }, env: env)
+case "compare" where args.count == 3:
+    compareSDR(URL(fileURLWithPath: args[1]), URL(fileURLWithPath: args[2]))
 case "inspect":
     inspect(args.dropFirst().map { URL(fileURLWithPath: $0) })
 case "run":
@@ -49,6 +51,7 @@ default:
     usage:
       colorpoc fixtures                 生成 fixtures/ 下的测试图
       colorpoc inspect <文件或目录>...   检查导出的样本（ICC、gain map、headroom、色域）
+      colorpoc compare <a> <b>          两张图都按 SDR 读取，比较 ΔE2000（长边 1200）
       colorpoc tonemap <HDR TIFF>...     生成 HDR→SDR 几种曲线的并排对比（同目录同名 .jpg 作为 Lightroom 参照）
       colorpoc run [--only a,b] [--real <dir>]
                                         跑全部实验（probes,chart,wide,gradient,alpha,orientation,hdr），
