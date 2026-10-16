@@ -217,11 +217,14 @@ public enum AssetValidator {
 
     /// 受限 SVG 的规则（D-09、D-87）。与 PhotoFrameRendering 的 `RestrictedSVG` 保持一致：导入时拒绝的，渲染时也一定拒绝。
     public enum SVGPolicy {
-        /// 出现即拒绝整个文件。比渲染模块多拒绝动画元素（渲染时会跳过它们，但导入时没必要接受）。
-        public static let forbiddenElements: Set<String> = [
-            "script", "foreignObject", "image", "use", "iframe", "style", "feImage", "a",
-            "animate", "animateMotion", "animateTransform", "set", "handler", "listener",
+        /// 导入时出现即拒绝整个文件 = 渲染也拒绝的 ``renderingForbiddenElements`` + 动画元素（D-87：渲染时跳过它们，导入时没必要接受）。
+        public static let forbiddenElements: Set<String> = renderingForbiddenElements.union(animationElements)
+        /// 渲染模块（`RestrictedSVG`）也拒绝的元素：脚本、外部内容、样式表、链接。
+        public static let renderingForbiddenElements: Set<String> = [
+            "script", "foreignObject", "image", "use", "iframe", "style", "feImage", "a", "handler", "listener",
         ]
+        /// 动画元素：导入时拒绝，渲染时连同子树跳过并警告。
+        public static let animationElements: Set<String> = ["animate", "animateMotion", "animateTransform", "set"]
         public static let ignoredElements: Set<String> = ["title", "desc", "metadata"]
         public static let shapeElements: Set<String> = ["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]
         public static let containerElements: Set<String> = ["svg", "g"]

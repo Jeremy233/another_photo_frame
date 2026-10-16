@@ -1,6 +1,7 @@
 import Foundation
 import PhotoFrameApplication
 import PhotoFrameCore
+import PhotoFrameStorage
 
 // `--json` 的输出格式。这里的类型是 CLI 的公开契约（docs/CLI.md），与内部模型分开定义：
 // 内部类型改名或加字段不会意外改变脚本看到的 JSON。改动格式时递增 `formatVersion`。
@@ -183,8 +184,9 @@ struct PresetJSON: Encodable {
     var slug: String
     var platform: String?
     var platformName: String?
-    /// `builtIn`、`file`、`library`。
+    /// `builtIn`、`user`、`imported`、`file`。
     var origin: String
+    var readOnly: Bool
     var canvas: SizeJSON
     var mode: String
     var background: String
@@ -202,11 +204,8 @@ struct PresetJSON: Encodable {
         slug = p.slug
         platform = p.platform
         platformName = p.platformName
-        origin = switch p.origin {
-        case .builtIn: "builtIn"
-        case .file: "file"
-        case .library: "library"
-        }
+        origin = p.origin.kind
+        readOnly = p.readOnly
         canvas = SizeJSON(p.canvas)
         mode = p.mode.rawValue
         background = p.background
@@ -222,6 +221,88 @@ struct PresetJSON: Encodable {
 
 struct PresetListJSON: Encodable {
     var presets: [PresetJSON]
+    var warnings: [WarningJSON]
+}
+
+/// `preset import` / `duplicate` / `rename` 的结果。
+struct PresetResultJSON: Encodable {
+    var preset: PresetJSON
+    /// 只有 `preset import` 有：ID 冲突时的处理，`saveAsCopy` 或 `replace`。
+    var conflictResolution: String?
+    var warnings: [WarningJSON] = []
+}
+
+struct PresetRefResultJSON: Encodable {
+    var preset: PresetRefJSON
+    /// `preset export` 写出的文件。
+    var path: String?
+}
+
+// MARK: - asset
+
+struct AssetJSON: Encodable {
+    var assetId: String
+    var name: String
+    /// `signature`、`watermark`、`camera-badge`。
+    var category: String
+    var format: String
+    var width: Int
+    var height: Int
+    var bytes: Int
+    var sha256: String
+    var importedAt: String
+    var importWarnings: [String]
+
+    init(_ a: AssetInfo) {
+        assetId = a.assetId.uuidString
+        name = a.displayName
+        category = AssetCategoryArgument(a.category).rawValue
+        format = a.format.rawValue
+        width = a.pixelSize.width
+        height = a.pixelSize.height
+        bytes = a.byteCount
+        sha256 = a.sha256
+        importedAt = ISO8601DateFormatter().string(from: a.importedAt)
+        importWarnings = a.importWarnings
+    }
+}
+
+struct AssetListJSON: Encodable {
+    var assets: [AssetJSON]
+    var warnings: [WarningJSON]
+}
+
+struct AssetResultJSON: Encodable {
+    var asset: AssetJSON
+    /// 只有 `asset import` 有：库里内容相同的素材（D-88）。
+    var duplicateOf: [String]?
+    var warnings: [WarningJSON] = []
+}
+
+struct BindingJSON: Encodable {
+    /// `preset`（预设本地绑定）或 `default`（用户默认绑定）。
+    var scope: String
+    var presetId: String?
+    var slotId: String
+    var assetId: String
+
+    init(_ b: PersistedBinding) {
+        scope = b.scope == .presetLocal ? "preset" : "default"
+        presetId = b.presetId?.uuidString
+        slotId = b.slotId
+        assetId = b.assetId.uuidString
+    }
+}
+
+struct BindingListJSON: Encodable {
+    var bindings: [BindingJSON]
+    var warnings: [WarningJSON]
+}
+
+struct AssetDeleteJSON: Encodable {
+    var assetId: String
+    /// 仍指向这个素材的绑定（保留，D-83）。
+    var bindings: [BindingJSON]
 }
 
 // MARK: - image inspect

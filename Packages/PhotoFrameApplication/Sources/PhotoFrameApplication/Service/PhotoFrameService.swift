@@ -30,10 +30,35 @@ public struct ExportRequest: Hashable, Sendable, Codable {
 ///
 /// 所有类型都可序列化、与界面无关，以后可以在进程间适配器后面提供同一个接口。
 public protocol PhotoFrameService: Sendable {
-    /// 可用的预设：内置 + 本服务读过的 `.photoframe` 文件（以后加上用户预设库）。
-    func listPresets() async throws(ApplicationError) -> [CatalogPresetSummary]
-    /// 按 ID、名称或文件找到预设。文件只读取、不安装。
+    // 预设库（§8、D-76…D-92）
+
+    /// 可用的预设：内置、用户保存、导入（预设库），以及本服务读过的 `.photoframe` 文件。
+    func listPresets() async throws(ApplicationError) -> CatalogPresetList
+    /// 按 ID、名称、短名或文件找到预设（D-76）。文件只读取、不放进预设库。
     func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset
+    /// 把 `.photoframe` 导入预设库。ID 冲突时默认另存为副本（D-39、D-80），`replace` 时替换同 ID 的预设。
+    func importPreset(from fileURL: URL, replace: Bool) async throws(ApplicationError) -> CatalogPresetImport
+    /// 把预设导出为 `.photoframe`（校验 + 隐私检查，D-37）。目标已存在时只有 `overwrite` 才替换。
+    func exportPreset(_ reference: PresetReference, to fileURL: URL, overwrite: Bool) async throws(ApplicationError)
+    /// 复制预设（内置预设也可以），默认连同本地绑定（D-79、D-84）。
+    func duplicatePreset(_ reference: PresetReference, name: String?) async throws(ApplicationError) -> CatalogPresetSummary
+    func renamePreset(_ reference: PresetReference, to name: String) async throws(ApplicationError) -> CatalogPresetSummary
+    /// 删除用户预设及其本地绑定；内置预设不能删除。
+    func deletePreset(_ reference: PresetReference) async throws(ApplicationError)
+
+    // 素材库与绑定（§8.2、D-14）
+
+    func listAssets(category: AssetCategory?) async -> CatalogAssetList
+    /// 素材引用：assetId 或显示名称（不区分大小写，必须唯一）。
+    func resolveAsset(_ reference: String) async throws(ApplicationError) -> AssetInfo
+    func importAsset(from fileURL: URL, category: AssetCategory, name: String?) async throws(ApplicationError) -> CatalogAssetImport
+    func renameAsset(_ id: UUID, to name: String) async throws(ApplicationError) -> AssetInfo
+    /// 删除素材；指向它的绑定保留（D-83），返回这些绑定。
+    func deleteAsset(_ id: UUID) async throws(ApplicationError) -> [PersistedBinding]
+    /// 持久绑定：`preset` 为 nil 时是用户默认绑定，否则是该预设的本地绑定。`assetId` 为 nil 时清除。
+    func bindAsset(_ assetId: UUID?, slotId: String, preset: PresetReference?) async throws(ApplicationError)
+    func listBindings() async -> CatalogBindingList
+
     /// 检查源图：格式、尺寸、方向、ICC、HDR、EXIF 摘要。不登记源图。
     func inspectSource(_ source: SourceReference) async throws(ApplicationError) -> SourceInspection
     /// 校验导出请求，不渲染、不写文件（`--dry-run`）。请求本身无效（没有源图或预设、源图未登记）时抛出；
@@ -74,40 +99,42 @@ public protocol PhotoFrameService: Sendable {
     func waitUntilFinished(_ jobs: [JobID]) async -> [JobSnapshot]
 }
 
-/// 进程内实现：源图登记 + 预设来源 + ``JobQueue`` + 图像分析。GUI、CLI、MCP 各自在自己的进程里创建一个（D-13）。
+/// 进程内实现：源图登记 + 本地库（预设、素材、绑定）+ ``JobQueue`` + 图像分析。
+/// GUI、CLI、MCP 各自在自己的进程里创建一个（D-13）。
 ///
-/// 正常使用 ``makeDefault(_:)``（用 PhotoFrameRendering 渲染）。渲染与图像分析也可以注入别的实现，测试用假的渲染器。
+/// 正常使用 ``makeDefault(_:)``（用 PhotoFrameRendering 渲染、App Group 里的本地库）。渲染、图像分析和本地库都可以注入，
+/// 测试用假的渲染器和临时目录里的库。
 public actor LocalPhotoFrameService: PhotoFrameService {
     public let queue: JobQueue
+    public nonisolated let library: LocalLibrary
     private let analyzer: (any ImageAnalyzer)?
-    private let presetProvider: any PresetProvider
     private let configuration: QueueConfiguration
     private var sourcesById: [SourceID: PhotoSource] = [:]
     private var sourceOrder: [SourceID] = []
     /// 通过文件路径读过的预设，之后也出现在 `listPresets` 里。
     private var filePresets: [CatalogPreset] = []
 
-    public init(
-        queue: JobQueue, configuration: QueueConfiguration = QueueConfiguration(),
-        analyzer: (any ImageAnalyzer)? = nil, presets: (any PresetProvider)? = nil
-    ) {
-        self.queue = queue
-        self.configuration = configuration
-        self.analyzer = analyzer
-        self.presetProvider = presets ?? Self.defaultPresets(configuration.platformCatalog)
-    }
-
     /// - Parameters:
     ///   - renderer: 任务队列使用的渲染器。
     ///   - analyzer: 检查源图、预估输出、预览；nil 时这些接口报 `service.unavailable`，`validate` 不预估输出。
-    ///   - presets: 预设来源；nil 时用平台配置生成内置预设（没有平台配置时用应用附带的配置）。
-    ///   - configuration: 队列设置；素材来源放在 `configuration.assets`。
+    ///   - library: 本地库；nil 时用系统临时目录里一个新的空库（只有内置预设，给测试用）。
+    ///   - configuration: 队列设置。素材来源没有设置时用 `library`。
     public init(
-        renderer: any JobRenderer, analyzer: (any ImageAnalyzer)? = nil, presets: (any PresetProvider)? = nil,
+        renderer: any JobRenderer, analyzer: (any ImageAnalyzer)? = nil, library: LocalLibrary? = nil,
         configuration: QueueConfiguration = QueueConfiguration()
     ) {
-        self.init(queue: JobQueue(renderer: renderer, configuration: configuration), configuration: configuration,
-                  analyzer: analyzer, presets: presets)
+        let catalog = configuration.platformCatalog ?? (try? PlatformCatalogStore.builtIn())
+            ?? PlatformCatalog(revision: 0, updatedAt: "", platforms: [])
+        let library = library ?? LocalLibrary(
+            root: FileManager.default.temporaryDirectory.appending(path: "PhotoFrameLibrary-\(UUID().uuidString)", directoryHint: .isDirectory),
+            platforms: catalog)
+        var configuration = configuration
+        if configuration.platformCatalog == nil { configuration.platformCatalog = catalog }
+        if configuration.assets == nil, configuration.slotResolver == nil { configuration.assets = library }
+        self.library = library
+        self.configuration = configuration
+        self.analyzer = analyzer
+        self.queue = JobQueue(renderer: renderer, configuration: configuration)
     }
 
     /// ``makeDefault(_:)`` 的设置。
@@ -120,25 +147,23 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         public var startsPaused: Bool
         /// 平台配置；nil 用应用附带的 `platforms.json`。
         public var platformCatalog: PlatformCatalog?
-        /// 预设来源；nil 只有内置预设。用户预设库做好后从这里接入。
-        public var presets: (any PresetProvider)?
-        /// 素材来源；nil 表示没有素材库。素材库做好后从这里接入。
-        public var assets: (any AssetProvider)?
+        /// 本地库根目录；nil 用 App Group 共享容器（D-78，`LibraryLocation.defaultRoot()`）。
+        /// GUI 传 `LibraryLocation.groupContainerRoot()`，测试传临时目录。
+        public var libraryRoot: URL?
 
         public init(
             maxConcurrentJobs: Int? = nil, memoryBudgetBytes: Int64? = nil, startsPaused: Bool = false,
-            platformCatalog: PlatformCatalog? = nil, presets: (any PresetProvider)? = nil, assets: (any AssetProvider)? = nil
+            platformCatalog: PlatformCatalog? = nil, libraryRoot: URL? = nil
         ) {
             self.maxConcurrentJobs = maxConcurrentJobs
             self.memoryBudgetBytes = memoryBudgetBytes
             self.startsPaused = startsPaused
             self.platformCatalog = platformCatalog
-            self.presets = presets
-            self.assets = assets
+            self.libraryRoot = libraryRoot
         }
     }
 
-    /// 用 PhotoFrameRendering 渲染的服务。GUI、CLI、MCP 各自在自己的进程里调用一次（D-13）。
+    /// 用 PhotoFrameRendering 渲染、用本地库提供预设与素材的服务。GUI、CLI、MCP 各自在自己的进程里调用一次（D-13）。
     public static func makeDefault(_ options: Options = Options()) throws(ApplicationError) -> LocalPhotoFrameService {
         let catalog: PlatformCatalog
         if let given = options.platformCatalog {
@@ -150,45 +175,172 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 throw ApplicationError(code: error.code, message: "无法读取平台配置：\(error)")
             }
         }
-        let assets = options.assets ?? NoAssetLibrary()
-        let backend = RenderingBackend(assets: assets)
+        let library = LocalLibrary(root: options.libraryRoot ?? LibraryLocation.defaultRoot(), platforms: catalog)
+        let backend = RenderingBackend(assets: library)
         let configuration = QueueConfiguration(
             maxConcurrentJobs: options.maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs,
             memoryBudgetBytes: options.memoryBudgetBytes ?? QueueConfiguration.defaultMemoryBudgetBytes,
-            startsPaused: options.startsPaused, platformCatalog: catalog, assets: assets)
-        return LocalPhotoFrameService(
-            renderer: backend, analyzer: backend, presets: options.presets ?? BuiltInPresetProvider(catalog: catalog),
-            configuration: configuration)
+            startsPaused: options.startsPaused, platformCatalog: catalog, assets: library)
+        return LocalPhotoFrameService(renderer: backend, analyzer: backend, library: library, configuration: configuration)
     }
 
-    private static func defaultPresets(_ catalog: PlatformCatalog?) -> any PresetProvider {
-        guard let catalog = catalog ?? (try? PlatformCatalogStore.builtIn()) else { return CompositePresetProvider([]) }
-        return BuiltInPresetProvider(catalog: catalog)
-    }
-
-    private var catalog: PlatformCatalog? { configuration.platformCatalog ?? (try? PlatformCatalogStore.builtIn()) }
+    private var catalog: PlatformCatalog? { configuration.platformCatalog }
 
     // MARK: - 预设
 
-    public func listPresets() async throws(ApplicationError) -> [CatalogPresetSummary] {
-        let catalog = self.catalog
-        return try await allPresets().map { CatalogPresetSummary($0, catalog: catalog) }
-    }
-
-    private func allPresets() async throws(ApplicationError) -> [CatalogPreset] {
-        let provided = try await presetProvider.presets()
-        let ids = Set(provided.map(\.preset.presetId))
-        return provided + filePresets.filter { !ids.contains($0.preset.presetId) }
+    public func listPresets() async throws(ApplicationError) -> CatalogPresetList {
+        let listing = library.presets.list()
+        let ids = Set(listing.all.map(\.presetId))
+        let entries = listing.all.map(CatalogPreset.init) + filePresets.filter { !ids.contains($0.preset.presetId) }
+        return CatalogPresetList(
+            presets: entries.map { CatalogPresetSummary($0, catalog: catalog) },
+            warnings: listing.warnings.map(ApplicationWarning.init))
     }
 
     public func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset {
-        if case .file(let url) = reference {
+        switch reference {
+        case .file(let url):
             let entry = try PresetFileLoader.load(url, platforms: catalog)
             filePresets.removeAll { $0.origin == entry.origin }
             filePresets.append(entry)
             return entry
+        case .library(let text):
+            return CatalogPreset(try libraryEntry(text))
         }
-        return try reference.match(in: try await allPresets())
+    }
+
+    private func libraryEntry(_ text: String) throws(ApplicationError) -> PresetEntry {
+        do {
+            return try library.presets.find(text)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    /// 只在预设库里的预设上做修改；`.file` 引用没有库里的对象。
+    private func libraryId(_ reference: PresetReference) throws(ApplicationError) -> UUID {
+        switch reference {
+        case .library(let text): return try libraryEntry(text).presetId
+        case .file(let url): throw .presetNotInLibrary(url.path)
+        }
+    }
+
+    private func summary(_ entry: PresetEntry) -> CatalogPresetSummary {
+        CatalogPresetSummary(CatalogPreset(entry), catalog: catalog)
+    }
+
+    public func importPreset(from fileURL: URL, replace: Bool) async throws(ApplicationError) -> CatalogPresetImport {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { throw .presetFileNotFound(fileURL.path) }
+        do {
+            let result = try library.presets.importPackage(fileAt: fileURL, onConflict: replace ? .replace : .saveAsCopy)
+            return CatalogPresetImport(
+                preset: summary(result.entry), conflictResolution: result.conflictResolution?.rawValue,
+                warnings: result.warnings.map { ApplicationWarning(code: $0.code, message: "\($0.path)：\($0.message)") })
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func exportPreset(_ reference: PresetReference, to fileURL: URL, overwrite: Bool) async throws(ApplicationError) {
+        let id = try libraryId(reference)
+        if !overwrite, FileManager.default.fileExists(atPath: fileURL.path) { throw .exportFileExists(fileURL.path) }
+        do {
+            try library.presets.exportPackage(id, to: fileURL)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func duplicatePreset(_ reference: PresetReference, name: String?) async throws(ApplicationError) -> CatalogPresetSummary {
+        let id = try libraryId(reference)
+        do {
+            return summary(try library.duplicatePreset(id, name: name))
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func renamePreset(_ reference: PresetReference, to name: String) async throws(ApplicationError) -> CatalogPresetSummary {
+        let id = try libraryId(reference)
+        do {
+            return summary(try library.presets.rename(id, to: name))
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func deletePreset(_ reference: PresetReference) async throws(ApplicationError) {
+        let id = try libraryId(reference)
+        do {
+            try library.deletePreset(id)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    // MARK: - 素材与绑定
+
+    public func listAssets(category: AssetCategory?) async -> CatalogAssetList {
+        let listing = library.assets.list(category: category)
+        return CatalogAssetList(assets: listing.assets, warnings: listing.warnings.map(ApplicationWarning.init))
+    }
+
+    public func resolveAsset(_ reference: String) async throws(ApplicationError) -> AssetInfo {
+        let assets = library.assets.list().assets
+        if let id = UUID(uuidString: reference) {
+            guard let hit = assets.first(where: { $0.assetId == id }) else { throw ApplicationError(LibraryError.assetNotFound(id)) }
+            return hit
+        }
+        let hits = assets.filter { $0.displayName.compare(reference, options: .caseInsensitive) == .orderedSame }
+        guard let first = hits.first else { throw .assetReferenceNotFound(reference) }
+        guard hits.count == 1 else { throw .assetAmbiguous(reference, hits.map(\.assetId.uuidString)) }
+        return first
+    }
+
+    public func importAsset(from fileURL: URL, category: AssetCategory, name: String?) async throws(ApplicationError) -> CatalogAssetImport {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { throw .assetFileNotFound(fileURL.path) }
+        do {
+            let result = try library.assets.importAsset(fileAt: fileURL, category: category, displayName: name)
+            return CatalogAssetImport(
+                asset: result.asset, duplicateOf: result.duplicateOf,
+                warnings: result.warnings.map { ApplicationWarning(code: "asset.import_note", message: $0) })
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func renameAsset(_ id: UUID, to name: String) async throws(ApplicationError) -> AssetInfo {
+        do {
+            return try library.assets.rename(id, to: name)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func deleteAsset(_ id: UUID) async throws(ApplicationError) -> [PersistedBinding] {
+        do {
+            return try library.deleteAsset(id)
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func bindAsset(_ assetId: UUID?, slotId: String, preset: PresetReference?) async throws(ApplicationError) {
+        let presetId = try preset.map { (ref) throws(ApplicationError) in try libraryId(ref) }
+        do {
+            if let presetId {
+                try library.bindForPreset(presetId, slotId: slotId, assetId: assetId)
+            } else {
+                try library.bindByDefault(slotId: slotId, assetId: assetId)
+            }
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func listBindings() async -> CatalogBindingList {
+        let loaded = library.bindings.load()
+        return CatalogBindingList(bindings: loaded.table.persistedBindings, warnings: loaded.warnings.map(ApplicationWarning.init))
     }
 
     // MARK: - 源图

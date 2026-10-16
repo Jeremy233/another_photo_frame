@@ -32,6 +32,9 @@ struct PreviewCommand: AsyncParsableCommand {
     @Option(name: .customLong("assume-profile"), help: AssumedProfile.help)
     var assumeProfile: AssumedProfile?
 
+    @Option(name: .customLong("bind"), help: JobBinding.help)
+    var bindings: [JobBinding] = []
+
     @Flag(help: "替换已存在的同名预览文件。")
     var overwrite = false
 
@@ -48,6 +51,7 @@ struct PreviewCommand: AsyncParsableCommand {
         let env = ctx.env
         let service = try ctx.makeService()
 
+        let assetBindings = try await ctx.resolveBindings(bindings, service: service)
         let entry: CatalogPreset
         let source: PhotoSource
         let preview: ExportPreview
@@ -57,7 +61,7 @@ struct PreviewCommand: AsyncParsableCommand {
             preview = try await service.renderPreview(ExportPreviewRequest(
                 source: .id(source.sourceId), preset: entry.preset,
                 options: PreviewOptions(maxLongEdge: maxEdge, pages: pages.isEmpty ? nil : Set(pages)),
-                sourceColorOverride: assumeProfile?.override))
+                assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override))
         } catch {
             throw ctx.fail(error)
         }

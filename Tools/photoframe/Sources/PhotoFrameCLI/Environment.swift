@@ -61,22 +61,27 @@ public struct CLIEnvironment: Sendable {
     public var stderr: TextSink
     public var currentDirectory: URL
     public var interrupts: InterruptMonitor
+    /// 本地库（预设库、素材库、绑定）的根目录；nil 用 App Group 共享容器（D-78）。
+    /// 可执行文件从环境变量 `PHOTOFRAME_LIBRARY` 取；测试指向临时目录。
+    public var libraryRoot: URL?
     public var makeService: ServiceFactory
 
     public init(
         stdout: TextSink, stderr: TextSink, currentDirectory: URL, interrupts: InterruptMonitor = InterruptMonitor(),
-        makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try LocalPhotoFrameService.makeDefault(options) }
+        libraryRoot: URL? = nil, makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try LocalPhotoFrameService.makeDefault(options) }
     ) {
         self.stdout = stdout
         self.stderr = stderr
         self.currentDirectory = currentDirectory
         self.interrupts = interrupts
+        self.libraryRoot = libraryRoot
         self.makeService = makeService
     }
 
     public static let standard = CLIEnvironment(
         stdout: .standardOutput, stderr: .standardError,
-        currentDirectory: URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory))
+        currentDirectory: URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory),
+        libraryRoot: ProcessInfo.processInfo.environment["PHOTOFRAME_LIBRARY"].flatMap { $0.isEmpty ? nil : URL(filePath: ($0 as NSString).expandingTildeInPath, directoryHint: .isDirectory) })
 
     @TaskLocal public static var current: CLIEnvironment = .standard
 

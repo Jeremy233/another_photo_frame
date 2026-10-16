@@ -27,6 +27,8 @@ struct InfoCommandTests {
         let pano = try #require(presets.first { $0["slug"] as? String == "xhs-panorama" })
         #expect(pano["presetId"] as? String == "16AE8FDA-85CA-4BBC-B4C2-9C1A47324EA1")
         #expect(pano["origin"] as? String == "builtIn")
+        #expect(pano["readOnly"] as? Bool == true)
+        #expect((json["warnings"] as? [Any])?.isEmpty == true)
         #expect((pano["canvas"] as? [String: Int]) == ["width": 1080, "height": 1080])
         #expect(pano["panorama"] is [String: Any])
         #expect(pano["format"] as? String == "jpeg")
@@ -253,7 +255,7 @@ struct ExportCommandTests {
 
     @Test("校验失败时什么都不写，退出码按错误类别", arguments: [
         (["export", "nope.jpg", "--preset", "xhs-standard", "-o", "Exports"], PhotoFrameExitCode.notFound, "source.not_found"),
-        (["export", "Badlands.jpg", "--preset", "tiktok", "-o", "Exports"], .notFound, "preset.not_found"),
+        (["export", "Badlands.jpg", "--preset", "tiktok", "-o", "Exports"], .notFound, "library.preset_not_found"),
         (["export", "Badlands.jpg", "--preset", "missing.photoframe", "-o", "Exports"], .notFound, "preset.file_not_found"),
         (["export", "Phone.heic", "--preset", "xhs-standard", "-o", "Exports"], .invalidInput, "source.unsupported_format"),
         (["export", "Fake.png", "--preset", "xhs-standard", "-o", "Exports"], .invalidInput, "render.unsupported_format"),

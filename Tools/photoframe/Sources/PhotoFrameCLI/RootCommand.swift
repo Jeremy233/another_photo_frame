@@ -12,7 +12,7 @@ public struct RootCommand: AsyncParsableCommand {
             退出码：0 成功，1 内部错误，2 用法错误，3 找不到输入，4 输入无效，5 输出不可用，6 导出任务失败，130 被中断。
             """,
         version: PhotoFrameCLI.version,
-        subcommands: [ExportCommand.self, ImageCommand.self, PresetCommand.self, PreviewCommand.self])
+        subcommands: [ExportCommand.self, PreviewCommand.self, ImageCommand.self, PresetCommand.self, AssetCommand.self])
 
     public init() {}
 }
@@ -57,6 +57,8 @@ struct CommandContext {
     var env: CLIEnvironment { CLIEnvironment.current }
 
     func makeService(_ options: LocalPhotoFrameService.Options = .init()) throws -> any PhotoFrameService {
+        var options = options
+        if options.libraryRoot == nil { options.libraryRoot = env.libraryRoot }
         do {
             return try env.makeService(options)
         } catch {

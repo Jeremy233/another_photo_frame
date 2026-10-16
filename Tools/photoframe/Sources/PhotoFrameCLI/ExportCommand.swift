@@ -30,6 +30,9 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(name: .customLong("assume-profile"), help: AssumedProfile.help)
     var assumeProfile: AssumedProfile?
 
+    @Option(name: .customLong("bind"), help: JobBinding.help)
+    var bindings: [JobBinding] = []
+
     @Flag(help: "作品目录已存在时替换本软件之前导出的目录，而不是加版本后缀（D-49）。")
     var overwrite = false
 
@@ -80,10 +83,11 @@ struct ExportCommand: AsyncParsableCommand {
             }
         }
 
+        let assetBindings = try await ctx.resolveBindings(bindings, service: service)
         let request = ExportRequest(
             sourceIds: sourceIds, presets: presets,
             destination: ExportDestination(rootDirectory: env.resolvePath(output), conflictPolicy: overwrite ? .overwrite : .versionSuffix),
-            sourceColorOverride: assumeProfile?.override)
+            assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override)
 
         // 3. 校验
         let validation: ValidationResult
