@@ -223,7 +223,9 @@ struct PreviewTests {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.floatComponents.rawValue
                 | CGImageByteOrderInfo.order32Little.rawValue))
         ctx.draw(page.image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        let brightest = (0..<w).map { px[((20 + 20) * w + $0) * 4 + 1] }.max() ?? 0
+        let row = 40 * w
+        var brightest: Float = 0
+        for x in 0..<w { brightest = max(brightest, px[(row + x) * 4 + 1]) }
         #expect(brightest > 4, "最亮色块 \(brightest)")
         #expect(abs(px[(5 * w + 5) * 4 + 1] - 0.955) < 0.02, "背景 \(px[(5 * w + 5) * 4 + 1])")
 
