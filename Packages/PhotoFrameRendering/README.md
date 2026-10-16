@@ -30,7 +30,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `TIFFGainMap.swift` | 经典 TIFF 解析、ISO 21496-1 元数据、「最大化兼容性」TIFF 的 HDR 还原 |
 | `PageComposer.swift` | 照片缩放（Lanczos）、tone map、页面合成 |
 | `OverlayContent.swift` | 文字（Core Text）、PNG、SVG 绘制成工作空间图像 |
-| `RestrictedSVG.swift` | 受限 SVG 解析与绘制（D-09） |
+| `RestrictedSVG.swift` | 受限 SVG 解析与绘制（D-09）；规则与上限来自 Storage 的 `AssetValidator.SVGPolicy`、`AssetImportLimits.default`（D-87） |
 | `Metadata.swift` | `metadataText` 占位符；输出元数据策略（D-06） |
 | `OutputEncoder.swift` | SDR / HDR 编码、JPEG ICC 补插、HDR 元数据合并 |
 | `WorkingColor.swift` | 工作空间（D-03）、CIContext、预设颜色 |

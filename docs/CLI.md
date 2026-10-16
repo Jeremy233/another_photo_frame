@@ -23,6 +23,9 @@ swift build -c release
 - **不加 `--overwrite` 就不覆盖**：已存在的作品目录自动加 `_v2`、`_v3`…（D-49）。
 - **Ctrl-C**：取消所有未完成的任务，删除它们的临时目录，以 130 退出；已经发布的作品目录保持完整。
   再按一次 Ctrl-C 立即退出，残留的临时目录在下次导出到同一目录时清理（D-55）。
+- **本地库**：预设库、素材库和绑定在 App Group 共享容器里（D-78），GUI、CLI、MCP 用同一个库：
+  `~/Library/Group Containers/group.org.anotherphotoframe/Library/Application Support/AnotherPhotoFrame/`
+  （App Group ID 是占位值，签名时确定）。环境变量 `PHOTOFRAME_LIBRARY=<目录>` 改用别的库（脚本隔离、测试）。
 
 ## 命令
 
@@ -34,21 +37,51 @@ photoframe preview <图片> --preset <id|名称|文件> --output <目录>
                   [--assume-profile srgb|display-p3|adobe-rgb]
                   [--max-edge <px>] [--page <n> ...] [--overwrite] [--json]
 photoframe image inspect <图片> [--json]
+
 photoframe preset list [--json]
+photoframe preset import <文件> [--replace] [--json]
+photoframe preset export <预设> --output <文件|目录> [--overwrite] [--json]
+photoframe preset duplicate <预设> [--name <名称>] [--json]
+photoframe preset rename <预设> <新名称> [--json]
+photoframe preset delete <预设> [--json]
+
+photoframe asset list [--category signature|watermark|camera-badge] [--json]
+photoframe asset import <文件> --category signature|watermark|camera-badge [--name <名称>] [--json]
+photoframe asset rename <素材> <新名称> [--json]
+photoframe asset delete <素材> [--json]
+photoframe asset bind <素材> --slot <slotId> [--preset <预设>]
+photoframe asset unbind --slot <slotId> [--preset <预设>]
+photoframe asset bindings [--json]
+
 photoframe --help | --version
 ```
 
-`preset import` / `preset export`（等用户预设库）和 `mcp serve`（做 MCP 时）还没有实现，帮助里也不列出。
+`export` 和 `preview` 还接受 `--bind <slotId>=<素材>`（可重复），见「素材绑定」。
+
+`mcp serve`（做 MCP 时）还没有实现，帮助里也不列出。预设的内容编辑（画布、图层等）是 GUI 的 Inspector 操作，命令行现在可以用
+「导出 → 编辑 manifest → 导入 `--replace`」完成，见「待补」。
 
 ### 指定预设：`--preset <id|名称|文件>`
 
 | 写法 | 例子 | 规则 |
 |---|---|---|
-| 文件 | `./Minimal.photoframe`、`~/presets/x.photoframe` | 以 `.photoframe` 结尾或含 `/` 的参数。只读取、不安装；导入检查与预设库相同（ZIP 上限、不认识的字段等） |
+| 文件 | `./Minimal.photoframe`、`~/presets/x.photoframe` | 以 `.photoframe` 结尾或含 `/` 的参数。只读取、不放进预设库；导入检查与预设库相同（ZIP 上限、不认识的字段等）。只用于 `export` / `preview` |
 | presetId | `53EABC50-58DB-4F46-BC2E-A5A334C0B7E8` | 能解析成 UUID 的参数 |
-| 名称 | `instagram-panorama`、`"XHS Standard"` | 其余参数。不区分大小写，空格、下划线、连字符等价；`preset list` 第一列就是可以直接用的短名称 |
+| 名称 | `"XHS Standard"` | 完整名称，不区分大小写 |
+| 短名称 | `instagram-panorama` | 名称转小写、字母数字以外的连续字符换成 `-`；`preset list` 第一列就是它 |
 
-现阶段可用的预设是 6 个内置预设（D-31、D-32）加上命令行直接给出的文件。
+除文件外都由预设库匹配（`PresetLibrary.find`，D-76）：内置、用户保存、导入三组一起找；匹配到多个报 `library.ambiguous_preset`，改用 presetId。
+
+### 素材绑定
+
+图层引用素材槽（slot），素材槽解析到素材库里的素材，优先级（D-14）：
+
+1. **单任务**：`export` / `preview` 的 `--bind <slotId>=<素材>`，只对这次命令生效；
+2. **预设本地**：`asset bind <素材> --slot <slotId> --preset <预设>`，保存在本机，不随预设导出；
+3. **用户默认**：`asset bind <素材> --slot <slotId>`，按 slotId 对所有预设生效（D-90）。
+
+素材引用是 assetId，或显示名称（不区分大小写，必须唯一）。绑定指向的素材已删除或格式不被接受时警告并回退到下一级（D-28）；
+必需素材都找不到时校验失败（`slot.missing_required`，退出码 4），没有被启用图层用到的必需槽不影响（D-29）。
 
 ### `export`
 
@@ -66,6 +99,7 @@ photoframe --help | --version
 | `--preset` | 可重复；重复的预设只算一次 |
 | `-o, --output` | 输出根目录，不存在时创建 |
 | `--assume-profile` | 没有 ICC 的源图按什么色彩空间解释：`srgb`、`display-p3`、`adobe-rgb`。见下文「输入色彩空间」 |
+| `--bind <slotId>=<素材>` | 单任务素材绑定，可重复。见「素材绑定」 |
 | `--overwrite` | 作品目录已存在时替换，而不是加版本后缀。只替换本软件之前导出的目录（目录上有扩展属性 `org.anotherphotoframe.published`，里面只有本软件命名的图片）；否则拒绝，退出码 5（D-49） |
 | `--dry-run` | 只校验并列出将写出的文件，不渲染、不写任何文件（连输出目录都不创建） |
 | `--json` | stdout 输出 JSON |
@@ -99,7 +133,7 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 
 | 选项 | 说明 |
 |---|---|
-| `--assume-profile` | 同 `export` |
+| `--assume-profile`、`--bind` | 同 `export` |
 | `--max-edge <px>` | 预览页长边上限，默认 1200，不会大于导出尺寸 |
 | `--page <n>` | 只预览这些轮播页（0 = 封面，切片 k 是 k + 1，D-27）。可重复；默认全部 |
 
@@ -118,9 +152,30 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 读取源图的格式、尺寸、EXIF 方向、位深、ICC（是否真的嵌入、按什么解释）、HDR 判定（D-62）和图层文字可用的 EXIF 值。
 **GPS、作者和版权只报告有无，不输出内容**（§12.3）。没有 ICC 时按 sRGB 解释并给出 `source.profile_missing` 警告（D-04）。
 
-### `preset list`
+### `preset …`：预设库
 
-列出内置预设。文本格式每行：短名称、名称、平台、画布、`standard`/`panorama`、presetId。
+| 命令 | 说明 | stdout（文本） |
+|---|---|---|
+| `preset list` | 列出内置、用户保存、导入三组（D-81、D-82 的顺序）。读库时跳过的损坏文件等作为警告写到 stderr | 每行：短名称、名称、来源（`builtIn`/`user`/`imported`）、平台、画布、`standard`/`panorama`、presetId |
+| `preset import <文件>` | 把 `.photoframe` 导入「导入」组。presetId 与已有预设相同时默认**另存为副本**（新 ID，名称加 ` Copy`，D-39、D-80），`--replace` 时替换同 ID 的预设（内置预设不能替换） | `presetId  名称` |
+| `preset export <预设> -o <文件或目录>` | 导出为 `.photoframe`：只含布局，素材只以 slot 出现，拒绝带本地路径的预设（D-37）。内置预设也能导出。`-o` 是已存在的目录时文件名取预设名称；目标文件已存在时要 `--overwrite`（否则 `preset.export_exists`，退出码 5） | 写出的文件路径 |
+| `preset duplicate <预设> [--name]` | 复制到「用户保存」组，默认名称「原名 Copy」（D-79），本地绑定一起复制（D-84）。内置预设也能复制 | `presetId  名称` |
+| `preset rename <预设> <新名称>` | 内置预设不能改（`library.builtin_read_only`，退出码 4） | `presetId  名称` |
+| `preset delete <预设>` | 删除库里的预设和它的本地绑定；内置预设不能删 | `presetId  名称` |
+
+### `asset …`：素材库与绑定
+
+| 命令 | 说明 | stdout（文本） |
+|---|---|---|
+| `asset list [--category]` | 列出素材，**不输出文件路径**（§11.4） | 每行：assetId、名称、分组、格式、尺寸 |
+| `asset import <文件> --category <分组>` | 校验后复制进库：只接受 PNG 和受限 SVG（D-09），按内容校验，上限见 D-85，动画 PNG 拒绝（D-86）。分组只用于整理，不限制能绑定到哪个槽（D-89）。内容与已有素材相同时仍然导入，在 stderr 提示（D-88） | 新素材的 assetId |
+| `asset rename <素材> <新名称>` | | `assetId  名称` |
+| `asset delete <素材>` | 删除素材；指向它的绑定**保留**（D-83），导出时按 D-28 警告并回退。这些绑定以 `binding.asset_deleted` 警告写到 stderr | assetId |
+| `asset bind <素材> --slot <slotId> [--preset <预设>]` | 有 `--preset`：预设本地绑定（检查预设里有这个槽、格式被接受）；没有：用户默认绑定 | （无） |
+| `asset unbind --slot <slotId> [--preset <预设>]` | 清除对应的绑定 | （无） |
+| `asset bindings` | 列出保存的绑定 | 每行：`preset`/`default`、presetId（默认绑定为 `-`）、slotId、assetId |
+
+分组的命令行写法：`signature`、`watermark`、`camera-badge`。
 
 ## 退出码
 
@@ -129,9 +184,9 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | 0 | 成功（`--dry-run` 时表示校验通过） | |
 | 1 | 内部错误，不应发生，请报告问题 | `service.unavailable`、`cli.internal` |
 | 2 | 用法错误：参数缺失、未知选项或命令、取值不对 | （ArgumentParser 的信息，只写 stderr） |
-| 3 | 找不到输入 | `source.not_found`、`preset.not_found`、`preset.file_not_found` |
-| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`job.source_unreadable`、`job.invalid_preset`、`preset.ambiguous`、`slot.missing_required`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
-| 5 | 输出不可用 | `job.destination_unavailable`、`job.destination_invalid`、`export.overwrite_refused`、`export.overwrite_contains_source`、`export.versions_exhausted`、`export.staging_failed`、`export.publish_failed`、`request.duplicate_output`、`preview.file_exists`、`preview.write_failed` |
+| 3 | 找不到输入 | `source.not_found`、`preset.file_not_found`、`library.preset_not_found`、`asset.not_found`、`asset.file_not_found` |
+| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`render.svg_rejected`、`job.source_unreadable`、`job.invalid_preset`、`slot.missing_required`、`library.ambiguous_preset`、`library.builtin_read_only`、`library.invalid_name`、`library.preset_not_in_library`、`asset.ambiguous`、`asset.svg_rejected`、`asset.type_mismatch`、`asset.too_large`、`binding.*`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
+| 5 | 输出不可用 | `job.destination_unavailable`、`job.destination_invalid`、`export.overwrite_refused`、`export.overwrite_contains_source`、`export.versions_exhausted`、`export.staging_failed`、`export.publish_failed`、`request.duplicate_output`、`preview.file_exists`、`preview.write_failed`、`preset.export_exists`、`library.io` |
 | 6 | 校验通过后至少一个导出任务失败（其余任务照常完成） | 任务记录里的错误码，如 `render.*`、`export.*` |
 | 130 | 被 Ctrl-C（SIGINT）或 SIGTERM 中断 | |
 
@@ -144,7 +199,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `formatVersion` | int | 当前为 1。字段只增不改；不兼容的改动会递增 |
-| `command` | string | `export`、`preview`、`image inspect`、`preset list` |
+| `command` | string | 命令名，例如 `export`、`preview`、`image inspect`、`preset list`、`preset import`、`asset list` |
 | `ok` | bool | 退出码为 0 时为 true |
 | `exitCode` | int | 与进程退出码相同 |
 | `error` | object? | `{code, message, hint?}`：导致命令失败的错误；`export` 部分失败时是第一个失败任务的错误 |
@@ -154,7 +209,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 ```json
 {
   "command" : "export",
-  "error" : { "code" : "preset.not_found", "hint" : "用 `photoframe preset list` 查看可用的预设，或给出 .photoframe 文件路径", "message" : "找不到预设：tiktok" },
+  "error" : { "code" : "library.preset_not_found", "message" : "找不到预设「tiktok」" },
   "exitCode" : 3,
   "formatVersion" : 1,
   "ok" : false
@@ -252,16 +307,6 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 `positions` 是导出会写出的全部轮播位置；`files` 只有请求的页。
 
-### 输入色彩空间：`--assume-profile`
-
-D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解释，并警告 `source.profile_missing`；用户可以按任务指定另一个色彩空间
-（例如丢了 ICC 的 Display P3 扫描图）。
-
-- 只对**没有 ICC** 的源图生效。源图自带 ICC 时以文件为准，忽略这个选项，并警告 `source.override_ignored`（一次导出多张图时，
-  有 ICC 的那几张照常按自己的 ICC 处理）。
-- 作用于本次命令的所有任务，记录在任务里（`JobSpec.sourceColorOverride`），重试也沿用。
-- 用 `image inspect` 先看 `colorProfile.origin`：`assumedSRGB` 表示没有 ICC。
-
 ### `image inspect`
 
 ```json
@@ -319,14 +364,68 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
       "platformName" : "小红书",
       "presetId" : "16AE8FDA-85CA-4BBC-B4C2-9C1A47324EA1",
       "quality" : 100,
+      "readOnly" : true,
       "slotIds" : [ ],
       "slug" : "xhs-panorama"
     }
-  ]
+  ],
+  "warnings" : [ ]
 }
 ```
 
-`panorama` 只在全景预设上出现；`panorama.slideCount` 只在固定张数时出现（自动张数时没有这个字段，D-11）。`origin`：`builtIn`、`file`、`library`。
+`panorama` 只在全景预设上出现；`panorama.slideCount` 只在固定张数时出现（自动张数时没有这个字段，D-11）。
+`origin`：`builtIn`、`user`、`imported`、`file`（本次命令直接读的文件）。`readOnly`：内置预设和文件为 true。
+
+### `preset import` / `duplicate` / `rename`
+
+```json
+{ "command" : "preset import", "conflictResolution" : "saveAsCopy", "exitCode" : 0, "formatVersion" : 1, "ok" : true,
+  "preset" : { …与 preset list 的一项相同… }, "warnings" : [ ] }
+```
+
+`conflictResolution` 只在 `preset import` 且 presetId 冲突时出现：`saveAsCopy` 或 `replace`。
+
+### `preset export` / `delete`
+
+```json
+{ "command" : "preset export", "exitCode" : 0, "formatVersion" : 1, "ok" : true,
+  "path" : "/Users/me/Signed Portrait.photoframe", "preset" : { "name" : "Signed Portrait", "presetId" : "…" } }
+```
+
+`preset delete` 没有 `path`。
+
+### `asset list` / `import` / `rename`
+
+```json
+{
+  "assets" : [
+    {
+      "assetId" : "…", "bytes" : 1234, "category" : "signature", "format" : "png", "height" : 40, "width" : 120,
+      "importWarnings" : [ ], "importedAt" : "2026-10-16T09:00:00Z", "name" : "My Signature", "sha256" : "…"
+    }
+  ],
+  "command" : "asset list", "exitCode" : 0, "formatVersion" : 1, "ok" : true, "warnings" : [ ]
+}
+```
+
+`asset import` / `rename` 输出 `{"asset": {…}}`；`asset import` 另有 `duplicateOf`（内容相同的已有素材的 assetId）和 `warnings`。
+素材的 JSON 不含文件路径。
+
+### `asset delete` / `bindings`
+
+```json
+{ "assetId" : "…", "bindings" : [ { "assetId" : "…", "presetId" : "…", "scope" : "preset", "slotId" : "signature" } ],
+  "command" : "asset delete", "exitCode" : 0, "formatVersion" : 1, "ok" : true }
+```
+
+`bindings[].scope`：`preset`（预设本地，有 `presetId`）或 `default`（用户默认）。`asset delete` 的 `bindings` 是仍指向被删素材的绑定；
+`asset bindings` 输出全部保存的绑定和 `warnings`。
+
+## 待补
+
+- **预设内容编辑**：GUI 的 Inspector 能改画布、图层、输出设置等；命令行没有逐项修改的命令。现在可以「`preset export` → 编辑
+  `manifest.json` → `preset import --replace`」。是否要加 `preset set <预设> <字段> <值>` 一类的命令，待定。
+- `mcp serve`：做 MCP 时再加。
 
 ## 测试
 
@@ -336,5 +435,5 @@ swift test --scratch-path "$TMPDIR/photoframe-build"
 ```
 
 测试只用代码合成的图片，写在系统临时目录里：参数解析与退出码、各命令的 JSON 输出、从命令行一路导出到真实文件（校验尺寸、
-sRGB ICC、文件名、没有残留临时目录）、`--overwrite` 与版本后缀、Ctrl-C 取消，以及以子进程运行可执行文件（stdout / stderr 分离、
-SIGINT）。子进程测试需要 `swift test` 构建出的 `photoframe`，也可以用环境变量 `PHOTOFRAME_EXECUTABLE` 指定。
+sRGB ICC、文件名、没有残留临时目录）、`--overwrite` 与版本后缀、Ctrl-C 取消、预设库与素材库命令、导入素材 → 绑定 → 导出后
+成品里确实画出了图层，以及以子进程运行可执行文件（stdout / stderr 分离、SIGINT）。测试的本地库都在临时目录里，不碰真实的 App Group 库。子进程测试需要 `swift test` 构建出的 `photoframe`，也可以用环境变量 `PHOTOFRAME_EXECUTABLE` 指定。

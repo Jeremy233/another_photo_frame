@@ -127,7 +127,9 @@ func runCLI(
     stderr: Capture = Capture(), service: CLIEnvironment.ServiceFactory? = nil
 ) async -> CLIResult {
     let out = Capture()
-    var env = CLIEnvironment(stdout: out.sink, stderr: stderr.sink, currentDirectory: directory, interrupts: interrupts)
+    // 本地库放在测试目录里，绝不碰真实的 App Group 库。
+    var env = CLIEnvironment(stdout: out.sink, stderr: stderr.sink, currentDirectory: directory, interrupts: interrupts,
+                             libraryRoot: directory.appending(path: "Library", directoryHint: .isDirectory))
     if let service { env.makeService = service }
     let status = await PhotoFrameCLI.run(arguments, environment: env)
     return CLIResult(status: status, stdout: out, stderr: stderr)
@@ -155,9 +157,11 @@ struct FailingRenderer: JobRenderer {
 /// 用指定渲染器（校验、预览仍用真实渲染模块）组装服务。
 func serviceFactory(renderer: any JobRenderer) -> CLIEnvironment.ServiceFactory {
     { options throws(ApplicationError) in
-        let backend = RenderingBackend()
-        return LocalPhotoFrameService(renderer: renderer, analyzer: backend, configuration: QueueConfiguration(
-            maxConcurrentJobs: options.maxConcurrentJobs ?? 2, platformCatalog: try? PlatformCatalogStore.builtIn()))
+        let catalog = try! PlatformCatalogStore.builtIn()
+        let library = LocalLibrary(root: options.libraryRoot!, platforms: catalog)
+        return LocalPhotoFrameService(
+            renderer: renderer, analyzer: RenderingBackend(assets: library), library: library,
+            configuration: QueueConfiguration(maxConcurrentJobs: options.maxConcurrentJobs ?? 2, platformCatalog: catalog))
     }
 }
 
@@ -177,6 +181,9 @@ func runProcess(_ arguments: [String], in directory: URL, beforeWait: ((Process,
     process.executableURL = exe
     process.arguments = arguments
     process.currentDirectoryURL = directory
+    var environment = ProcessInfo.processInfo.environment
+    environment["PHOTOFRAME_LIBRARY"] = directory.appending(path: "Library").path
+    process.environment = environment
     let out = Pipe(), err = Pipe()
     process.standardOutput = out
     process.standardError = err

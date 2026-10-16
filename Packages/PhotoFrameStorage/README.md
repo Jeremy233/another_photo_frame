@@ -221,9 +221,9 @@ RenderJob.assets(from: resolution, fileURL: library.assets.contentURL(for:))    
 7. **D-84 复制预设默认连同本地绑定一起复制**；删除预设时删除它的本地绑定；导入「替换」保留原 ID 的本地绑定。
 8. **D-85 素材上限**：PNG 64 MiB、SVG 8 MiB、单边 16384 px、总像素 64 MP、SVG 50000 个元素 / 64 层。
 9. **D-86 动画 PNG 拒绝**；PNG 在 IEND 之后的数据被去掉（防止拼接的 ZIP 等夹带内容）。
-10. **D-87 SVG 规则只保留一份**：以 `AssetValidator.SVGPolicy` 为准，渲染模块在集成时改用它（由 CLI 会话完成）。
-    导入比渲染更严：额外拒绝动画元素和处理指令；不支持的元素只警告。
-    注意：渲染模块目前的 SVG 上限还是 2 MiB / 20000 个元素，统一时要一起改成 D-85 的值。
+10. **D-87 SVG 规则只保留一份**：以 `AssetValidator.SVGPolicy` 为准，渲染模块的 `RestrictedSVG` 直接使用它和 `AssetImportLimits.default`。
+    导入比渲染更严：额外拒绝动画元素（`SVGPolicy.animationElements`，渲染时跳过）和处理指令；渲染也拒绝的是
+    `SVGPolicy.renderingForbiddenElements`。不支持的元素只警告。
 11. **D-88 重复内容仍然导入**为新素材，只通过 `duplicateOf` 提示。
 12. **D-89 素材分组只用于整理**，不限制能绑定到哪个 slot；slot 只按格式限制（`acceptedFormats`）。
 13. **D-90 用户默认绑定按 slotId 全局生效**：不同预设里同名的 slot 共用一个默认素材。

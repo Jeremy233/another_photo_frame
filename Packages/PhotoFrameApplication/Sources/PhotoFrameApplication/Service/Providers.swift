@@ -5,7 +5,7 @@ import PhotoFrameStorage
 
 // 服务的两个外部注入点：素材来源（以后接 PhotoFrameStorage 的素材库）和图像分析（由渲染模块实现）。
 
-/// 素材来源（§8.2）。现阶段没有素材库，用 ``NoAssetLibrary``；素材库做好后实现这个协议接进来。
+/// 素材来源（§8.2）。正常是本地素材库（`LocalLibrary` 实现了这个协议）；``NoAssetLibrary`` 表示没有素材。
 public protocol AssetProvider: Sendable {
     /// 当前的素材表与绑定（D-14）。每次校验任务时调用一次，所以素材库可以随时变化。
     func slotResolver() -> SlotResolver

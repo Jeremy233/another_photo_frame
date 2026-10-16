@@ -65,13 +65,21 @@ extension ApplicationError {
         Self(code: "job.not_cancelable", message: "任务 \(id) 已经是 \(status.rawValue)，不能取消")
     }
 
-    static func presetNotFound(_ reference: String) -> Self {
-        Self(code: "preset.not_found", message: "找不到预设：\(reference)",
-             hint: "用 `photoframe preset list` 查看可用的预设，或给出 .photoframe 文件路径")
+    static func presetNotInLibrary(_ path: String) -> Self {
+        Self(code: "library.preset_not_in_library", message: "\(path) 是预设文件，不在预设库里",
+             hint: "先用 `photoframe preset import` 导入，再对库里的预设操作")
     }
-    static func presetAmbiguous(_ reference: String, _ ids: [String]) -> Self {
-        Self(code: "preset.ambiguous", message: "名称 \(reference) 对应多个预设：\(ids.joined(separator: ", "))",
-             hint: "改用 presetId 指定")
+    static func exportFileExists(_ path: String) -> Self {
+        Self(code: "preset.export_exists", message: "目标文件已存在：\(path)", hint: "换一个文件名，或加 --overwrite 替换")
+    }
+    static func assetFileNotFound(_ path: String) -> Self {
+        Self(code: "asset.file_not_found", message: "找不到素材文件：\(path)")
+    }
+    static func assetReferenceNotFound(_ reference: String) -> Self {
+        Self(code: "asset.not_found", message: "找不到素材「\(reference)」", hint: "用 `photoframe asset list` 查看素材库")
+    }
+    static func assetAmbiguous(_ reference: String, _ ids: [String]) -> Self {
+        Self(code: "asset.ambiguous", message: "「\(reference)」对应多个素材：\(ids.joined(separator: ", "))", hint: "改用 assetId 指定")
     }
     static func presetFileNotFound(_ path: String) -> Self {
         Self(code: "preset.file_not_found", message: "找不到预设文件：\(path)")

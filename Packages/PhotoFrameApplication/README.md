@@ -35,8 +35,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Queue/JobQueue.swift` | `actor JobQueue`：并发与内存限制、暂停、取消、重试、事件流、等待 |
 | `Queue/QueueConfiguration.swift` | 并发数、内存预算、启动时是否暂停、平台配置、素材解析器 / 素材来源 |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（§11.2 全部接口）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
-| `Service/PresetCatalog.swift` | 预设来源 `PresetProvider`（内置、合并；以后接用户预设库）、`PresetReference`（ID / 名称 / 文件）、`PresetFileLoader`、`CatalogPresetSummary` |
-| `Service/Providers.swift` | 素材来源 `AssetProvider`（现阶段 `NoAssetLibrary`；以后接素材库）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
+| `Service/PresetCatalog.swift` | `PresetReference`（预设库引用 / 文件）、`CatalogPreset`、`CatalogPresetSummary`、预设库与素材库操作的结果类型；`LocalLibrary` 作为素材来源 |
+| `Service/Providers.swift` | 素材来源协议 `AssetProvider`（`LocalLibrary` 实现；`NoAssetLibrary` 表示没有素材）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
 | `Service/Validation.swift` | `ValidationResult`；队列 `validating` 与服务 `validate` 共用的检查 |
 | `Queue/JobEvent.swift` | 事件（Codable） |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（任务相关部分）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
@@ -119,8 +119,11 @@ PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageA
 
 | 接口 | 说明 |
 |---|---|
-| `listPresets()` | 内置预设 + 本服务读过的 `.photoframe` 文件（以后加上用户预设库） |
-| `resolvePreset(_:)` | `PresetReference`：presetId、名称（不区分大小写，空格 / 下划线 / 连字符等价，`instagram-panorama`）、文件（只读，不安装）。找不到 `preset.not_found`，同名多个 `preset.ambiguous` |
+| `listPresets()` | 预设库（内置、用户保存、导入）+ 本服务读过的 `.photoframe` 文件，加上读库时的警告 |
+| `resolvePreset(_:)` | `PresetReference`：`.library(文本)` 交给 `PresetLibrary.find`（presetId、完整名称、短名，D-76）；`.file(URL)` 只读取、不放进库 |
+| `importPreset` / `exportPreset` / `duplicatePreset` / `renamePreset` / `deletePreset` | 预设库操作（D-39、D-79、D-80、D-84、D-37）；导出目标已存在时只有 `overwrite` 才替换（`preset.export_exists`） |
+| `listAssets` / `resolveAsset` / `importAsset` / `renameAsset` / `deleteAsset` | 素材库操作（D-83、D-85、D-88）；素材引用是 assetId 或唯一的显示名称 |
+| `bindAsset` / `listBindings` | 持久绑定：预设本地或用户默认（D-14、D-90）；`assetId` 为 nil 时清除 |
 | `addSource(_:)` / `sources()` | 登记源图（只检查存在与扩展名，D-02） |
 | `ExportRequest.sourceColorOverride` / `JobSpec.sourceColorOverride` | 没有 ICC 的源图按什么色彩空间解释（D-04）；源图自带 ICC 时渲染层忽略并警告 `source.override_ignored` |
 | `inspectSource(_:)` | 格式、尺寸、方向、ICC、HDR 判定、EXIF 摘要；GPS 与作者只报告有无 |
@@ -130,9 +133,10 @@ PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageA
 
 注入点：
 
-- **预设来源** `PresetProvider`：默认 `BuiltInPresetProvider`；用户预设库做好后实现这个协议，用 `CompositePresetProvider` 与内置预设合并。
-- **素材来源** `AssetProvider`（`QueueConfiguration.assets`）：每次校验任务时取一次 `slotResolver()`，渲染时用 `fileURL(for:)` 找素材文件。
-  默认 `NoAssetLibrary`：必需素材缺失照常报 `slot.missing_required`，可选素材跳过图层并警告。
+- **本地库** `LocalLibrary`（PhotoFrameStorage）：预设、素材、绑定。`makeDefault(.init(libraryRoot:))` 默认用 App Group 共享容器（D-78），
+  GUI 传 `LibraryLocation.groupContainerRoot()`，测试传临时目录；直接 `init(renderer:…)` 不传库时用系统临时目录里一个新的空库。
+- **素材来源** `AssetProvider`（`QueueConfiguration.assets`，默认就是本地库）：每次校验任务时取一次 `slotResolver()`，
+  渲染时用 `fileURL(for:)` 找素材文件。`NoAssetLibrary` 表示没有素材：必需素材缺失照常报 `slot.missing_required`。
 
 ## 已确定（2026-10-16）
 

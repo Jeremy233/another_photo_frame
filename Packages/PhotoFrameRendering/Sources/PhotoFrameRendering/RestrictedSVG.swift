@@ -1,14 +1,18 @@
 import CoreGraphics
 import Foundation
+import PhotoFrameStorage
 
 /// 受限 SVG（D-09）：只解析基本图形与路径，禁止脚本、外部引用与远程资源。
 ///
 /// - 支持：`svg`、`g`、`path`、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；
 ///   属性 `fill`、`stroke`、`stroke-width`、`opacity`、`fill-opacity`、`stroke-opacity`、`fill-rule`、
 ///   `stroke-linecap`、`stroke-linejoin`、`transform`（translate / scale / rotate / matrix）、`style` 里的同名声明。
-/// - 拒绝整个文件：DOCTYPE / ENTITY、`script`、`foreignObject`、`image`、`use`、`iframe`、`style` 元素、
-///   任何 `href`、`on*` 事件属性、`url(` 或 `javascript:` 取值。
-/// - 忽略：`title`、`desc`、`metadata`；其他不支持的元素连同子树跳过并警告（例如渐变、文字、滤镜）。
+/// - 元素规则和上限只有一份（D-87）：`AssetValidator.SVGPolicy`（PhotoFrameStorage，素材导入时用同一套）与
+///   `AssetImportLimits.default`（D-85）。
+/// - 拒绝整个文件：DOCTYPE / ENTITY、`SVGPolicy.renderingForbiddenElements`（脚本、外部内容、样式表、链接）、
+///   任何 `href`、`on*` 事件属性、`url(`、`javascript:`、`data:` 取值，元素数或嵌套超过上限。
+///   导入比这里更严（D-87）：还拒绝动画元素和处理指令；这里动画元素跳过，处理指令忽略。
+/// - 忽略：`SVGPolicy.ignoredElements`；其他不支持的元素连同子树跳过并警告（例如渐变、文字、滤镜）。
 /// 颜色按 sRGB 解释。
 struct RestrictedSVG {
     enum Command {
@@ -23,15 +27,11 @@ struct RestrictedSVG {
     var commands: [Command]
     var warnings: [String]
 
-    static let maxBytes = 2 << 20
-    static let maxElements = 20_000
-
-    static let forbiddenElements: Set<String> = ["script", "foreignObject", "image", "use", "iframe", "style", "feImage", "a"]
-    static let ignoredElements: Set<String> = ["title", "desc", "metadata"]
-    static let shapeElements: Set<String> = ["path", "rect", "circle", "ellipse", "line", "polyline", "polygon"]
+    typealias Policy = AssetValidator.SVGPolicy
+    static let limits = AssetImportLimits.default
 
     static func parse(_ data: Data) throws(RenderError) -> RestrictedSVG {
-        guard data.count <= maxBytes else { throw reject("文件超过 \(maxBytes >> 20) MiB") }
+        guard data.count <= limits.maxSVGBytes else { throw reject("文件超过 \(limits.maxSVGBytes >> 20) MiB") }
         let head = String(decoding: data.prefix(4096), as: UTF8.self)
         if head.range(of: "<!DOCTYPE", options: .caseInsensitive) != nil || head.contains("<!ENTITY") {
             throw reject("不允许 DOCTYPE / ENTITY 声明")
@@ -113,6 +113,7 @@ struct RestrictedSVG {
         /// > 0 时处于被跳过的子树中。
         var skipDepth = 0
         var elementCount = 0
+        var depth = 0
 
         func fail(_ parser: XMLParser, _ why: String) {
             if error == nil { error = RestrictedSVG.reject(why) }
@@ -122,9 +123,12 @@ struct RestrictedSVG {
         func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?,
                     attributes: [String: String] = [:]) {
             elementCount += 1
-            guard elementCount <= RestrictedSVG.maxElements else { return fail(parser, "元素超过 \(RestrictedSVG.maxElements) 个") }
+            depth += 1
+            let limits = RestrictedSVG.limits
+            guard elementCount <= limits.maxSVGElements else { return fail(parser, "元素超过 \(limits.maxSVGElements) 个") }
+            guard depth <= limits.maxSVGDepth else { return fail(parser, "嵌套超过 \(limits.maxSVGDepth) 层") }
             let local = name.split(separator: ":").last.map(String.init) ?? name
-            if RestrictedSVG.forbiddenElements.contains(local) { return fail(parser, "不允许 <\(local)>") }
+            if RestrictedSVG.Policy.renderingForbiddenElements.contains(local) { return fail(parser, "不允许 <\(local)>") }
             for (key, value) in attributes {
                 let k = key.lowercased()
                 if k.hasSuffix("href") { return fail(parser, "不允许外部引用（\(key)）") }
@@ -135,7 +139,7 @@ struct RestrictedSVG {
                 }
             }
             if skipDepth > 0 { skipDepth += 1; return }
-            if RestrictedSVG.ignoredElements.contains(local) { skipDepth = 1; return }
+            if RestrictedSVG.Policy.ignoredElements.contains(local) { skipDepth = 1; return }
 
             if root == nil {
                 guard local == "svg" else { return fail(parser, "根元素不是 <svg>") }
@@ -143,14 +147,14 @@ struct RestrictedSVG {
                 stack = [apply(attributes, to: Style())]
                 return
             }
-            guard local == "g" || local == "svg" || RestrictedSVG.shapeElements.contains(local) else {
+            guard RestrictedSVG.Policy.containerElements.contains(local) || RestrictedSVG.Policy.shapeElements.contains(local) else {
                 warnings.append("跳过不支持的元素 <\(local)>")
                 skipDepth = 1
                 return
             }
             let style = apply(attributes, to: stack.last ?? Style())
             stack.append(style)
-            if RestrictedSVG.shapeElements.contains(local) {
+            if RestrictedSVG.Policy.shapeElements.contains(local) {
                 guard let path = shape(local, attributes) else {
                     warnings.append("<\(local)> 的几何参数无效，已跳过")
                     return
@@ -160,6 +164,7 @@ struct RestrictedSVG {
         }
 
         func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+            depth -= 1
             if skipDepth > 0 { skipDepth -= 1; return }
             if !stack.isEmpty { stack.removeLast() }
         }

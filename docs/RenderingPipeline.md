@@ -117,7 +117,8 @@ probe（读属性：尺寸、方向）
 ### 2.4 受限 SVG（D-09）
 
 支持 `svg`、`g`、`path`（全部命令，含圆弧）、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；属性 `fill`、`stroke`、`stroke-width`、各种 `opacity`、`fill-rule`、线帽线接、`transform`、`style` 中的同名声明。
-整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、`script`、`foreignObject`、`image`、`use`、`iframe`、`style` 元素、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 2 MiB 或 20 000 个元素。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
+规则只有一份（D-87）：元素集合用 PhotoFrameStorage 的 `AssetValidator.SVGPolicy`，上限用 `AssetImportLimits.default`（D-85），与素材导入相同。
+整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、处理指令、`SVGPolicy.forbiddenElements`（`script`、`foreignObject`、`image`、`use`、`iframe`、`style`、`feImage`、`a`、动画元素…）、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 8 MiB、50 000 个元素或 64 层嵌套。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
 
 ### 2.5 `metadataText` 占位符
 

@@ -34,12 +34,6 @@ struct FakeAnalyzer: ImageAnalyzer {
     }
 }
 
-/// 固定的预设列表。
-struct ListPresetProvider: PresetProvider {
-    var entries: [CatalogPreset]
-    func presets() async throws(ApplicationError) -> [CatalogPreset] { entries }
-}
-
 extension ExportPreset {
     /// 带一个必需素材槽的预设。
     static let withRequiredSlot = ExportPreset(
@@ -49,79 +43,149 @@ extension ExportPreset {
         assetSlots: [AssetSlot(slotId: "signature", required: true)])
 }
 
-@Suite("预设来源与解析")
+/// 临时目录里的本地库。
+func makeLibrary(_ box: Sandbox) throws -> LocalLibrary {
+    LocalLibrary(root: box.root.appending(path: "Library", directoryHint: .isDirectory), platforms: try PlatformCatalogStore.builtIn())
+}
+
+func code(_ error: any Error) -> String? { (error as? ApplicationError)?.code }
+
+@Suite("预设库与素材库（经由服务）")
 struct PresetCatalogTests {
-    @Test("参数解析：文件、ID、名称")
+    @Test("参数解析：文件或预设库引用")
     func referenceParsing() {
         let base = URL(filePath: "/tmp/work", directoryHint: .isDirectory)
         #expect(PresetReference(argument: "./Minimal.photoframe", relativeTo: base) == .file(URL(filePath: "/tmp/work/Minimal.photoframe")))
         #expect(PresetReference(argument: "presets/x.PHOTOFRAME", relativeTo: base) == .file(URL(filePath: "/tmp/work/presets/x.PHOTOFRAME")))
-        #expect(PresetReference(argument: "60978D90-F0A0-4369-B82D-6EEEE52F89BA") == .id(UUID(uuidString: "60978D90-F0A0-4369-B82D-6EEEE52F89BA")!))
-        #expect(PresetReference(argument: "instagram-panorama") == .name("instagram-panorama"))
-        #expect(PresetReference.normalizedName("  XHS   Standard ") == "xhs-standard")
-        #expect(PresetReference.normalizedName("Douyin_Panorama") == "douyin-panorama")
+        #expect(PresetReference(argument: "/abs/y.photoframe", relativeTo: base) == .file(URL(filePath: "/abs/y.photoframe")))
+        #expect(PresetReference(argument: "60978D90-F0A0-4369-B82D-6EEEE52F89BA") == .library("60978D90-F0A0-4369-B82D-6EEEE52F89BA"))
+        #expect(PresetReference(argument: " instagram-panorama ") == .library("instagram-panorama"))
     }
 
-    @Test("默认只有内置预设；按短名称、名称、ID 查找")
+    @Test("空库只有内置预设；按短名、名称、ID 查找（PresetLibrary.find，D-76）")
     func builtIns() async throws {
         let service = LocalPhotoFrameService(renderer: FakeRenderer())
         let list = try await service.listPresets()
-        #expect(list.map(\.slug) == ["instagram-standard", "instagram-panorama", "xhs-standard", "xhs-panorama", "douyin-standard", "douyin-panorama"])
-        #expect(list.allSatisfy { $0.origin == .builtIn })
-        #expect(list[1].panorama != nil && list[0].panorama == nil)
-        #expect(list[2].platformName != nil)
+        #expect(list.presets.map(\.slug) == ["instagram-standard", "instagram-panorama", "xhs-standard", "xhs-panorama", "douyin-standard", "douyin-panorama"])
+        #expect(list.presets.allSatisfy { $0.origin == .builtIn && $0.readOnly })
+        #expect(list.presets[1].panorama != nil && list.presets[0].panorama == nil)
+        #expect(list.presets[2].platformName != nil)
 
-        #expect(try await service.resolvePreset(.name("xhs-panorama")).preset.name == "XHS Panorama")
-        #expect(try await service.resolvePreset(.name("Douyin Standard")).preset.name == "Douyin Standard")
-        #expect(try await service.resolvePreset(.id(list[0].presetId)).preset.name == "Instagram Standard")
-        await #expect { try await service.resolvePreset(.name("tiktok")) } throws: { ($0 as? ApplicationError)?.code == "preset.not_found" }
+        #expect(try await service.resolvePreset(.library("xhs-panorama")).preset.name == "XHS Panorama")
+        #expect(try await service.resolvePreset(.library("douyin standard")).preset.name == "Douyin Standard")
+        #expect(try await service.resolvePreset(.library(list.presets[0].presetId.uuidString)).preset.name == "Instagram Standard")
+        await #expect { try await service.resolvePreset(.library("tiktok")) } throws: { code($0) == "library.preset_not_found" }
     }
 
-    @Test("同名预设报 preset.ambiguous")
-    func ambiguous() async throws {
-        var a = ExportPreset.testStandard
-        a.presetId = UUID()
-        var b = a
-        b.presetId = UUID()
-        let service = LocalPhotoFrameService(renderer: FakeRenderer(), presets: ListPresetProvider(entries: [
-            CatalogPreset(preset: a, origin: .library), CatalogPreset(preset: b, origin: .library),
-        ]))
-        await #expect { try await service.resolvePreset(.name("instagram standard")) } throws: { ($0 as? ApplicationError)?.code == "preset.ambiguous" }
-    }
-
-    @Test(".photoframe 文件：只读不安装，之后出现在列表里；文件缺失或损坏有稳定错误码")
-    func presetFile() async throws {
+    @Test("导入（默认另存为副本 / 替换）、导出、复制、重命名、删除")
+    func presetLifecycle() async throws {
         let box = try Sandbox()
+        let service = LocalPhotoFrameService(renderer: FakeRenderer(), library: try makeLibrary(box))
         var custom = ExportPreset.testPanorama
         custom.presetId = UUID()
         custom.name = "My Landscape"
         let file = box.root.appending(path: "My.photoframe")
         try PresetPackage.export(custom, to: file)
 
-        let service = LocalPhotoFrameService(renderer: FakeRenderer())
-        let entry = try await service.resolvePreset(.file(file))
-        #expect(entry.preset == custom)
-        #expect(entry.origin == .file(file))
-        #expect(try await service.listPresets().contains { $0.slug == "my-landscape" && $0.origin == .file(file) })
-        #expect(try await service.resolvePreset(.name("my landscape")).preset.presetId == custom.presetId)
-
-        await #expect { try await service.resolvePreset(.file(box.root.appending(path: "nope.photoframe"))) } throws: {
-            ($0 as? ApplicationError)?.code == "preset.file_not_found"
+        let first = try await service.importPreset(from: file, replace: false)
+        #expect(first.preset.presetId == custom.presetId && first.preset.origin == .imported && first.conflictResolution == nil)
+        let copy = try await service.importPreset(from: file, replace: false)
+        #expect(copy.conflictResolution == "saveAsCopy" && copy.preset.name == "My Landscape Copy" && copy.preset.presetId != custom.presetId)
+        let replaced = try await service.importPreset(from: file, replace: true)
+        #expect(replaced.conflictResolution == "replace" && replaced.preset.presetId == custom.presetId)
+        await #expect { try await service.importPreset(from: box.root.appending(path: "nope.photoframe"), replace: false) } throws: {
+            code($0) == "preset.file_not_found"
         }
+
+        let out = box.root.appending(path: "Out.photoframe")
+        try await service.exportPreset(.library("my-landscape"), to: out, overwrite: false)
+        #expect(try PresetPackage.importPreset(try Data(contentsOf: out)).preset.presetId == custom.presetId)
+        await #expect { try await service.exportPreset(.library("my-landscape"), to: out, overwrite: false) } throws: { code($0) == "preset.export_exists" }
+        try await service.exportPreset(.library("Instagram Standard"), to: out, overwrite: true)
+
+        let dup = try await service.duplicatePreset(.library("xhs-standard"), name: nil)
+        #expect(dup.origin == .user && dup.name == "XHS Standard Copy" && !dup.readOnly)
+        let renamed = try await service.renamePreset(.library(dup.presetId.uuidString), to: "Square")
+        #expect(renamed.name == "Square")
+        await #expect { try await service.renamePreset(.library("xhs-standard"), to: "X") } throws: { code($0) == "library.builtin_read_only" }
+        await #expect { try await service.deletePreset(.file(file)) } throws: { code($0) == "library.preset_not_in_library" }
+
+        let names = try await service.listPresets().presets.map(\.name)
+        #expect(names.contains("Square") && names.contains("My Landscape") && names.contains("My Landscape Copy"))
+        try await service.deletePreset(.library("square"))
+        #expect(try await !service.listPresets().presets.contains { $0.name == "Square" })
+
+        _ = try await service.renamePreset(.library("My Landscape Copy"), to: "My Landscape")
+        await #expect { try await service.resolvePreset(.library("my landscape")) } throws: { code($0) == "library.ambiguous_preset" }
+    }
+
+    @Test(".photoframe 文件：只读取不放进库，之后出现在列表里；损坏文件有稳定错误码")
+    func presetFile() async throws {
+        let box = try Sandbox()
+        var custom = ExportPreset.testPanorama
+        custom.presetId = UUID()
+        custom.name = "Loose File"
+        let file = box.root.appending(path: "Loose.photoframe")
+        try PresetPackage.export(custom, to: file)
+
+        let service = LocalPhotoFrameService(renderer: FakeRenderer(), library: try makeLibrary(box))
+        let entry = try await service.resolvePreset(.file(file))
+        #expect(entry.preset == custom && entry.origin == .file(file))
+        #expect(try await service.listPresets().presets.contains { $0.slug == "loose-file" && $0.origin == .file(file) && $0.readOnly })
+        #expect(service.library.presets.list().user.isEmpty && service.library.presets.list().imported.isEmpty)
+
+        await #expect { try await service.resolvePreset(.file(box.root.appending(path: "nope.photoframe"))) } throws: { code($0) == "preset.file_not_found" }
         let broken = box.root.appending(path: "Broken.photoframe")
         try Data("not a zip".utf8).write(to: broken)
-        await #expect { try await service.resolvePreset(.file(broken)) } throws: {
-            ($0 as? ApplicationError)?.code.hasPrefix("archive.") ?? false
+        await #expect { try await service.resolvePreset(.file(broken)) } throws: { code($0)?.hasPrefix("archive.") ?? false }
+    }
+
+    @Test("素材：导入、按名称找、绑定、列出绑定、删除（绑定保留，D-83）")
+    func assets() async throws {
+        let box = try Sandbox()
+        let service = LocalPhotoFrameService(renderer: FakeRenderer(), library: try makeLibrary(box))
+        let png = try box.photo("Sig.png", width: 120, height: 40, type: .png)
+        let imported = try await service.importAsset(from: png, category: .signature, name: "My Signature")
+        #expect(imported.asset.format == .png && imported.asset.pixelSize == PixelSize(width: 120, height: 40))
+        #expect(try await service.resolveAsset("my signature").assetId == imported.asset.assetId)
+        #expect(try await service.resolveAsset(imported.asset.assetId.uuidString).displayName == "My Signature")
+        await #expect { try await service.resolveAsset("nope") } throws: { code($0) == "asset.not_found" }
+        await #expect { try await service.importAsset(from: box.root.appending(path: "x.png"), category: .watermark, name: nil) } throws: {
+            code($0) == "asset.file_not_found"
         }
+        let svg = box.root.appending(path: "Bad.svg")
+        try Data(#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script/></svg>"#.utf8).write(to: svg)
+        await #expect { try await service.importAsset(from: svg, category: .watermark, name: nil) } throws: { code($0) == "asset.svg_rejected" }
+
+        try await service.bindAsset(imported.asset.assetId, slotId: "signature", preset: nil)
+        let dup = try await service.duplicatePreset(.library("instagram-standard"), name: "Signed")
+        var signed = ExportPreset.withRequiredSlot
+        signed.presetId = dup.presetId
+        signed.name = "Signed"
+        _ = try service.library.presets.update(signed)
+        try await service.bindAsset(imported.asset.assetId, slotId: "signature", preset: .library("signed"))
+        await #expect { try await service.bindAsset(imported.asset.assetId, slotId: "nope", preset: .library("signed")) } throws: {
+            code($0) == "binding.unknown_slot"
+        }
+        let bindings = await service.listBindings().bindings
+        #expect(bindings.count == 2)
+        #expect(Set(bindings.map(\.scope)) == [.presetLocal, .userGlobal])
+
+        let affected = try await service.deleteAsset(imported.asset.assetId)
+        #expect(affected.count == 2)
+        #expect(await service.listAssets(category: nil).assets.isEmpty)
+        try await service.bindAsset(nil, slotId: "signature", preset: nil)
+        #expect(await service.listBindings().bindings.count == 1)
     }
 
     @Test("CatalogPresetOrigin 的 JSON 形式")
     func originCoding() throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        let data = try encoder.encode([CatalogPresetOrigin.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
-        #expect(String(decoding: data, as: UTF8.self) == #"[{"kind":"builtIn"},{"kind":"file","path":"\/a\/b.photoframe"},{"kind":"library"}]"#)
-        #expect(try JSONDecoder().decode([CatalogPresetOrigin].self, from: data) == [.builtIn, .file(URL(filePath: "/a/b.photoframe")), .library])
+        let all: [CatalogPresetOrigin] = [.builtIn, .user, .imported, .file(URL(filePath: "/a/b.photoframe"))]
+        let data = try encoder.encode(all)
+        #expect(String(decoding: data, as: UTF8.self) == #"[{"kind":"builtIn"},{"kind":"user"},{"kind":"imported"},{"kind":"file","path":"\/a\/b.photoframe"}]"#)
+        #expect(try JSONDecoder().decode([CatalogPresetOrigin].self, from: data) == all)
     }
 }
 

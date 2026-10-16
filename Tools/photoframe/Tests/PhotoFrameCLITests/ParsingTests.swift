@@ -47,7 +47,9 @@ struct ParsingTests {
         ["preview", "a.tif", "--preset", "x", "-o", "o", "--max-edge", "0"],
         ["export", "a.png", "--preset", "x", "-o", "o", "--assume-profile", "prophoto"],
         ["frobnicate"],
-        ["preset", "import", "x.photoframe"],                    // 这一版没有
+        ["asset", "import", "x.png"],                            // 缺 --category
+        ["asset", "import", "x.png", "--category", "logo"],
+        ["export", "a.png", "--preset", "x", "-o", "o", "--bind", "noequals"],
         ["mcp", "serve"],
     ])
     func usageErrors(_ arguments: [String]) async throws {
@@ -67,10 +69,11 @@ struct ParsingTests {
         #expect(!root.stdout.value.contains("mcp"))
         #expect(root.stderr.value.isEmpty)
 
+        #expect(root.stdout.value.contains("asset"))
         let preset = await runCLI(["preset", "--help"], in: box.root)
-        #expect(preset.stdout.value.contains("list"))
-        #expect(!preset.stdout.value.contains("import"))
-        #expect(!preset.stdout.value.contains("export"))
+        for name in ["list", "import", "export", "duplicate", "rename", "delete"] { #expect(preset.stdout.value.contains(name)) }
+        let asset = await runCLI(["asset", "--help"], in: box.root)
+        for name in ["list", "import", "rename", "delete", "bind", "unbind", "bindings"] { #expect(asset.stdout.value.contains(name)) }
 
         let version = await runCLI(["--version"], in: box.root)
         #expect(version.status == 0 && version.stdout.value.contains(PhotoFrameCLI.version))
@@ -80,7 +83,11 @@ struct ParsingTests {
     func exitCodeTable() {
         #expect(PhotoFrameExitCode.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 6, 130])
         #expect(PhotoFrameExitCode(for: .init(code: "source.not_found", message: "")) == .notFound)
-        #expect(PhotoFrameExitCode(for: .init(code: "preset.not_found", message: "")) == .notFound)
+        #expect(PhotoFrameExitCode(for: .init(code: "library.preset_not_found", message: "")) == .notFound)
+        #expect(PhotoFrameExitCode(for: .init(code: "asset.not_found", message: "")) == .notFound)
+        #expect(PhotoFrameExitCode(for: .init(code: "preset.export_exists", message: "")) == .outputUnavailable)
+        #expect(PhotoFrameExitCode(for: .init(code: "library.ambiguous_preset", message: "")) == .invalidInput)
+        #expect(PhotoFrameExitCode(for: .init(code: "library.builtin_read_only", message: "")) == .invalidInput)
         #expect(PhotoFrameExitCode(for: .init(code: "preset.file_not_found", message: "")) == .notFound)
         #expect(PhotoFrameExitCode(for: .init(code: "export.overwrite_refused", message: "")) == .outputUnavailable)
         #expect(PhotoFrameExitCode(for: .init(code: "job.destination_unavailable", message: "")) == .outputUnavailable)

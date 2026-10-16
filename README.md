@@ -37,7 +37,7 @@ AnotherPhotoFrame 是一个免费、开源、完全在本地运行的 macOS 摄�
 | `PhotoFrameStorage`：`.photoframe` 预设包、素材绑定（SlotResolver）、平台配置、内置预设 | ✅ 已完成 |
 | `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService（预设、检查、校验、预览、提交、状态、取消）；接入渲染模块，GUI / CLI / MCP 共用 | ✅ 已完成 |
 | `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成 |
-| CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset list`，见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成（预设导入导出等预设库合并后再加） |
+| CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset …`（列出、导入、导出、复制、重命名、删除）、`asset …`（素材库与绑定），见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成 |
 | MCP、GUI | 未开始 |
 
 Alpha / Beta 版本不做代码签名；V1.0 发布前再决定是否公证。
@@ -121,7 +121,7 @@ The project is in the **specification stage**; there is no usable app yet.
 | `PhotoFrameStorage`: `.photoframe` preset packages, asset binding (SlotResolver), platform catalog, built-in presets | ✅ Done |
 | `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService (presets, inspect, validate, preview, submit, status, cancel); wired to the rendering module, shared by GUI / CLI / MCP | ✅ Done |
 | `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done |
-| CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset list`; see [docs/CLI.md](docs/CLI.md) | ✅ Done (preset import/export after the preset library lands) |
+| CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset …` (list, import, export, duplicate, rename, delete), `asset …` (asset library and bindings); see [docs/CLI.md](docs/CLI.md) | ✅ Done |
 | MCP, GUI | Not started |
 
 Alpha / Beta builds are not code-signed; whether to notarize will be decided before V1.0.
