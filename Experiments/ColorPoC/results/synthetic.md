@@ -1,6 +1,6 @@
 # ColorPoC 运行结果
 
-生成时间：2026-10-16T17:34:48Z；系统：Version 27.0.1 (Build 26A434)
+生成时间：2026-10-16T18:25:56Z；系统：Version 27.0.1 (Build 26A434)
 
 ## 1. 色卡：四种 ICC 输入 → sRGB 输出的 ΔE2000
 
@@ -176,11 +176,11 @@ k = 解码后 1.0 色块的实测 Y：Apple 把多少当作 SDR 参考白。
 | hdr_pq2020_203nit.png | extLinear2020 | 直接截断 | 63 118 188 225 255 255 255 255 255 255 255 255 | 228057 | 0.00 | 0 |
 | hdr_pq2020_203nit.png | extLinear2020 | CIToneMapHeadroom | 50 90 141 167 188 211 224 239 249 255 255 255 | 116643 | 12.30 | 0 |
 | hdr_float_linear2020.tif | extLinearSRGB | 直接截断 | 63 118 188 225 255 255 255 255 255 255 255 255 | 228057 | 0.00 | 0 |
-| hdr_float_linear2020.tif | extLinearSRGB | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36141 | 17.23 | 0 |
+| hdr_float_linear2020.tif | extLinearSRGB | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36140 | 17.23 | 0 |
 | hdr_float_linear2020.tif | extLinearP3 | 直接截断 | 63 118 188 225 255 255 255 255 255 255 255 255 | 228057 | 0.00 | 0 |
-| hdr_float_linear2020.tif | extLinearP3 | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36166 | 17.23 | 0 |
+| hdr_float_linear2020.tif | extLinearP3 | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36149 | 17.23 | 0 |
 | hdr_float_linear2020.tif | extLinear2020 | 直接截断 | 63 118 188 225 255 255 255 255 255 255 255 255 | 228057 | 0.00 | 0 |
-| hdr_float_linear2020.tif | extLinear2020 | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36167 | 17.23 | 0 |
+| hdr_float_linear2020.tif | extLinear2020 | CIToneMapHeadroom | 42 77 120 142 160 183 197 216 228 237 244 255 | 36228 | 17.23 | 0 |
 
 tone map 结果随工作空间的差异（8-bit 输出，照片区域 ΔE2000）：
 
@@ -190,8 +190,8 @@ tone map 结果随工作空间的差异（8-bit 输出，照片区域 ΔE2000）
 | hdr_gainmap.jpg | extLinearSRGB vs extLinear2020 | 0.00 | 0.00 | 1.23 |
 | hdr_pq2020_203nit.png | extLinearSRGB vs extLinearP3 | 0.00 | 0.00 | 0.59 |
 | hdr_pq2020_203nit.png | extLinearSRGB vs extLinear2020 | 0.00 | 0.00 | 0.61 |
-| hdr_float_linear2020.tif | extLinearSRGB vs extLinearP3 | 0.00 | 0.00 | 0.66 |
-| hdr_float_linear2020.tif | extLinearSRGB vs extLinear2020 | 0.00 | 0.00 | 0.66 |
+| hdr_float_linear2020.tif | extLinearSRGB vs extLinearP3 | 0.00 | 0.00 | 0.89 |
+| hdr_float_linear2020.tif | extLinearSRGB vs extLinear2020 | 0.00 | 0.00 | 0.77 |
 
 ### 6.3 HDR 输出（gain map JPEG）写出 → 读回
 
@@ -220,14 +220,14 @@ tone map 结果随工作空间的差异（8-bit 输出，照片区域 ΔE2000）
 | hdr_pq2020_203nit.png | extLinear2020 | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 1.01 0.99 1.00 1.01 1.01 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.014 | 1 | 50 90 141 167 188 211 224 239 249 255 255 255 | 0.00 / 0.47 | 0.9570 | 0.0000 / 0.0236 | 1080×1350 L008 |
 | hdr_pq2020_203nit.png | extLinear2020 | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 1.01 0.99 1.00 1.01 1.01 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.014 | 1 | 50 90 141 167 188 211 224 239 249 255 255 255 | 0.00 / 0.47 | 0.9570 | 0.0000 / 0.0172 | 1080×1350 444f |
 | hdr_pq2020_203nit.png | extLinear2020 | ImageIO | ISO ✅ | Display P3 | 4.93 | 0.98 1.01 0.99 1.00 1.00 1.00 1.00 1.00 1.00 0.93 0.82 0.62 | 0.018 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 3.59 / 7.54 | 0.9476 | 0.0000 / 0.0510 | 540×675 L008 |
-| hdr_float_linear2020.tif | extLinearSRGB | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.59 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 L008 |
-| hdr_float_linear2020.tif | extLinearSRGB | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.59 | 0.9570 | 0.0000 / 0.0172 | 1080×1350 444f |
-| hdr_float_linear2020.tif | extLinearSRGB | ImageIO | ISO ✅ | Display P3 | 8.00 | 0.98 1.00 0.99 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.015 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 2.62 / 12.95 | 0.9511 | 0.0000 / 0.0505 | 540×675 L008 |
-| hdr_float_linear2020.tif | extLinearP3 | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 L008 |
-| hdr_float_linear2020.tif | extLinearP3 | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0172 | 1080×1350 444f |
-| hdr_float_linear2020.tif | extLinearP3 | ImageIO | ISO ✅ | Display P3 | 8.00 | 0.98 1.00 0.99 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.015 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 2.77 / 11.56 | 0.9511 | 0.0000 / 0.0493 | 540×675 L008 |
-| hdr_float_linear2020.tif | extLinear2020 | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 1 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 L008 |
-| hdr_float_linear2020.tif | extLinear2020 | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 1 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0172 | 1080×1350 444f |
+| hdr_float_linear2020.tif | extLinearSRGB | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 L008 |
+| hdr_float_linear2020.tif | extLinearSRGB | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0172 | 1080×1350 444f |
+| hdr_float_linear2020.tif | extLinearSRGB | ImageIO | ISO ✅ | Display P3 | 8.00 | 0.98 1.00 0.99 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.015 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 2.62 / 12.93 | 0.9511 | 0.0001 / 0.0505 | 540×675 L008 |
+| hdr_float_linear2020.tif | extLinearP3 | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0001 / 0.0173 | 1080×1350 L008 |
+| hdr_float_linear2020.tif | extLinearP3 | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.99 0.99 1.00 1.00 1.01 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.015 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0001 / 0.0172 | 1080×1350 444f |
+| hdr_float_linear2020.tif | extLinearP3 | ImageIO | ISO ✅ | Display P3 | 8.00 | 0.98 1.00 0.99 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.015 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 2.77 / 11.56 | 0.9511 | 0.0001 / 0.0493 | 540×675 L008 |
+| hdr_float_linear2020.tif | extLinear2020 | CI·tonemap 底图 | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 L008 |
+| hdr_float_linear2020.tif | extLinear2020 | CI·tonemap 底图·RGB gain map | ISO ✅ | sRGB IEC61966-2.1 | 8.89 | 0.98 0.99 1.00 1.00 1.00 1.00 0.99 1.00 1.00 1.00 0.99 1.00 | 0.023 | 2 | 42 77 120 142 160 183 197 216 228 237 244 255 | 0.00 / 0.60 | 0.9570 | 0.0000 / 0.0173 | 1080×1350 444f |
 | hdr_float_linear2020.tif | extLinear2020 | ImageIO | ISO ✅ | Display P3 | 8.00 | 0.98 1.00 0.99 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 | 0.015 | 89 | 43 84 130 151 166 187 202 223 237 248 255 255 | 3.00 / 11.30 | 0.9511 | 0.0000 / 0.0510 | 540×675 L008 |
 
 ## 8. 隐式转换探针（P1–P11）
@@ -245,11 +245,11 @@ tone map 结果随工作空间的差异（8-bit 输出，照片区域 ΔE2000）
 
 ### P2 无 ICC 文件在各层的表现
 
-| 文件 | ImageIO ProfileName | 解码 CGImage 颜色空间 | CIImage.colorSpace | 文件里实际有颜色描述块 |
+| 文件 | ImageIO ProfileName | 解码 CGImage 颜色空间 | CIImage.colorSpace | 文件内颜色描述 |
 |---|---|---|---|---|
 | chart_noicc.png | nil | SRGB | SRGB | 无 |
-| chart_noicc.jpg | sRGB IEC61966-2.1 | SRGB | SRGB | 无 |
-| chart_srgb.jpg | sRGB IEC61966-2.1 | SRGB | SRGB | 无 |
+| chart_noicc.jpg | sRGB IEC61966-2.1 | SRGB | SRGB | 无 ICC |
+| chart_srgb.jpg | sRGB IEC61966-2.1 | SRGB | SRGB | 无 ICC |
 
 ### P3 降采样解码（CGImageSourceCreateThumbnailAtIndex，max 480）
 
@@ -331,14 +331,14 @@ ProPhoto 纯绿 (0,1,0) → extendedSRGB = (-0.869, 1.096, -0.428)，参考 (-0.
 
 ### P9 输出文件默认带了哪些元数据块
 
-| 写出方式 | 元数据字典 | EXIF 键 | TIFF 字段 | 嵌入 ICC |
+| 写出方式 | 元数据字典 | EXIF 键 | TIFF 字段 | 文件内颜色描述 |
 |---|---|---|---|---|
-| CI writeJPEGRepresentation | {Exif} {TIFF} | ColorSpace,ComponentsConfiguration,ExifVersion,FlashPixVersion,PixelXDimension,PixelYDimension,SceneCaptureType | ResolutionUnit=2,XResolution=72,YResolution=72 | **无** |
-| CI writePNGRepresentation | {Exif} {PNG} | ColorSpace,PixelXDimension,PixelYDimension | – | **无** |
-| CI JPEG + hdrImage（gain map） | {Exif} {TIFF} | ColorSpace,ComponentsConfiguration,ExifVersion,FlashPixVersion,PixelXDimension,PixelYDimension,SceneCaptureType | Orientation=1,ResolutionUnit=2,XResolution=72,YResolution=72 | 有 |
-| ImageIO CGImageDestination JPEG | {Exif} {JFIF} | ColorSpace,PixelXDimension,PixelYDimension | – | **无** |
-| CI JPEG，colorSpace = CGColorSpace(iccData: sRGB ICC) | {Exif} {TIFF} |  |  | **无** |
-| ImageIO JPEG，CGImage 颜色空间 = CGColorSpace(iccData: sRGB ICC) | {Exif} {JFIF} |  |  | **无** |
+| CI writeJPEGRepresentation | {Exif} {TIFF} | ColorSpace,ComponentsConfiguration,ExifVersion,FlashPixVersion,PixelXDimension,PixelYDimension,SceneCaptureType | ResolutionUnit=2,XResolution=72,YResolution=72 | 无 ICC |
+| CI writePNGRepresentation | {Exif} {PNG} | ColorSpace,PixelXDimension,PixelYDimension | – | gAMA+cHRM |
+| CI JPEG + hdrImage（gain map） | {Exif} {TIFF} | ColorSpace,ComponentsConfiguration,ExifVersion,FlashPixVersion,PixelXDimension,PixelYDimension,SceneCaptureType | Orientation=1,ResolutionUnit=2,XResolution=72,YResolution=72 | ICC |
+| ImageIO CGImageDestination JPEG | {Exif} {JFIF} | ColorSpace,PixelXDimension,PixelYDimension | – | 无 ICC |
+| CI JPEG，colorSpace = CGColorSpace(iccData: sRGB ICC) | {Exif} {TIFF} |  |  | 无 ICC |
+| ImageIO JPEG，CGImage 颜色空间 = CGColorSpace(iccData: sRGB ICC) | {Exif} {JFIF} |  |  | 无 ICC |
 
 ### P10 ImageIO 写 ISO gain map JPEG：输入 CGImage 的要求
 
@@ -350,8 +350,8 @@ ProPhoto 纯绿 (0,1,0) → extendedSRGB = (-0.869, 1.096, -0.428)，参考 (-0.
 | extLinearP3 half + CGImageCreateCopyWithContentHeadroom(8) | 8.00 | ✅ | Display P3 | 8.00 | 1.00 | 8.00 | 43 84 130 151 166 187 202 223 237 248 255 255 |
 | extLinearP3 half + headroom 8 + BaseColorSpace=sRGB（EncodeRequestOptions 内） | 8.00 | ✅ | Display P3 | 8.00 | 1.00 | 8.00 | 43 84 130 151 166 187 202 223 237 248 255 255 |
 | extLinearP3 half + headroom 8 + BaseColorSpace=sRGB（顶层） | 8.00 | ✅ | Display P3 | 8.00 | 1.00 | 8.00 | 43 84 130 151 166 187 202 223 237 248 255 255 |
-| ITUR_2100_PQ RGBA16 | 4.93 | ✅ | Display P3 | 4.93 | 1.00 | 4.93 | 50 90 140 167 188 211 224 239 249 255 255 255 |
-| DisplayP3_PQ RGBA16 | 4.93 | ✅ | Display P3 | 4.93 | 1.00 | 4.93 | 50 90 140 167 188 211 224 239 249 255 255 255 |
+| ITUR_2100_PQ RGBA16 | 4.93 | ✅ | Display P3 | 4.93 | 1.00 | 4.93 | 50 90 141 167 188 211 224 239 249 255 255 255 |
+| DisplayP3_PQ RGBA16 | 4.93 | ✅ | Display P3 | 4.93 | 1.00 | 4.93 | 50 90 141 167 188 211 224 239 249 255 255 255 |
 
 ### P11 HDR → SDR 的几种 tone map（extLinearSRGB，8-bit sRGB 输出）
 

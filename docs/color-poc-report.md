@@ -1,6 +1,6 @@
 # 色彩 PoC 报告：D-03 工作色彩空间与像素格式
 
-> 状态：**合成样本、Lightroom HDR 真实样本已完成；SDR 四色彩空间真实样本（D-19）待补**（§8.3）。
+> 状态：**已完成**。包括合成样本、Lightroom HDR 真实样本（3 张 × 3 种格式）和 SDR 四色彩空间真实样本（2 张）。
 > 本报告只给推荐，D-03 由用户拍板后再写进规范；文中提到的其它规范问题也只列出，不改规范。
 
 ## 0. 结论摘要
@@ -8,8 +8,8 @@
 - **推荐 D-03：工作空间用 extended linear Rec.2020（`kCGColorSpaceExtendedLinearITUR_2020`），像素格式用 `RGBAh`（半精度浮点，预乘 alpha）。**
 - 三个候选在本管线里**数值上等价**：色卡 ΔE、背景值、透明边缘、方向、HDR 保留、gain map 读回、tone map 结果都相同或差异 ≤ 1 个 8-bit 码值。原因是管线里的操作（色彩矩阵、缩放、预乘合成）都是线性的，而 extended 浮点格式里没有任何一步截断。
 - 所以选择要看**稳健性**：在 Rec.2020 里，sRGB、Display P3、Adobe RGB 以及 PQ/HLG HDR 内容都落在非负区间，只有 ProPhoto 的极端颜色才是负值；换成 extended linear sRGB，所有 P3 / Adobe RGB 饱和色都会变成负值。负值正是后面最容易出事的地方：非 extended 的 CG 上下文、ImageIO 编码器、Metal unorm 纹理都会截掉负值，自定义的非线性 kernel（tone curve、gain map 比值、色域压缩）遇到负值也会出错。
-- **真实照片（Lightroom 导出，3 张 × 3 种 HDR 格式）验证了同样的结论：** 三个空间的 SDR 输出之间 ΔE 中位 0.00、P95 ≤ 0.38，没有截断。HDR 写出再读回，亮度误差 P95 ≤ 3.2%（§8）。
-- **D-19：** 合成色卡在 sRGB 色域内的颜色远低于暂定阈值。最差的情况是 8-bit ProPhoto JPEG 输入、JPEG Q100 输出，中位数 0.44、P95 1.04；16-bit TIFF 输入、PNG 输出为 0.05 / 0.27。阈值只能对 sRGB 色域内的颜色定义，超出 sRGB 的颜色需要另定映射策略。用真实照片验证还需要 SDR 四色彩空间样本（§8.3）。
+- **真实照片验证了同样的结论**（Lightroom 导出的 3 张 HDR × 3 种格式，以及 2 张 SDR × 6 种色彩空间/格式）：三个空间的 SDR 输出之间 ΔE 中位 0.00、P95 ≤ 0.51，没有截断。HDR 写出再读回，亮度误差 P95 ≤ 3.2%（§8）。
+- **D-19：** 合成色卡在 sRGB 色域内的颜色远低于暂定阈值。最差的情况是 8-bit ProPhoto JPEG 输入、JPEG Q100 输出，中位数 0.44、P95 1.04；16-bit TIFF 输入、PNG 输出为 0.05 / 0.27。阈值只能对 sRGB 色域内的颜色定义，超出 sRGB 的颜色需要另定映射策略。真实照片（Lightroom 同一张照片导出四种色彩空间）同样达标：16 位 TIFF 的 ΔE 为 0.00，8 位 JPEG 最差的是 ProPhoto，中位 0.52、P95 1.76（§7）。
 - 同时查到 18 个会悄悄改颜色或出错的坑（§5）。最重要的几个：ImageIO 写 sRGB JPEG **不嵌 ICC**；ImageIO 写 gain map 时如果 CGImage **没带 headroom，HDR 会被静默丢掉**；**Lanczos 缩放会在透明边缘和照片边缘振铃**；**CI 的自动 tone map 只在某些图结构下生效**；**CI 直接使用大尺寸 32 位浮点源图会渲染出错位图块**（Lightroom 32 位 TIFF 实测，需要先转 RGBAh）。
 
 ## 1. 环境与复现
@@ -148,7 +148,7 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 **推荐：extended linear Rec.2020 + RGBAh（预乘）。**
 
 1. **三者实测等价。** 本管线里没有一项指标能把三个候选区分开（§3.1），所以决策依据是对后续开发的稳健性，而不是当前数值。
-2. **非负覆盖面最大。** sRGB、Display P3、Adobe RGB、PQ/HLG（BT.2100 本身就是 Rec.2020）在 Rec.2020 里都没有负分量，只有 ProPhoto 的极端颜色是负值。extended linear sRGB 下，P3 测试图有 59% 的像素需要负值或大于 1 的值；Rec.2020 下为 0。
+2. **非负覆盖面最大。** sRGB、Display P3、Adobe RGB、PQ/HLG（BT.2100 本身就是 Rec.2020）在 Rec.2020 里都没有负分量，只有 ProPhoto 的极端颜色是负值。extended linear sRGB 下，P3 测试图有 59% 的像素需要负值或大于 1 的值；Rec.2020 下为 0。真实照片里，extended linear sRGB 下有 0.3–4.0% 的像素需要负分量，Rec.2020 下只有 0.1–0.9%，而且几乎全是边缘振铃。
 3. **负值是后续最可能出问题的地方。** 坑 3、坑 8：编码器和非 extended 的 CG 上下文会截掉负值。还有要新写的非线性步骤：色域压缩（坑 11）、HDR→SDR tone curve（坑 6）、gain map 比值。它们在负值上要么出错，要么需要额外处理。
 4. **和 HDR 输入天然对齐。** PQ/HLG 是 Rec.2020，Lightroom 的 HDR 导出也提供 Rec.2020 选项。
 5. **代价：** 实测没有性能或精度差异。需要注意：CI 的默认工作空间是 extended linear sRGB，所以必须显式设置 `workingColorSpace`；某些 CI 内置滤镜（例如饱和度、亮度类）的亮度系数可能按 sRGB 原色写死，改用 2020 后行为会略有不同。本管线用到的滤镜（Lanczos、合成、`CIToneMapHeadroom`）已经验证与工作空间无关，以后新增滤镜时需要逐个验证。
@@ -167,6 +167,8 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 
 ## 7. D-19 结论
 
+**合成色卡**（真值由参考数学给出）：
+
 | 场景 | ΔE 中位 / P95 | 是否满足暂定阈值（≤1 / ≤2） |
 |---|---|---|
 | 16-bit TIFF（四种 ICC）→ 8-bit PNG | 0.05 / 0.21–0.27 | ✅ 余量很大 |
@@ -175,7 +177,29 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 | 无 ICC、实为 P3 数值的文件（按 sRGB 解释） | 2.37 / 4.11 | ❌（预期内，属于 D-04 警告场景） |
 | 超出 sRGB 的颜色 → sRGB（逐通道截断） | 3.3–11 / 最大 28 | 不适用：需要另定映射策略和验收方法 |
 
-**结论（合成样本）：** 对 sRGB 色域内的颜色，暂定阈值可以达到，而且余量很大；阈值主要被 JPEG 编码误差占用。建议定稿时写明三点：（1）阈值只统计源图在 sRGB 色域内的像素；（2）超出 sRGB 的像素按选定的色域映射策略另行验收；（3）HDR→SDR 不适用 ΔE 阈值，按 tone map 规格验收。**真实照片验证完成之前，D-19 暂不建议定稿**（§8）。另外，基线系统应从 macOS 26 改为本机实际的 macOS 27，或者在 26 上补测一次。这一点也需要用户决定。
+**真实照片**（Lightroom 把同一张照片导出为四种色彩空间。以 sRGB 版本经本管线的输出为基准，统计其它版本输出的 ΔE；两张照片，三个工作空间结果相同）：
+
+| 输入 | sRGB 域内 中位 / P95 | 超出 sRGB 的像素（占 1.3–2.5%）中位 / P95 / max | D-19 |
+|---|---|---|---|
+| 16 位 TIFF，ProPhoto vs sRGB | 0.00 / 0.00 | 0.00 / 0.40–0.45 / 3.2–7.0 | ✅ |
+| 8 位 JPEG Q100，Adobe RGB vs sRGB | 0.41–0.45 / 1.26–1.30 | 0.00–0.09 / 0.50–0.79 / 3.7–5.3 | ✅ |
+| 8 位 JPEG Q100，Display P3 vs sRGB | 0.35–0.43 / 1.17–1.24 | 0.00–0.09 / 0.55–0.77 / 2.4–4.6 | ✅ |
+| 8 位 JPEG Q100，ProPhoto vs sRGB | 0.51–0.52 / 1.65–1.76 | 0.00–0.15 / 0.58–1.08 / 3.1–6.1 | ✅（余量最小） |
+
+**结论：暂定阈值（中位 ≤ 1、P95 ≤ 2）在合成样本和真实样本上都能达到。**
+
+- 16 位 TIFF：本管线的 ProPhoto→sRGB 结果与 Lightroom 自己导出的 sRGB 版本完全一致（ΔE 0.00）。
+- 8 位 JPEG 的误差来自不同编码下的 8 位量化和 JPEG 压缩。ProPhoto 8 位 JPEG 的 P95 为 1.76，离 2 只剩 0.24 余量；8 位 ProPhoto 本来就不推荐，Lightroom 也会提示。
+- 超出 sRGB 的像素：Lightroom 导出 sRGB 时的结果和本管线的逐通道截断几乎一样（中位约 0、P95 ≤ 1.08），个别像素最大到 7。也就是说，现在的截断至少不比 Lightroom 差。是否还要做更柔和的色域压缩，是另一个问题（坑 11）。
+
+建议定稿时写明四点：
+
+1. 阈值只统计源图在 sRGB 色域内的像素。
+2. 超出 sRGB 的像素按选定的色域映射策略另行验收；以 Lightroom 的 sRGB 导出为参照时，可以暂定 P95 ≤ 2。
+3. 8 位 ProPhoto 输入不纳入阈值，或者单独放宽。
+4. HDR→SDR 不适用 ΔE 阈值，按 tone map 规格验收。
+
+另外，基线系统应从 macOS 26 改为本机实际的 macOS 27，或者在 26 上补测一次。这一点需要用户决定。
 
 ## 8. 真实照片（Lightroom Classic 15.5.1 导出）
 
@@ -209,14 +233,13 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 - **SDR tone map：** TIFF 源没有 Lightroom 的 SDR 版本，只能自己 tone map。用 `CIToneMapHeadroom` 配合 PQ 默认 headroom 4.93 时，结果明显比 Lightroom 的 SDR 底图暗；cannon_beach 的前景几乎全黑。grand_teton 实际峰值只有 1.77，却按 4.93 压缩。这进一步说明：gain map 源应直接用 Lightroom 的 SDR 底图；PQ / float 源需要更合适的曲线，并且 headroom 要按画面实际估算。
 - **内存与性能：** PoC 为了测量，故意全分辨率解码 45MP 原图，同时开 3 个工作空间，每张写多份输出，也没做任何内存控制。9 个文件共用 112 秒，进程峰值内存 21.5 GB。按正式软件的做法另测了一次单任务导出：用 ImageIO 按输出所需尺寸降采样解码（长边 2700）→ CI 合成 → 写 HDR gain map JPEG。每张峰值内存 330 MB（16 位 TIFF）、490 MB（gain map JPEG）、690 MB（32 位 TIFF），耗时 0.6–1.2 秒。所以 D-18 的降采样解码必须做，做了之后内存就在正常范围。
 
-### 8.3 待补：SDR 四色彩空间样本（D-19）
+### 8.3 SDR 四色彩空间样本（D-19）
 
-需要 1–2 张饱和色多的 SDR 照片，每张导出 6 份，只改色彩空间和格式：`名字_srgb.jpg`、`名字_adobergb.jpg`、`名字_p3.jpg`、`名字_prophoto.jpg`（JPEG 品质 100），以及 `名字_srgb.tif`、`名字_prophoto.tif`（16 位）。程序靠这些后缀把同一张照片配成一组，统计 sRGB 色域内像素的 ΔE。
+2 张 SDR 成片：glacier_np（3209×4813）和 glacier_np_person（8245×5497）。每张导出 sRGB、Adobe RGB、Display P3、ProPhoto 四种 JPEG Q100，以及 sRGB 和 ProPhoto 两种 16 位 TIFF。超出 sRGB 的像素占 1.3–2.5%（冰川湖的青绿色），没有超出 P3 的。完整表格见 [`Experiments/ColorPoC/results/real-sdr.md`](../Experiments/ColorPoC/results/real-sdr.md)，结论见 §7。
 
-```bash
-swift run -c release --package-path Experiments/ColorPoC colorpoc inspect <目录>      # 检查导出是否合格
-swift run -c release --package-path Experiments/ColorPoC colorpoc run --real <目录>   # 跑真实照片
-```
+- Lightroom 的 ProPhoto ICC 是 Adobe 自己的 "ProPhoto RGB"（940 B），不是 Apple 的 ROMM 配置文件；CI 能正确处理。
+- 三个工作空间的 SDR 输出之间 ΔE 中位 0.00、P95 ≤ 0.51，与 HDR 样本的结论一致。需要负分量的像素：extended linear sRGB 为 0.3–4.0%，Rec.2020 为 0.1–0.9%（主要是边缘振铃）。
+- 加上逐张释放内存之后，12 个文件共用 38 秒，进程峰值内存 4.5 GB（之前 HDR 那次是 21.5 GB）。
 
 ### 8.4 需要在 HDR 屏幕上目视检查的文件
 
