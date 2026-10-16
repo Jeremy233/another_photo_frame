@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Discover packages
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.find.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        name: Find every Package.swift under Packages/
+        run: |
+          packages=$(find Packages -mindepth 2 -maxdepth 2 -name Package.swift -exec dirname {} \; \
+            | sort | jq -R . | jq -cs .)
+          echo "Found: $packages"
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: swift test (${{ matrix.package }})
+    needs: discover
+    if: needs.discover.outputs.packages != '[]'
+    # macOS 26 on Apple Silicon. Keep this and DEVELOPER_DIR in sync with the README.
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Test
+        run: swift test
