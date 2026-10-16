@@ -65,6 +65,33 @@ extension ApplicationError {
         Self(code: "job.not_cancelable", message: "任务 \(id) 已经是 \(status.rawValue)，不能取消")
     }
 
+    static func presetNotInLibrary(_ path: String) -> Self {
+        Self(code: "library.preset_not_in_library", message: "\(path) 是预设文件，不在预设库里",
+             hint: "先用 `photoframe preset import` 导入，再对库里的预设操作")
+    }
+    static func exportFileExists(_ path: String) -> Self {
+        Self(code: "preset.export_exists", message: "目标文件已存在：\(path)", hint: "换一个文件名，或加 --overwrite 替换")
+    }
+    static func assetFileNotFound(_ path: String) -> Self {
+        Self(code: "asset.file_not_found", message: "找不到素材文件：\(path)")
+    }
+    static func assetReferenceNotFound(_ reference: String) -> Self {
+        Self(code: "asset.not_found", message: "找不到素材「\(reference)」", hint: "用 `photoframe asset list` 查看素材库")
+    }
+    static func assetAmbiguous(_ reference: String, _ ids: [String]) -> Self {
+        Self(code: "asset.ambiguous", message: "「\(reference)」对应多个素材：\(ids.joined(separator: ", "))", hint: "改用 assetId 指定")
+    }
+    static func presetFileNotFound(_ path: String) -> Self {
+        Self(code: "preset.file_not_found", message: "找不到预设文件：\(path)")
+    }
+    static func analyzerUnavailable() -> Self {
+        Self(code: "service.unavailable", message: "这个服务实例没有配置图像分析（检查源图、预估输出、预览）")
+    }
+    static func duplicateOutput(_ path: String) -> Self {
+        Self(code: "request.duplicate_output", message: "同一请求中有多个任务会覆盖同一个作品目录：\(path)",
+             hint: "覆盖模式下每个作品目录只能对应一个任务；去掉 --overwrite 或分开导出同名源图")
+    }
+
     // MARK: 校验（validating）
 
     static func sourceUnreadable(_ path: String) -> Self {
@@ -89,13 +116,13 @@ extension ApplicationError {
     static func noOutputs() -> Self {
         Self(code: "export.no_outputs", message: "渲染器没有返回任何输出文件")
     }
-    static func duplicateRole(_ role: OutputRole) -> Self {
+    static func duplicateRole(_ role: JobOutputRole) -> Self {
         Self(code: "export.duplicate_output", message: "渲染器重复返回了 \(role)")
     }
-    static func invalidRole(_ role: OutputRole) -> Self {
+    static func invalidRole(_ role: JobOutputRole) -> Self {
         Self(code: "export.invalid_output_role", message: "无效的输出位置：\(role)")
     }
-    static func invalidPixelSize(_ role: OutputRole, _ size: PixelSize) -> Self {
+    static func invalidPixelSize(_ role: JobOutputRole, _ size: PixelSize) -> Self {
         Self(code: "export.invalid_pixel_size", message: "\(role) 的像素尺寸无效：\(size)")
     }
     static func outputOutsideStaging(_ path: String) -> Self {

@@ -22,9 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: find
-        name: Find every Package.swift under Packages/
+        name: Find every Package.swift under Packages/ and Tools/
         run: |
-          packages=$(find Packages -mindepth 2 -maxdepth 2 -name Package.swift -exec dirname {} \; \
+          packages=$(find Packages Tools -mindepth 2 -maxdepth 2 -name Package.swift -exec dirname {} \; \
             | sort | jq -R . | jq -cs .)
           echo "Found: $packages"
           echo "packages=$packages" >> "$GITHUB_OUTPUT"

@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import PhotoFrameCore
+import PhotoFrameStorage
 import Testing
 import UniformTypeIdentifiers
 @testable import PhotoFrameRendering
@@ -131,9 +132,24 @@ struct OverlayTests {
         #"<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1" fill="url(#g)"/></svg>"#,
         #"<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="http://www.w3.org/2000/svg"/>"#,
         #"<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1" onclick="x()"/></svg>"#,
+        // 与素材导入共用的规则与上限（D-87：AssetValidator.SVGPolicy、AssetImportLimits.default）
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\">" + String(repeating: "<g>", count: 70)
+            + String(repeating: "</g>", count: 70) + "</svg>",
     ])
     func svgRejected(_ source: String) throws {
         #expect(throws: RenderError.self) { _ = try RestrictedSVG.parse(Data(source.utf8)) }
+    }
+
+    @Test("动画元素与处理指令：导入时拒绝，渲染时跳过 / 忽略（D-87）")
+    func svgRenderingIsLaxerThanImport() throws {
+        let animated = #"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2"/><animate attributeName="x" to="2"/></svg>"#
+        let parsed = try RestrictedSVG.parse(Data(animated.utf8))
+        #expect(parsed.commands.count == 1)
+        #expect(parsed.warnings.contains { $0.contains("animate") })
+        let instruction = #"<?xml-stylesheet type="text/css" href="x.css"?><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1"/></svg>"#
+        #expect(try RestrictedSVG.parse(Data(instruction.utf8)).commands.count == 1)
+        #expect(AssetValidator.SVGPolicy.forbiddenElements.isSuperset(of: AssetValidator.SVGPolicy.animationElements))
+        #expect(AssetValidator.SVGPolicy.forbiddenElements.isSuperset(of: AssetValidator.SVGPolicy.renderingForbiddenElements))
     }
 
     @Test("缺少素材：警告并跳过；跳过列表中的图层不重复警告")

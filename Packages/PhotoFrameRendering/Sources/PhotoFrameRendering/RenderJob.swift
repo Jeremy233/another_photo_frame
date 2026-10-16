@@ -18,6 +18,7 @@ public struct RenderAsset: Hashable, Sendable, Codable {
 }
 
 /// 用户为源图指定的输入色彩空间（D-04：无 ICC 时默认 sRGB，允许按源图或任务覆盖）。
+/// 只对没有颜色描述的源图生效；源图自带 ICC 时忽略并警告 `source.override_ignored`。
 public enum SourceColorOverride: String, Hashable, Sendable, Codable, CaseIterable {
     case sRGB
     case displayP3
@@ -38,7 +39,7 @@ public struct RenderJob: Sendable {
     public var skippedLayerIds: Set<String>
     /// 写出成品的目录，由调用方创建并负责清理（原子发布、命名、冲突处理都不在渲染器里做）。
     public var outputDirectory: URL
-    /// 输入色彩空间覆盖（D-04）。nil = 按文件自带 ICC，没有时假设 sRGB 并警告。
+    /// 输入色彩空间覆盖（D-04），只用于没有 ICC 的源图。nil = 按文件自带 ICC，没有时假设 sRGB 并警告。
     public var sourceColorOverride: SourceColorOverride?
     /// 平台轮播上限（含封面），用于全景警告；nil 表示不检查。
     public var maxCarouselItems: Int?

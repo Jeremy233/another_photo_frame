@@ -66,6 +66,16 @@ struct ColorManagementTests {
         #expect(ColorMath.percentile(d, 0.95) <= 2)
     }
 
+    @Test("源图自带 ICC 时忽略覆盖并警告，颜色按文件 ICC（D-04、§6.2）")
+    func overrideIgnoredWithEmbeddedProfile() async throws {
+        let result = try await render(Fixtures.url("chart_p3.jpg"), Self.chartPreset(), override: .adobeRGB)
+        #expect(result.diagnostics.sourceProfileOrigin == "embedded")
+        #expect(result.diagnostics.sourceProfile.contains("P3"))
+        #expect(result.warnings.contains { $0.code == "source.override_ignored" })
+        let d = Chart.deltaEs(try readSRGB8(result.outputs[0].fileURL))
+        #expect(ColorMath.percentile(d, 0.5) <= 1)
+    }
+
     @Test("白边 #FAFAF8 的无损输出精确为 (250, 250, 248)（§6.5）")
     func backgroundExact() async throws {
         let dir = try makeTempDirectory()
