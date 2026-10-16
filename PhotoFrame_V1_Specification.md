@@ -342,7 +342,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ![图 5：从源 ICC 解码、高精度工作空间、排版与线性光合成，到输出颜色转换、预览和编码的共享管线；背景与素材进入同一工作空间，HDR 需受控映射或拒绝。](docs/illustrations/05-managed-color-pipeline.png)
 
-*图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；具体工作空间及 HDR 策略仍待验证。*
+*图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；工作空间见 D-03，HDR→SDR 的具体策略仍待确定。*
 
 **建议的后端显式类型：**
 
@@ -353,9 +353,9 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ### 6.4 工作色域、位深、混合
 
-**【建议】** 图像排版与混合尽可能使用高精度线性光域，例如适当配置的 extended-linear 工作色彩空间与 `RGBAh`（半精度浮点）或按任务需求更高精度 buffer。**具体选取必须先做色卡/宽色域回归验证**，不能只凭框架默认值判断。
+**【已确定：D-03】** 工作色彩空间为 **extended linear Rec.2020**（`kCGColorSpaceExtendedLinearITUR_2020`），像素格式为 **`RGBAh`**（半精度浮点，预乘 alpha）。V1 的输出都是 8-bit，RGBAh 的精度足够；以后如果增加 16-bit 输出，可以按任务改用 `RGBAf`。实测依据见[色彩 PoC 报告](docs/color-poc-report.md)。
 
-- 如选择 extended linear sRGB 作为内部表示，必须验证**超出 sRGB 的值**能被内部表示与处理，不能在中途截断到 `[0,1]`；否则需要更适合的宽色域工作空间。
+- 所有中间结果（Core Image 中间缓冲、自建的 CGImage / CGContext、缓存）都必须是 extended 浮点，不得使用 8-bit 或非 extended 的格式；PoC 实测非 extended 的 CG 上下文会截断广色域。
 - 输入 16-bit TIFF 后不得在渲染前无理由转换为 8-bit；JPEG 最终量化到 8-bit 是输出格式本身的正常限制。
 - 透明图片与水印：内部定义 premultiplied/unpremultiplied alpha 边界，在**线性光域**以明确规则合成，预防发灰、黑边、彩色边缘。
 - 缩放：高质量滤波、统一坐标与采样；预览允许不同采样尺度，但不能采用不同的颜色计算规则。
@@ -896,7 +896,7 @@ photoframe mcp serve
 
 - [x] **D-01** 最低系统版本：**macOS 26+，仅 Apple Silicon**（使用最新系统 UI 设计语言）。【已确定 2026-10-16】
 - [x] **D-02** 首批输入格式：**JPEG / PNG / TIFF**；三种格式的 HDR 变体须在首版支持（见 D-05）。**HEIC/HEIF（含 iPhone HDR 照片）放到 V2**：V1 只处理在后期软件里修完、导出后的成片，不处理手机直出照片。【已确定 2026-10-16】
-- [ ] **D-03** 工作色域与高精度像素格式：因 D-05 要求 HDR 输入/输出，工作空间**必须是 extended-range linear 浮点**（至少 `RGBAh`），不能在 `[0,1]` 截断；具体色域（extended linear sRGB / Display P3 / Rec.2020）由色彩 PoC 实测后定。【待 PoC】
+- [x] **D-03** 工作色域与高精度像素格式：**extended linear Rec.2020（`kCGColorSpaceExtendedLinearITUR_2020`）+ `RGBAh`（半精度浮点，预乘 alpha）**，全程不在 `[0,1]` 截断。色彩 PoC 实测三个候选（extended linear sRGB / Display P3 / Rec.2020）数值等价；Rec.2020 下 sRGB、P3、Adobe RGB 与 PQ/HLG 内容都没有负分量，对后续的非线性处理最稳健。详见[色彩 PoC 报告](docs/color-poc-report.md)。【已确定 2026-10-16】
 - [x] **D-04** 无源 ICC：**默认假设 sRGB，显示警告，允许按源图或任务覆盖**。【已确定 2026-10-16】
 - [x] **D-05** HDR：**V1 支持 HDR 输入与输出**。输入支持所有受支持格式中的 HDR 形式（如 gain map JPEG、PQ/HLG PNG、float/PQ TIFF）；HDR 输出作为可选导出项，由**平台配置决定对应的 HDR 输出格式**（例如带 gain map 的 JPEG），并始终可选择 SDR 输出。【已确定 2026-10-16；具体格式矩阵见 D-17】
 - [x] **D-06** 输出默认：**sRGB JPEG，最高质量（Q100）**。EXIF 输出为可选项：「保留拍摄参数」「保留 GPS」，**默认全部隐藏（不写出）**；「保留 GPS」旁显示隐私警告。【已确定 2026-10-16】
@@ -991,7 +991,9 @@ photoframe mcp serve
 
 **已确定（2026-10-16 P1/P2 审阅）：** PNG + 受限 SVG 素材、切片统一上下边距、自动切片张数只可手动改多、图层以照片为参照、各入口独立进程（可升级）、绑定优先级、UUID 预设 ID、所有平台提供 HDR 选项、不设输入尺寸上限（按内存调度）、暂定 ΔE2000 阈值、暂不签名、V1 不收素材贡献。
 
-**尚待技术定稿：** 精确工作空间（D-03，待色彩 PoC）、小红书/抖音 HDR 实测结果、色彩阈值定稿（D-19）。许可证已定为 Apache-2.0（D-20）。
+**已确定（2026-10-16 色彩 PoC）：** 工作空间 extended linear Rec.2020 + `RGBAh`（D-03）。
+
+**尚待技术定稿：** 小红书/抖音 HDR 实测结果、色彩阈值定稿（D-19）。许可证已定为 Apache-2.0（D-20）。
 
 **V1 不做：** Discord/Telegram Bot、对公网 HTTP API、Remote Render/Web Remote、官方云服务、iCloud Sync、Windows、iOS/iPadOS 原生版、RAW 显影与全景拼接、社交平台直接发布、HEIC/HEIF 输入（含 iPhone HDR，放到 V2）、视频输出（V2 考虑 Live Photo，V3 及以后再做视频）。
 
