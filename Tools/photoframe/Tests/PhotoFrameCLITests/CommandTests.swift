@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotoFrameApplication
 import PhotoFrameCore
 import PhotoFrameStorage
@@ -119,6 +120,31 @@ struct InfoCommandTests {
                                   "--max-edge", "400", "--page", "0", "--overwrite"], in: box.root)
         #expect(cover.status == 0)
         #expect(cover.stdout.lines.map { URL(filePath: $0).lastPathComponent } == ["Badlands_Panorama_preview_00_Cover.png"])
+    }
+
+    @Test("preview --dynamic-range hdr（D-106）：HDR 输出的页写成 gain map JPEG；预设输出 SDR 时仍是 PNG 并警告")
+    func hdrPreview() async throws {
+        let box = try Sandbox()
+        try box.hdrPhoto("Bright.tif", width: 800, height: 600)
+        #expect(await runCLI(["preset", "duplicate", "instagram-standard", "--name", "HDR"], in: box.root).status == 0)
+        #expect(await runCLI(["preset", "set", "HDR", "output.dynamicRange", "hdr"], in: box.root).status == 0)
+
+        let hdr = await runCLI(["preview", "Bright.tif", "--preset", "HDR", "-o", "p", "--max-edge", "400",
+                                "--dynamic-range", "hdr", "--json"], in: box.root)
+        #expect(hdr.status == 0, "\(hdr.stderr.value)")
+        let file = try #require((try hdr.stdout.json()["files"] as? [[String: Any]])?.first)
+        #expect(file["dynamicRange"] as? String == "hdr")
+        #expect((file["hdrHeadroom"] as? Double ?? 0) > 1)
+        let path = try #require(file["path"] as? String)
+        #expect(path.hasSuffix("Bright_Standard_preview_00_Cover.jpg"))
+        let image = CGImageSourceCreateWithURL(URL(filePath: path) as CFURL, nil)!
+        #expect(CGImageSourceCopyAuxiliaryDataInfoAtIndex(image, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil)
+
+        let sdr = await runCLI(["preview", "Bright.tif", "--preset", "instagram-standard", "-o", "p", "--dynamic-range", "hdr"],
+                               in: box.root)
+        #expect(sdr.status == 0)
+        #expect(sdr.stdout.lines.first?.hasSuffix("_preview_00_Cover.png") == true)
+        #expect(sdr.stderr.value.contains("preview.output_sdr"))
     }
 }
 

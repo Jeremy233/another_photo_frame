@@ -28,7 +28,7 @@ struct FakeAnalyzer: ImageAnalyzer {
     func preview(_ request: JobRenderRequest, options: PreviewOptions) async throws -> ExportPreview {
         let roles = roles(request.preset)
         let pages = roles.filter { options.pages?.contains($0.carouselPosition) ?? true }.map {
-            PreviewImage(role: $0, pixelSize: PixelSize(width: 3, height: 4), exportPixelSize: request.preset.canvas.size, pngData: Data([1]))
+            PreviewImage(role: $0, pixelSize: PixelSize(width: 3, height: 4), exportPixelSize: request.preset.canvas.size, data: Data([1]))
         }
         return ExportPreview(pages: pages, roles: roles, warnings: [])
     }

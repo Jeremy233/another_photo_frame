@@ -268,7 +268,7 @@ public actor PhotoFrameMCPServer {
 
     private func previewExport(_ arguments: [String: Value]?) async throws(ApplicationError) -> CallTool.Result {
         let args = try MCPArguments(arguments, allowed: [
-            "image", "preset", "maxEdge", "pages", "outputDirectory", "overwrite", "assumeProfile", "bindings",
+            "image", "preset", "maxEdge", "pages", "dynamicRange", "outputDirectory", "overwrite", "assumeProfile", "bindings",
         ])
         let limits = policy.limits
         let maxEdge = try args.int("maxEdge") ?? 1200
@@ -283,6 +283,11 @@ public actor PhotoFrameMCPServer {
             }
             pages = Set(given)
         }
+        var range = OutputSettings.DynamicRange.sdr
+        if let text = try args.string("dynamicRange") {
+            guard let value = OutputSettings.DynamicRange(rawValue: text) else { throw .invalidArguments("dynamicRange 只能是 sdr、hdr") }
+            range = value
+        }
         let image = try policy.inputFile(args.requiredString("image"), argument: "image")
         let directory = try args.string("outputDirectory").map { (d) throws(ApplicationError) in
             try policy.outputDirectory(d, argument: "outputDirectory")
@@ -293,7 +298,7 @@ public actor PhotoFrameMCPServer {
         let entry = try await service.resolvePreset(.library(args.requiredString("preset")))
         let source = try await service.addSource(image)
         let preview = try await service.renderPreview(ExportPreviewRequest(
-            source: .id(source.sourceId), preset: entry.preset, options: PreviewOptions(maxLongEdge: maxEdge, pages: pages),
+            source: .id(source.sourceId), preset: entry.preset, options: PreviewOptions(maxLongEdge: maxEdge, pages: pages, dynamicRange: range),
             assetBindings: assetBindings, sourceColorOverride: override))
         let warnings = (entry.warnings + preview.warnings).map(WarningJSON.init)
         let preset = PresetRefJSON(presetId: entry.preset.presetId.uuidString, name: entry.preset.name)
@@ -301,17 +306,18 @@ public actor PhotoFrameMCPServer {
 
         if let directory {
             let targets = try PreviewFiles.write(preview, source: source, preset: entry.preset, to: directory, overwrite: args.bool("overwrite"))
-            previewBytes += preview.pages.reduce(0) { $0 + Int64($1.pngData.count) }
+            previewBytes += preview.pages.reduce(0) { $0 + Int64($1.data.count) }
             let files = zip(preview.pages, targets).map { PreviewFileJSON($0, path: $1.path) }
             return success(PreviewJSON(source: source.fileURL.path, preset: preset, files: files, positions: positions, warnings: warnings))
         }
-        let total = preview.pages.reduce(0) { $0 + $1.pngData.count }
+        let total = preview.pages.reduce(0) { $0 + $1.data.count }
         guard total <= limits.maxInlinePreviewBytes else {
             throw .limitExceeded("预览图共 \(total / 1024) KiB，超过直接返回的上限 \(limits.maxInlinePreviewBytes / 1024) KiB",
                                  hint: "减小 maxEdge、减少 pages，或给 outputDirectory 写成文件")
         }
         let images = preview.pages.map { page in
-            Tool.Content.image(data: page.pngData.base64EncodedString(), mimeType: "image/png", annotations: nil, _meta: nil)
+            Tool.Content.image(data: page.data.base64EncodedString(), mimeType: page.format == .jpeg ? "image/jpeg" : "image/png",
+                               annotations: nil, _meta: nil)
         }
         let files = preview.pages.map { PreviewFileJSON($0, path: nil) }
         return success(PreviewJSON(source: source.fileURL.path, preset: preset, files: files, positions: positions, warnings: warnings),

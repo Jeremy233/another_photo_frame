@@ -145,12 +145,13 @@ extension MCPToolName {
                         outputSchema: Schema.output(["valid": Schema.boolean("全部任务都能导出"), "jobs": Schema.anyArray]))
         case .previewExport:
             return Tool(name: rawValue, title: "预览",
-                        description: "按预设渲染预览（与导出同一条管线，按预览尺寸缩小，sRGB PNG）。给了 outputDirectory 时写成文件，否则以图片内容直接返回。",
+                        description: "按预设渲染预览（与导出同一条管线，按预览尺寸缩小，sRGB PNG；dynamicRange 为 hdr 时，导出写 HDR 的页是带 gain map 的 JPEG）。给了 outputDirectory 时写成文件，否则以图片内容直接返回。",
                         inputSchema: Schema.object([
                             "image": Self.image,
                             "preset": Self.preset,
                             "maxEdge": Schema.integer("预览页长边上限（像素），默认 1200", minimum: 16),
                             "pages": Schema.array(Schema.integer("轮播页：0 = 封面，切片 k 为 k + 1", minimum: 0), "只预览这些页；默认全部"),
+                            "dynamicRange": Schema.string("sdr（默认）或 hdr（D-106）", oneOf: ["sdr", "hdr"]),
                             "outputDirectory": Schema.string("写预览文件的目录（绝对路径，必须在允许写入的目录内）；省略时直接返回图片"),
                             "overwrite": Schema.boolean("替换已存在的同名预览文件"),
                             "assumeProfile": Self.assumeProfile,

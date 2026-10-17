@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import PhotoFrameApplication
 import PhotoFrameCore
@@ -53,8 +54,29 @@ import Testing
         await f.workbench.settle()
         #expect(f.workbench.preview.subject?.preset == nil)
         #expect(f.workbench.preview.pageImage == nil)
-        f.workbench.preview.range = .hdr
-        #expect(!f.workbench.preview.showsHDRFallbackNote)
+    }
+
+    @Test func hdrRangeShowsGainMapPages() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        try await f.addJob("Bright.tif", hdr: true)
+        f.workbench.setField(\.output.dynamicRange, .hdr)
+        let preview = f.workbench.preview
+        await f.workbench.settle()
+        #expect(preview.pageImage?.dynamicRange == .sdr, "SDR 模式显示 SDR 底图")
+
+        preview.range = .hdr
+        await f.workbench.settle()
+        let page = try #require(preview.pageImage)
+        #expect(page.dynamicRange == .hdr && page.format == .jpeg)
+        let image = try #require(page.displayImage())
+        #expect(image.contentHeadroom > 1, "按 HDR 解码：\(image.contentHeadroom)")
+
+        // 预设输出 SDR：HDR 模式仍是 SDR，并说明原因。
+        f.workbench.setField(\.output.dynamicRange, .sdr)
+        await f.workbench.settle()
+        #expect(preview.pageImage?.dynamicRange == .sdr)
+        #expect(preview.warnings.contains { $0.code == "preview.output_sdr" })
     }
 
     @Test func presetPreviewUsesFirstSource() async throws {

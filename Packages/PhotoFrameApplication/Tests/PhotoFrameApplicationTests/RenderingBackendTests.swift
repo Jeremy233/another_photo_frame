@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotoFrameCore
 import PhotoFrameRendering
 import PhotoFrameStorage
@@ -173,7 +174,36 @@ struct RenderingBackendTests {
         let page = try #require(preview.pages.first)
         #expect(page.pixelSize == PixelSize(width: 270, height: 360))
         #expect(page.exportPixelSize == PixelSize(width: 1080, height: 1440))
-        #expect(page.pngData.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+        #expect(page.data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+        #expect(page.format == .png && page.dynamicRange == .sdr)
+    }
+
+    @Test("HDR 预览（D-106）：HDR 输出的页给出 gain map JPEG，SDR 模式给出 PNG；预设输出 SDR 时仍是 PNG 并提示")
+    func hdrPreview() async throws {
+        let box = try Sandbox()
+        let service = try LocalPhotoFrameService.makeDefault()
+        let added = try await service.addSource(try box.hdrPhoto("Bright.tif", width: 800, height: 600))
+        var preset = Self.preset("Instagram Standard")
+        preset.output.dynamicRange = .hdr
+
+        let hdr = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(added.sourceId), preset: preset, options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
+        let page = try #require(hdr.pages.first)
+        #expect(page.format == .jpeg && page.dynamicRange == .hdr)
+        #expect((page.hdrHeadroom ?? 0) > 3)
+        let image = CGImageSourceCreateWithData(page.data as CFData, nil)!
+        #expect(CGImageSourceCopyAuxiliaryDataInfoAtIndex(image, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil)
+
+        // SDR 模式：同一预设给出 SDR 底图 PNG。
+        let sdr = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(added.sourceId), preset: preset, options: PreviewOptions(maxLongEdge: 360)))
+        #expect(sdr.pages[0].format == .png && sdr.pages[0].dynamicRange == .sdr)
+
+        // 预设输出 SDR：HDR 模式也只有 PNG，并说明原因。
+        let plain = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(added.sourceId), preset: Self.preset("Instagram Standard"), options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
+        #expect(plain.pages[0].format == .png && plain.pages[0].hdrHeadroom == nil)
+        #expect(plain.warnings.contains { $0.code == "preview.output_sdr" })
     }
 
     @Test("源图色彩空间覆盖（D-04）：只对没有 ICC 的源图生效；有 ICC 时忽略并警告")

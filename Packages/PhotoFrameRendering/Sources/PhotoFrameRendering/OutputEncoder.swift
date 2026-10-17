@@ -45,16 +45,7 @@ struct OutputEncoder {
         sdr: CIImage, hdr: CIImage, headroom: Double, size: PixelSize, settings: OutputSettings,
         metadata: [CFString: Any], to url: URL
     ) throws(RenderError) -> Written {
-        let rect = CGRect(x: 0, y: 0, width: size.width, height: size.height)
-        let options: [CIImageRepresentationOption: Any] = [
-            CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String):
-                Double(min(max(settings.quality, 1), 100)) / 100,
-            .hdrImage: hdr.cropped(to: rect).settingContentHeadroom(Float(headroom)),
-            .hdrGainMapAsRGB: true,
-        ]
-        guard var bytes = context.jpegRepresentation(of: sdr.cropped(to: rect), colorSpace: WorkingColor.sRGB, options: options) else {
-            throw encodeFailed(url, "Core Image 无法写出 gain map JPEG")
-        }
+        var bytes = try hdrJPEGData(sdr: sdr, hdr: hdr, headroom: headroom, size: size, quality: settings.quality, name: url.lastPathComponent)
         var warnings: [String] = []
         if !metadata.isEmpty {
             if let merged = Self.mergingMetadata(bytes, metadata) {
@@ -63,9 +54,26 @@ struct OutputEncoder {
                 warnings.append("HDR 输出无法在保留 gain map 的同时写入所选元数据，已省略元数据")
             }
         }
-        bytes = try Self.ensureICC(bytes)
+        bytes = try Self.ensureICC(bytes) // 合并元数据可能去掉 ICC
         try write(bytes, to: url)
         return Written(byteCount: bytes.count, warnings: warnings)
+    }
+
+    /// gain map JPEG 的字节（已嵌入 sRGB ICC）。导出与 HDR 预览（D-106）共用。
+    func hdrJPEGData(
+        sdr: CIImage, hdr: CIImage, headroom: Double, size: PixelSize, quality: Int, name: String = "预览"
+    ) throws(RenderError) -> Data {
+        let rect = CGRect(x: 0, y: 0, width: size.width, height: size.height)
+        let options: [CIImageRepresentationOption: Any] = [
+            CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String):
+                Double(min(max(quality, 1), 100)) / 100,
+            .hdrImage: hdr.cropped(to: rect).settingContentHeadroom(Float(headroom)),
+            .hdrGainMapAsRGB: true,
+        ]
+        guard let bytes = context.jpegRepresentation(of: sdr.cropped(to: rect), colorSpace: WorkingColor.sRGB, options: options) else {
+            throw RenderError(code: "render.encode_failed", message: "编码 \(name) 失败：Core Image 无法写出 gain map JPEG")
+        }
+        return try Self.ensureICC(bytes)
     }
 
     /// 工作空间 → sRGB 8-bit（超出色域逐通道截断，PoC §3.2）。不带 alpha：页面总是不透明的。

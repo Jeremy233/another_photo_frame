@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Observation
 import PhotoFrameApplication
 import PhotoFrameCore
@@ -49,7 +50,10 @@ public final class PreviewModel {
     public var zoom: PreviewZoom = .fit
     /// 原图 / 成品对比。
     public var showsOriginal = false
-    public var range: PreviewRange = .sdr
+    /// 成品按 SDR / HDR 预览（D-106）：HDR 时导出写 HDR 的页来自 gain map JPEG，以 EDR 显示。
+    public var range: PreviewRange = .sdr {
+        didSet { if range != oldValue { render() } }
+    }
     /// 在全景长卷上标出接缝（右栏「全景」的「显示接缝位置」，只影响预览）。
     public var showsSeams = true
 
@@ -77,9 +81,6 @@ public final class PreviewModel {
     /// 有切片时才有全景长卷。
     public var hasStrip: Bool { roles.count > 1 }
 
-    /// 成品 HDR 预览：渲染模块已有 extended-range 预览，但服务的 `renderPreview` 只返回 sRGB PNG，暂时显示 SDR。
-    public var showsHDRFallbackNote: Bool { range == .hdr && !showsOriginal && subject?.preset != nil }
-
     func update(_ subject: PreviewSubject?) {
         guard subject != self.subject else { return }
         let sameSource = subject?.sourceId == self.subject?.sourceId
@@ -101,12 +102,13 @@ public final class PreviewModel {
         }
         isRendering = true
         let page = page
+        let range: OutputSettings.DynamicRange = self.range == .hdr ? .hdr : .sdr
         task = Task { [service, debounce] in
             try? await Task.sleep(for: debounce)
             guard !Task.isCancelled else { return }
             let options: PreviewOptions = switch page {
-            case .page(let n): PreviewOptions(maxLongEdge: Self.pageLongEdge, pages: [n])
-            case .strip: PreviewOptions(maxLongEdge: Self.stripLongEdge)
+            case .page(let n): PreviewOptions(maxLongEdge: Self.pageLongEdge, pages: [n], dynamicRange: range)
+            case .strip: PreviewOptions(maxLongEdge: Self.stripLongEdge, dynamicRange: range)
             }
             let request = ExportPreviewRequest(
                 source: .id(subject.sourceId), preset: preset, options: options,
@@ -143,6 +145,16 @@ public final class PreviewModel {
 
     func settle() async {
         await task?.value
+    }
+}
+
+extension PreviewImage {
+    /// 解码成显示用的位图。HDR 页（gain map JPEG）按 HDR 解码，带 content headroom，界面允许 EDR 时以 HDR 显示；
+    /// 不支持 HDR 的屏幕上系统按 headroom 压回 SDR。
+    public func displayImage() -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = dynamicRange == .hdr ? [kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR] : [:]
+        return CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary)
     }
 }
 

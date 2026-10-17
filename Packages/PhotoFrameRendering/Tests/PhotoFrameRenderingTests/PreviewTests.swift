@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import PhotoFrameCore
 import Testing
 @testable import PhotoFrameRendering
@@ -238,6 +239,32 @@ struct PreviewTests {
         let plain = try await Self.preview(Fixtures.url("chart_srgb.jpg"), preset, .scale(0.5), color: .extendedRange)
         #expect(plain.pages[0].dynamicRange == .sdr)
         #expect(plain.warnings.contains { $0.code == "output.hdr_source_not_hdr" })
+    }
+
+    @Test("gainMap：image 与 sRGB 预览相同，HDR 页另给 hdrImage，编码成带 gain map 的 JPEG（D-106）")
+    func gainMapPreview() async throws {
+        let preset = makePreset(width: 960, height: 720, margin: 0, output: OutputSettings(format: .jpeg, dynamicRange: .hdr))
+        let src = Fixtures.url("hdr_pq2020_203nit.png")
+        let renderer = PhotoFrameRenderer()
+        let both = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: preset, size: .scale(0.25), color: .gainMap))
+        let sdr = try await Self.preview(src, preset, .scale(0.25))
+        let page = both.pages[0]
+        #expect(page.dynamicRange == .hdr)
+        #expect(draw8(page.image)[5, 5] == draw8(sdr.pages[0].image)[5, 5])
+        #expect(draw8(page.image)[120, 90] == draw8(sdr.pages[0].image)[120, 90])
+        let hdr = try #require(page.hdrImage)
+        #expect(hdr.contentHeadroom > 1)
+
+        let data = try renderer.gainMapJPEG(sdr: page.image, hdr: hdr, headroom: try #require(page.hdrHeadroom), quality: 90)
+        let image = CGImageSourceCreateWithData(data as CFData, nil)!
+        #expect(CGImageSourceCopyAuxiliaryDataInfoAtIndex(image, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil)
+        #expect(JPEGSegments.contains(data, marker: 0xE2, prefix: Data("ICC_PROFILE\0".utf8)))
+
+        // SDR 源：没有 hdrImage。
+        let plain = try await renderer.renderPreview(PreviewRequest(
+            sourceURL: Fixtures.url("chart_srgb.jpg"), preset: preset, size: .scale(0.25), color: .gainMap))
+        #expect(plain.pages[0].hdrImage == nil && plain.pages[0].dynamicRange == .sdr)
+        #expect(plain.pages[0].image.bitsPerComponent == 8)
     }
 
     // MARK: - 请求选项
