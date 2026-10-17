@@ -34,5 +34,6 @@ let package = Package(
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),
             ]),
         .testTarget(name: "PhotoFrameMacModelTests", dependencies: ["PhotoFrameMacModel"]),
+        .testTarget(name: "PhotoFrameMacUITests", dependencies: ["PhotoFrameMacUI"]),
     ]
 )
