@@ -188,14 +188,24 @@ private struct ZoomMenu: View {
     }
 }
 
-/// 可缩放的画面：「适合窗口」时整个内容放进预览区，其余比例按屏幕像素显示，超出时可以滚动查看；支持触控板捏合。
+/// 可缩放的画面：「适合窗口」时整个内容放进预览区，其余比例按屏幕像素显示，超出时可以滚动或拖动查看；支持触控板捏合。
 /// `contentPixels` 是内容在 100% 时的像素尺寸；`content` 拿到显示尺寸（pt）后画出内容。
+/// 内容超出预览区时，滚动、拖动或捏合期间右上角淡入导航小窗（`thumbnail`），停下约 1 秒后淡出；点击或拖动小窗跳到对应位置。
 private struct ZoomCanvas<Content: View>: View {
     let preview: PreviewModel
     let contentPixels: CGSize
+    var thumbnail: CGImage?
     @ViewBuilder var content: (CGSize) -> Content
     @Environment(\.displayScale) private var displayScale
     @State private var pinchBase: Double?
+    @State private var panStart: CGPoint?
+    @State private var position = ScrollPosition()
+    @State private var geometry: ScrollGeometry?
+    @State private var showsMinimap = false
+    @State private var hideTask: Task<Void, Never>?
+
+    /// 内容四周的留白（pt）。
+    static var padding: CGFloat { 16 }
 
     var body: some View {
         GeometryReader { geo in
@@ -205,10 +215,14 @@ private struct ZoomCanvas<Content: View>: View {
             ScrollView([.horizontal, .vertical]) {
                 content(size)
                     .frame(width: size.width, height: size.height)
-                    .padding(16)
+                    .gesture(panGesture)
+                    .padding(Self.padding)
                     .frame(minWidth: geo.size.width, minHeight: geo.size.height)
             }
+            .scrollPosition($position)
             .scrollIndicators(preview.zoom == .fit ? .hidden : .automatic)
+            .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry = new }
+            .onScrollPhaseChange { _, phase in if phase != .idle { activity() } }
             .onChange(of: fit, initial: true) { preview.fitScale = fit }
             .gesture(
                 MagnifyGesture()
@@ -216,9 +230,111 @@ private struct ZoomCanvas<Content: View>: View {
                         let base = pinchBase ?? scale
                         pinchBase = base
                         preview.magnify(from: base, by: value.magnification)
+                        activity()
                     }
                     .onEnded { _ in pinchBase = nil })
+            .overlay(alignment: .topTrailing) {
+                if showsMinimap, let geometry, Self.isScrollable(geometry) {
+                    Minimap(thumbnail: thumbnail, contentSize: size, geometry: geometry, padding: Self.padding) { offset in
+                        position.scrollTo(point: offset)
+                        activity()
+                    }
+                    .padding(10)
+                    .transition(.opacity)
+                }
+            }
         }
+    }
+
+    /// 内容比显示区域大、可以滚动时才有导航小窗。
+    static func isScrollable(_ g: ScrollGeometry) -> Bool {
+        g.contentSize.width > g.containerSize.width + 1 || g.contentSize.height > g.containerSize.height + 1
+    }
+
+    /// 用鼠标拖动画面平移。
+    private var panGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                guard let geometry, Self.isScrollable(geometry) else { return }
+                let start = panStart ?? geometry.contentOffset
+                panStart = start
+                position.scrollTo(point: CGPoint(x: start.x - value.translation.width, y: start.y - value.translation.height))
+                activity()
+            }
+            .onEnded { _ in panStart = nil }
+    }
+
+    /// 用户在滚动、拖动或缩放：显示小窗，停下 1 秒后淡出。
+    private func activity() {
+        if !showsMinimap { withAnimation(.easeOut(duration: 0.15)) { showsMinimap = true } }
+        hideTask?.cancel()
+        hideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.4)) { showsMinimap = false }
+        }
+    }
+}
+
+/// 导航小窗：整个内容的缩略图 + 当前可见区域的框（系统强调色）。点击或拖动跳到对应位置。
+struct Minimap: View {
+    let thumbnail: CGImage?
+    /// 内容的显示尺寸（pt，不含留白）。
+    let contentSize: CGSize
+    let geometry: ScrollGeometry
+    let padding: CGFloat
+    /// 要滚动到的内容偏移。
+    let scrollTo: (CGPoint) -> Void
+
+    static let maxSize = CGSize(width: 180, height: 120)
+
+    var body: some View {
+        let k = min(Self.maxSize.width / max(contentSize.width, 1), Self.maxSize.height / max(contentSize.height, 1))
+        let mini = CGSize(width: contentSize.width * k, height: contentSize.height * k)
+        let visible = Self.visibleRect(offset: geometry.contentOffset, container: geometry.containerSize, contentSize: contentSize, padding: padding)
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let thumbnail {
+                    Image(nsImage: NSImage(cgImage: thumbnail, size: .zero)).resizable().allowedDynamicRange(.standard)
+                } else {
+                    Palette.preview
+                }
+            }
+            .frame(width: mini.width, height: mini.height)
+            Rectangle()
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .background(Color.accentColor.opacity(0.12))
+                .frame(width: max(visible.width * k, 6), height: max(visible.height * k, 6))
+                .offset(x: visible.minX * k, y: visible.minY * k)
+        }
+        .frame(width: mini.width, height: mini.height, alignment: .topLeading)
+        .clipped()
+        .padding(4)
+        .background(Palette.panel.opacity(0.92))
+        .overlay { Rectangle().strokeBorder(Palette.line, lineWidth: 1) }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    // 点到哪里，可见区域的中心就移到哪里。
+                    let point = CGPoint(x: (value.location.x - 4) / k, y: (value.location.y - 4) / k)
+                    scrollTo(Self.offset(centering: point, scrollContent: geometry.contentSize, container: geometry.containerSize, padding: padding))
+                })
+        .help("导航：点击或拖动跳到对应位置")
+    }
+
+    /// 可见区域在内容坐标里的矩形（pt，原点是内容左上角，不含留白），裁到内容范围内。
+    static func visibleRect(offset: CGPoint, container: CGSize, contentSize: CGSize, padding: CGFloat) -> CGRect {
+        let rect = CGRect(x: offset.x - padding, y: offset.y - padding, width: container.width, height: container.height)
+        return rect.intersection(CGRect(origin: .zero, size: contentSize))
+    }
+
+    /// 让内容里的 `point` 位于可见区域中心的滚动偏移，限制在可滚动范围内。
+    static func offset(centering point: CGPoint, scrollContent: CGSize, container: CGSize, padding: CGFloat) -> CGPoint {
+        let maxX = max(scrollContent.width - container.width, 0)
+        let maxY = max(scrollContent.height - container.height, 0)
+        return CGPoint(x: min(max(point.x + padding - container.width / 2, 0), maxX),
+                       y: min(max(point.y + padding - container.height / 2, 0), maxY))
     }
 }
 
@@ -228,8 +344,9 @@ private struct PageImage: View {
     let preview: PreviewModel
 
     var body: some View {
-        let image = page.displayImage().map { NSImage(cgImage: $0, size: .zero) }
-        ZoomCanvas(preview: preview, contentPixels: CGSize(width: page.pixelSize.width, height: page.pixelSize.height)) { _ in
+        let cg = page.displayImage()
+        let image = cg.map { NSImage(cgImage: $0, size: .zero) }
+        ZoomCanvas(preview: preview, contentPixels: CGSize(width: page.pixelSize.width, height: page.pixelSize.height), thumbnail: cg) { _ in
             if let image {
                 Image(nsImage: image)
                     .resizable()
@@ -240,40 +357,75 @@ private struct PageImage: View {
     }
 }
 
-/// 原图（对比用）。按需缩小解码；HDR 模式下允许 EDR 显示。
+/// 原图（对比用），由 `OriginalImageStore` 分档解码并缓存：先显示快图，再换清晰版本；
+/// 放大到清晰版本不够时才解码全分辨率（100% 是真实像素），缩回后释放。缩放比例按原图真实尺寸计算。
 private struct OriginalImage: View {
     let url: URL
     let preview: PreviewModel
-    @State private var image: CGImage?
+    @State private var shown: CGImage?
+    @State private var shownTier: OriginalImageStore.Tier?
+
+    private var store: OriginalImageStore { .shared }
+    private var hdr: Bool { preview.range == .hdr }
 
     var body: some View {
         Group {
-            if let image {
-                ZoomCanvas(preview: preview, contentPixels: CGSize(width: image.width, height: image.height)) { _ in
-                    Image(nsImage: NSImage(cgImage: image, size: .zero))
+            if let info = store.info(url), let shown {
+                ZoomCanvas(preview: preview, contentPixels: info.pixelSize,
+                           thumbnail: store.cached(.init(url: url, tier: .quick, hdr: hdr)) ?? shown) { _ in
+                    Image(nsImage: NSImage(cgImage: shown, size: .zero))
                         .resizable()
-                        .interpolation(preview.effectiveScale >= 1 ? .none : .high)
-                        .allowedDynamicRange(preview.range == .hdr ? .high : .standard)
+                        .interpolation(shownTier == .full && preview.effectiveScale >= 1 ? .none : .high)
+                        .allowedDynamicRange(hdr ? .high : .standard)
                 }
             } else {
                 ProgressView()
             }
         }
-        .task(id: url) { image = await Self.load(url) }
+        .task(id: LoadKey(url: url, hdr: hdr)) { await loadProgressively() }
+        .task(id: LoadKey(url: url, hdr: hdr, full: needsFull)) { await updateFull() }
     }
 
-    private static func load(_ url: URL) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 3000,
-                // gain map 源图也按 HDR 解码；SDR 模式下 `allowedDynamicRange(.standard)` 照常压回 SDR。
-                kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
-            ]
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-        }.value
+    private struct LoadKey: Hashable {
+        var url: URL
+        var hdr: Bool
+        var full = false
+    }
+
+    /// 放大到清晰版本的像素不够用时，需要全分辨率。
+    private var needsFull: Bool {
+        guard let info = store.info(url), let limit = OriginalImageStore.Tier.screen.maxPixelSize else { return false }
+        let longEdge = max(info.pixelSize.width, info.pixelSize.height)
+        return longEdge > Double(limit) && longEdge * preview.effectiveScale > Double(limit)
+    }
+
+    private func show(_ image: CGImage, _ tier: OriginalImageStore.Tier) {
+        shown = image
+        shownTier = tier
+    }
+
+    private func loadProgressively() async {
+        // 看过的图直接用缓存里最清晰的一档。
+        if let best = store.best(url: url, hdr: hdr) {
+            show(best.image, best.tier)
+            if best.tier != .quick { return }
+            if let screen = await store.load(.init(url: url, tier: .screen, hdr: hdr)), shownTier != .full { show(screen, .screen) }
+            return
+        }
+        shown = nil
+        // 快图和清晰版同时开始解码，快图先到先显示。
+        async let screen = store.load(.init(url: url, tier: .screen, hdr: hdr))
+        if let quick = await store.load(.init(url: url, tier: .quick, hdr: hdr)), shown == nil { show(quick, .quick) }
+        if let screen = await screen, !Task.isCancelled, shownTier != .full { show(screen, .screen) }
+    }
+
+    private func updateFull() async {
+        if needsFull {
+            if let full = await store.load(.init(url: url, tier: .full, hdr: hdr)), !Task.isCancelled { show(full, .full) }
+        } else if shownTier == .full {
+            store.releaseFull(url: url)
+            if let best = store.best(url: url, hdr: hdr) { show(best.image, best.tier) }
+        }
     }
 }
 
@@ -292,7 +444,7 @@ private struct PanoramaStrip: View {
         let height = Double(pages.map(\.pixelSize.height).max() ?? 1)
         let widths = pages.map { Double($0.pixelSize.width) * height / Double(max($0.pixelSize.height, 1)) }
         let total = widths.reduce(0, +) + (cover != nil && !slides.isEmpty ? Self.gapPixels : 0)
-        ZoomCanvas(preview: preview, contentPixels: CGSize(width: total, height: height)) { size in
+        ZoomCanvas(preview: preview, contentPixels: CGSize(width: total, height: height), thumbnail: Self.stripThumbnail(pages)) { size in
             let k = size.height / max(height, 1)
             HStack(spacing: Self.gapPixels * k) {
                 if let cover { page(cover, height: size.height) }
@@ -306,6 +458,26 @@ private struct PanoramaStrip: View {
                 }
             }
         }
+    }
+
+    /// 导航小窗用的整条长卷缩略图（高 120 px，封面、间隔、切片依次排开）。
+    static func stripThumbnail(_ pages: [PreviewImage]) -> CGImage? {
+        let height = 120.0
+        let maxHeight = Double(pages.map(\.pixelSize.height).max() ?? 1)
+        let k = height / max(maxHeight, 1)
+        let hasCover = pages.contains { $0.role == .cover } && pages.count > 1
+        let width = pages.reduce(0.0) { $0 + Double($1.pixelSize.width) * k } + (hasCover ? gapPixels * k : 0)
+        guard width >= 1, let ctx = CGContext(data: nil, width: Int(width.rounded(.up)), height: Int(height), bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        var x = 0.0
+        for page in pages {
+            let w = Double(page.pixelSize.width) * k
+            let h = Double(page.pixelSize.height) * k
+            if let image = page.displayImage() { ctx.draw(image, in: CGRect(x: x, y: height - h, width: w, height: h)) }
+            x += w + (page.role == .cover && hasCover ? gapPixels * k : 0)
+        }
+        return ctx.makeImage()
     }
 
     private func page(_ image: PreviewImage, height: Double) -> some View {
