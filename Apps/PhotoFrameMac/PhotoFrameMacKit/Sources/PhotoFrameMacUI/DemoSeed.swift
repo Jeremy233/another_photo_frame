@@ -56,6 +56,14 @@ extension Workbench {
         // 预览：`PHOTOFRAME_UI_ZOOM=fit|<比例>`、`PHOTOFRAME_UI_PAGE=strip|<页码>`、`PHOTOFRAME_UI_ORIGINAL=1`、`PHOTOFRAME_UI_RANGE=hdr`；
         // `PHOTOFRAME_UI_SELECT=<第几个任务>` 选别的任务（例如全景）。
         if let n = env["PHOTOFRAME_UI_SELECT"].flatMap(Int.init), case let jobs = sources.flatMap(\.jobs), jobs.indices.contains(n) { selection = [.job(jobs[n].id)] }
+        // `PHOTOFRAME_UI_INSPECT=source|preset|location|multi`：右栏显示源图 / 预设 / 位置 / 多个任务。
+        switch env["PHOTOFRAME_UI_INSPECT"] {
+        case "source": if let id = sources.first?.id { selection = [.source(id)] }
+        case "preset": selectedPresetId = presets.first?.presetId
+        case "location": selectedLocationId = locations.locations.first?.id
+        case "multi": selection = Set(sources.flatMap(\.jobs).prefix(2).map { BatchItemID.job($0.id) })
+        default: break
+        }
         if let zoom = env["PHOTOFRAME_UI_ZOOM"] { preview.zoom = Double(zoom).map(PreviewZoom.scale) ?? .fit }
         if env["PHOTOFRAME_UI_ORIGINAL"] != nil { preview.showsOriginal = true }
         if env["PHOTOFRAME_UI_RANGE"] == "hdr" { preview.range = .hdr }

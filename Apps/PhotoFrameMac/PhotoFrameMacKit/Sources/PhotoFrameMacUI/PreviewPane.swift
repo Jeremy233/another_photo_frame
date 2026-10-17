@@ -72,11 +72,16 @@ private struct PreviewTitleBar: View {
                 .frame(maxWidth: .infinity)
                 .help(title)
             HStack(spacing: 10) {
-                Toggle(isOn: $preview.showsOriginal) {
-                    Image(systemName: "rectangle.split.2x1")
+                // 带文字的分段控件：一眼看出是在两种画面间切换、现在显示的是哪一种（分屏图标会让人以为是左右对比）。
+                Picker("对比", selection: $preview.showsOriginal) {
+                    Text("成品").tag(false)
+                    Text("原图").tag(true)
                 }
-                .toggleStyle(.button)
-                .help("原图 / 成品对比")
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .disabled(preview.subject?.preset == nil)
+                .help("在导出效果和原图之间切换")
                 ZoomMenu(preview: preview)
                 Menu("显示") {
                     Picker("对比", selection: $preview.showsOriginal) {

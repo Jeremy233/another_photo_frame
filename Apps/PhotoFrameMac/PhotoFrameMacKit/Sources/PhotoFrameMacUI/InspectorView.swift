@@ -82,7 +82,11 @@ struct ColumnHeader<Content: View>: View {
     }
 }
 
-/// 分节：小号粗体标题 + 圆角分组框，框里是两列表单。
+/// 分节：小号粗体标题 + 圆角分组框，框里是两列的行（参照 Compressor 的 Inspector）。
+///
+/// 不用系统 `Form`：它按控件决定行高，带输入框的行高、纯文字的行矮，间距不齐。这里每一行最小 28 pt
+/// （Compressor 弹出菜单行的行距），标签在固定宽度的左列右对齐、与值按首行基线对齐，分组框上下内边距相同。
+/// 行里用 `LabeledContent`（有标签）、`Toggle`（复选框放在值的一列）或 `InspectorRow`（只有值）。
 struct InspectorSection<Content: View>: View {
     var title: String?
     @ViewBuilder var content: Content
@@ -97,11 +101,105 @@ struct InspectorSection<Content: View>: View {
             if let title {
                 Text(title).font(.subheadline.weight(.semibold)).padding(.leading, 4)
             }
-            Form { content }
-                .formStyle(.columns)
+            VStack(alignment: .leading, spacing: 0) { content }
+                .labeledContentStyle(InspectorRowStyle())
+                .toggleStyle(InspectorToggleStyle())
+                .padding(.horizontal, 12)
+                .padding(.vertical, InspectorMetrics.groupPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
                 .background(Palette.group, in: .rect(cornerRadius: 8))
+        }
+    }
+}
+
+enum InspectorMetrics {
+    /// 每一行的最小高度。
+    static let rowHeight: CGFloat = 28
+    /// 左列（标签）的宽度。
+    static let labelWidth: CGFloat = 76
+    static let columnSpacing: CGFloat = 8
+    /// 分组框上下内边距（相同）。
+    static let groupPadding: CGFloat = 8
+}
+
+/// 一行：左列右对齐的标签 + 右列的值，按首行基线对齐，最小高度一致。
+struct InspectorRowStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: InspectorMetrics.columnSpacing) {
+            configuration.label
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+                .frame(width: InspectorMetrics.labelWidth, alignment: .trailing)
+            configuration.content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: InspectorMetrics.rowHeight)
+    }
+}
+
+/// 复选框行：标签列留空，复选框和其他行的值左对齐（与 Compressor 一样）。
+struct InspectorToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        LabeledContent {
+            Toggle(configuration).toggleStyle(.checkbox)
+        } label: {
+            Text(verbatim: "")
+        }
+    }
+}
+
+/// 只有值的一行（按钮、说明文字、菜单），放在值的一列。
+struct InspectorRow<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        LabeledContent {
+            content
+        } label: {
+            // 空标签也要占住左列的宽度（EmptyView 不占宽度，值会跑到最左边）。
+            Text(verbatim: "")
+        }
+    }
+}
+
+/// 带标签的弹出菜单行。
+struct InspectorPicker<Selection: Hashable, Options: View>: View {
+    let title: String
+    @Binding var selection: Selection
+    @ViewBuilder var options: Options
+
+    init(_ title: String, selection: Binding<Selection>, @ViewBuilder options: () -> Options) {
+        self.title = title
+        _selection = selection
+        self.options = options()
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            Picker(title, selection: $selection) { options }
+                .labelsHidden()
+                .fixedSize()
+        }
+    }
+}
+
+/// 带标签的文字输入行。
+struct InspectorTextField: View {
+    let title: String
+    @Binding var text: String
+    var prompt: String?
+
+    init(_ title: String, text: Binding<String>, prompt: String? = nil) {
+        self.title = title
+        _text = text
+        self.prompt = prompt
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            TextField(title, text: $text, prompt: prompt.map { Text($0) })
+                .labelsHidden()
         }
     }
 }
@@ -225,13 +323,15 @@ private struct LocationInspector: View {
         InfoCard(symbol: "folder", title: location.name, lines: [location.url.displayPath],
                  badge: location.id == workbench.locations.defaultLocation?.id ? "默认" : nil) { EmptyView() }
         InspectorSection("位置属性") {
-            TextField("名称", text: Binding(get: { location.name }, set: { workbench.renameLocation(location.id, to: $0) }))
+            InspectorTextField("名称", text: Binding(get: { location.name }, set: { workbench.renameLocation(location.id, to: $0) }))
             LabeledContent("路径") {
                 Text(location.url.displayPath).lineLimit(3).truncationMode(.middle)
             }
-            Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([location.url]) }
-            Button("设为默认位置") { workbench.setDefaultLocation(location.id) }
-                .disabled(location.id == workbench.locations.defaultLocation?.id)
+            InspectorRow { Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([location.url]) } }
+            InspectorRow {
+                Button("设为默认位置") { workbench.setDefaultLocation(location.id) }
+                    .disabled(location.id == workbench.locations.defaultLocation?.id)
+            }
         }
     }
 }
@@ -333,13 +433,13 @@ private struct CanvasTab: View {
             }
         }
         InspectorSection("适配") {
-            Picker("方式", selection: workbench.binding(\.canvas.mode)) {
+            InspectorPicker("方式", selection: workbench.binding(\.canvas.mode)) {
                 Text("完整嵌入").tag(CanvasSettings.Mode?.some(.fit))
                 Text("比例裁切").tag(CanvasSettings.Mode?.some(.crop))
                 if workbench.field(\.canvas.mode) == .mixed { Text("多个值").tag(CanvasSettings.Mode?.none) }
             }
             if workbench.field(\.canvas.mode) == .single(.crop) {
-                Picker("裁切对齐", selection: cropAnchor) {
+                InspectorPicker("裁切对齐", selection: cropAnchor) {
                     ForEach(OverlayAnchor.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
             }
@@ -385,12 +485,12 @@ private struct PanoramaTab: View {
         }
         if workbench.field(\.panorama.enabled) == .single(true) {
             InspectorSection("切片") {
-                Picker("张数", selection: manual) {
+                InspectorPicker("张数", selection: manual) {
                     Text("自动").tag(false)
                     Text("手动").tag(true)
                 }
                 if case .single(.fixed(let n)) = workbench.field(\.panorama.tileCount) {
-                    Stepper("\(n) 张", value: fixedCount(n), in: 1...35)
+                    InspectorRow { Stepper("\(n) 张", value: fixedCount(n), in: 1...35) }
                 }
                 IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
             }
@@ -422,7 +522,7 @@ private struct OutputTab: View {
 
     var body: some View {
         InspectorSection("文件") {
-            Picker("格式", selection: workbench.binding(\.output.format)) {
+            InspectorPicker("格式", selection: workbench.binding(\.output.format)) {
                 Text("JPEG").tag(OutputSettings.Format?.some(.jpeg))
                 Text("PNG").tag(OutputSettings.Format?.some(.png))
                 if workbench.field(\.output.format) == .mixed { Text("多个值").tag(OutputSettings.Format?.none) }
@@ -433,7 +533,7 @@ private struct OutputTab: View {
                         .labelsHidden()
                 }
             }
-            Picker("动态范围", selection: workbench.binding(\.output.dynamicRange)) {
+            InspectorPicker("动态范围", selection: workbench.binding(\.output.dynamicRange)) {
                 Text("SDR").tag(OutputSettings.DynamicRange?.some(.sdr))
                 Text("HDR").tag(OutputSettings.DynamicRange?.some(.hdr))
                 if workbench.field(\.output.dynamicRange) == .mixed { Text("多个值").tag(OutputSettings.DynamicRange?.none) }
@@ -464,16 +564,16 @@ private struct JobOutputSection: View {
 
     var body: some View {
         InspectorSection("位置与命名") {
-            Picker("输出位置", selection: destination) {
+            InspectorPicker("输出位置", selection: destination) {
                 ForEach(workbench.locations.locations) { Text($0.name).tag(URL?.some($0.url)) }
                 if let url = workbench.jobField(\.destination).value, workbench.locationName(for: url) == nil {
                     Text(url.displayPath).tag(URL?.some(url))
                 }
                 if workbench.jobField(\.destination) == .mixed { Text("多个值").tag(URL?.none) }
             }
-            Button("选取其他文件夹…") { choosingFolder = true }
-            TextField("作品目录", text: template, prompt: Text("多个值"))
-            Text("可用 {source}、{variant}、{preset}、{platform}").font(.caption).foregroundStyle(.secondary)
+            InspectorRow { Button("选取其他文件夹…") { choosingFolder = true } }
+            InspectorTextField("作品目录", text: template, prompt: "多个值")
+            InspectorRow { Text("可用 {source}、{variant}、{preset}、{platform}").font(.caption).foregroundStyle(.secondary) }
         }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) {
             if case .success(let url) = $0 { workbench.setDestinationForSelection(url) }

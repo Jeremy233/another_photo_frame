@@ -15,14 +15,17 @@ struct LayersTab: View {
                 LayerSection(workbench: workbench, layer: layer)
             }
             InspectorSection {
-                Menu("添加图层") {
-                    ForEach(LayerTemplate.allCases) { template in
-                        Button(template.title) { workbench.addLayer(template) }
+                InspectorRow {
+                    Menu("添加图层") {
+                        ForEach(LayerTemplate.allCases) { template in
+                            Button(template.title) { workbench.addLayer(template) }
+                        }
                     }
+                    .fixedSize()
                 }
             }
         } else {
-            InspectorSection { Text("多个任务的图层不能批量修改，请只选一个任务。").foregroundStyle(.secondary) }
+            InspectorSection { InspectorRow { Text("多个任务的图层不能批量修改，请只选一个任务。").foregroundStyle(.secondary) } }
         }
     }
 }
@@ -38,17 +41,17 @@ private struct LayerSection: View {
                 SlotBindingRow(workbench: workbench, slotId: slotId)
             }
             if layer.type == .text {
-                TextField("文字", text: text(\.content))
+                InspectorTextField("文字", text: text(\.content))
             } else if layer.type == .metadataText {
-                TextField("模板", text: text(\.template))
+                InspectorTextField("模板", text: text(\.template))
             }
             if layer.type.usesText {
                 TextStyleRows(workbench: workbench, layer: layer)
             }
-            Picker("位置", selection: workbench.layerBinding(layer.layerId, \.anchor, default: .bottomRight)) {
+            InspectorPicker("位置", selection: workbench.layerBinding(layer.layerId, \.anchor, default: .bottomRight)) {
                 ForEach(OverlayAnchor.allCases, id: \.self) { Text($0.title).tag($0) }
             }
-            Picker("参照", selection: workbench.layerBinding(layer.layerId, \.reference, default: .default)) {
+            InspectorPicker("参照", selection: workbench.layerBinding(layer.layerId, \.reference, default: .default)) {
                 Text("照片外侧").tag(OverlayReference.photo(.outside))
                 Text("照片内侧").tag(OverlayReference.photo(.inside))
                 Text("画布").tag(OverlayReference.canvas)
@@ -59,7 +62,7 @@ private struct LayerSection: View {
                 Slider(value: workbench.layerBinding(layer.layerId, \.opacity, default: 1), in: 0...1)
             }
             VisibilityPicker(workbench: workbench, layer: layer)
-            Button("删除图层", role: .destructive) { workbench.removeLayer(layer.layerId) }
+            InspectorRow { Button("删除图层", role: .destructive) { workbench.removeLayer(layer.layerId) } }
         }
         if layer.type.usesAssetSlot {
             CameraMatchSection(workbench: workbench, layer: layer)
@@ -88,9 +91,9 @@ private struct TextStyleRows: View {
     let layer: OverlayLayer
 
     var body: some View {
-        TextField("字体", text: Binding(get: { style.fontFamily ?? "" }, set: { v in update { $0.fontFamily = v.isEmpty ? nil : v } }),
-                  prompt: Text("系统字体"))
-        Picker("字重", selection: Binding(get: { style.fontWeight }, set: { v in update { $0.fontWeight = v } })) {
+        InspectorTextField("字体", text: Binding(get: { style.fontFamily ?? "" }, set: { v in update { $0.fontFamily = v.isEmpty ? nil : v } }),
+                           prompt: "系统字体")
+        InspectorPicker("字重", selection: Binding(get: { style.fontWeight }, set: { v in update { $0.fontWeight = v } })) {
             ForEach(TextStyle.FontWeight.allCases, id: \.self) { Text($0.title).tag($0) }
         }
         Toggle("斜体", isOn: Binding(get: { style.italic }, set: { v in update { $0.italic = v } }))
@@ -136,15 +139,17 @@ private struct CameraMatchSection: View {
     var body: some View {
         InspectorSection("按相机选素材") {
             ForEach(Array(layer.cameraMatch.enumerated()), id: \.offset) { index, rule in
-                TextField("品牌", text: field(index, \.make), prompt: Text("例如 FUJIFILM"))
-                TextField("型号", text: field(index, \.model), prompt: Text("留空表示该品牌所有型号"))
+                InspectorTextField("品牌", text: field(index, \.make), prompt: "例如 FUJIFILM")
+                InspectorTextField("型号", text: field(index, \.model), prompt: "留空表示该品牌所有型号")
                 SlotBindingRow(workbench: workbench, slotId: rule.slotId)
-                Button("删除规则", role: .destructive) { workbench.removeCameraRule(layer.layerId, at: index) }
-                Divider()
+                InspectorRow { Button("删除规则", role: .destructive) { workbench.removeCameraRule(layer.layerId, at: index) } }
+                Hairline().padding(.vertical, 4)
             }
-            Button("添加相机规则") { workbench.addCameraRule(layer.layerId) }
-            Text("写了型号的规则优先，其次是只写品牌的；都匹配不到或没有素材时用默认素材。")
-                .font(.caption).foregroundStyle(.secondary)
+            InspectorRow { Button("添加相机规则") { workbench.addCameraRule(layer.layerId) } }
+            InspectorRow {
+                Text("写了型号的规则优先，其次是只写品牌的；都匹配不到或没有素材时用默认素材。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -164,13 +169,13 @@ private struct VisibilityPicker: View {
     let layer: OverlayLayer
 
     var body: some View {
-        Picker("显示在", selection: kind) {
+        InspectorPicker("显示在", selection: kind) {
             Text("仅封面").tag(0)
             Text("所有页").tag(1)
             Text("指定页").tag(2)
         }
         if case .selectedSlides = layer.visibility {
-            TextField("页码", text: pages, prompt: Text("0 = 封面，例如 0, 2, 3"))
+            InspectorTextField("页码", text: pages, prompt: "0 = 封面，例如 0, 2, 3")
         }
     }
 
@@ -216,8 +221,8 @@ private struct SlotBindingRow: View {
             }
             .fixedSize()
         }
-        .padding(4)
-        .background(RoundedRectangle(cornerRadius: 6).strokeBorder(targeted ? Color.accentColor : .clear, lineWidth: 2))
+        // 拖放高亮框画在行外侧，不改变行高和对齐。
+        .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(targeted ? Color.accentColor : .clear, lineWidth: 2).padding(-4) }
         .dropDestination(for: String.self) { items, _ in
             guard case .asset(let id)? = items.first.flatMap(DragPayload.init(string:)) else { return false }
             bind(id)
@@ -259,13 +264,13 @@ struct SourceInspector: View {
             InspectorSection("色彩") {
                 LabeledContent("ICC") { Text(info.colorProfile.description) }
                 if !info.colorProfile.embedded {
-                    Picker("按此解释", selection: override) {
+                    InspectorPicker("按此解释", selection: override) {
                         Text("sRGB（默认）").tag(SourceColorOverride?.none)
                         ForEach(SourceColorOverride.allCases.filter { $0 != .sRGB }, id: \.self) {
                             Text($0.title).tag(SourceColorOverride?.some($0))
                         }
                     }
-                    Text("源图没有 ICC，默认按 sRGB 解释").font(.caption).foregroundStyle(.secondary)
+                    InspectorRow { Text("源图没有 ICC，默认按 sRGB 解释").font(.caption).foregroundStyle(.secondary) }
                 }
                 LabeledContent("HDR") { Text(hdr(info.hdr)) }
             }
@@ -278,11 +283,11 @@ struct SourceInspector: View {
             }
             if !info.warnings.isEmpty {
                 InspectorSection("提示") {
-                    ForEach(info.warnings, id: \.self) { Text($0.message).foregroundStyle(.orange) }
+                    ForEach(info.warnings, id: \.self) { warning in InspectorRow { Text(warning.message).foregroundStyle(.orange) } }
                 }
             }
         } else if let error = item.inspectionError {
-            InspectorSection { Text(error.message).foregroundStyle(.red) }
+            InspectorSection { InspectorRow { Text(error.message).foregroundStyle(.red) } }
         } else {
             ProgressView().frame(maxWidth: .infinity)
         }
