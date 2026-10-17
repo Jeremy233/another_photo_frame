@@ -224,6 +224,15 @@ private struct ZoomCanvas<Content: View>: View {
             .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry = new }
             .onScrollPhaseChange { _, phase in if phase != .idle { activity() } }
             .onChange(of: fit, initial: true) { preview.fitScale = fit }
+            #if DEBUG
+            .task {
+                for _ in 0..<EDRLogger.minimapCycles {
+                    try? await Task.sleep(for: .seconds(3))
+                    EDRLogger.mark("minimap show")
+                    activity()
+                }
+            }
+            #endif
             .gesture(
                 MagnifyGesture()
                     .onChanged { value in
@@ -240,9 +249,9 @@ private struct ZoomCanvas<Content: View>: View {
                         activity()
                     }
                     .padding(10)
-                    .transition(.opacity)
                 }
             }
+            .transaction { $0.animation = nil }
         }
     }
 
@@ -264,15 +273,25 @@ private struct ZoomCanvas<Content: View>: View {
             .onEnded { _ in panStart = nil }
     }
 
-    /// 用户在滚动、拖动或缩放：显示小窗，停下 1 秒后淡出。
+    /// 用户在滚动、拖动或缩放：显示小窗，停下 1 秒后隐藏。显示和隐藏都不做动画（不让半透明的层叠在 HDR 画面上过渡）。
     private func activity() {
-        if !showsMinimap { withAnimation(.easeOut(duration: 0.15)) { showsMinimap = true } }
+        setMinimap(true)
         hideTask?.cancel()
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.4)) { showsMinimap = false }
+            #if DEBUG
+            EDRLogger.mark("minimap hide")
+            #endif
+            setMinimap(false)
         }
+    }
+
+    private func setMinimap(_ shows: Bool) {
+        guard showsMinimap != shows else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { showsMinimap = shows }
     }
 }
 
@@ -310,8 +329,10 @@ struct Minimap: View {
         .frame(width: mini.width, height: mini.height, alignment: .topLeading)
         .clipped()
         .padding(4)
-        .background(Palette.panel.opacity(0.92))
+        .background(Palette.panel)
         .overlay { Rectangle().strokeBorder(Palette.line, lineWidth: 1) }
+        // 合成为一个不透明的 SDR 层：叠在 HDR 画面上的只有这一块不透明区域。
+        .compositingGroup()
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)

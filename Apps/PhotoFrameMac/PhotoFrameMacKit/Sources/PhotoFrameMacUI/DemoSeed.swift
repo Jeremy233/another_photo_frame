@@ -35,12 +35,47 @@ enum CursorLogger {
     }
 }
 
+/// 每 10 ms 记一次窗口所在屏幕当前的 EDR 余量，变化时写一行（查 HDR 画面变暗用）。
+@MainActor
+enum EDRLogger {
+    private static var timer: Timer?
+    private static var last = ""
+    private static var handle: FileHandle?
+
+    static func start(path: String) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        handle = FileHandle(forWritingAtPath: path)
+        timer = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard let window = NSApp.windows.first(where: \.isVisible), let screen = window.screen else { return }
+                let key = "\(screen.localizedName) current=\(screen.maximumExtendedDynamicRangeColorComponentValue) "
+                    + "active=\(NSApp.isActive) visible=\(window.occlusionState.contains(.visible))"
+                guard key != last else { return }
+                last = key
+                handle?.write(Data("\(Date().timeIntervalSince1970) \(key)\n".utf8))
+            }
+        }
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+
+    /// `PHOTOFRAME_UI_MINIMAP_CYCLE=<n>`：让预览画布每 3 秒当作用户滚动了一次，共 n 次（小地图显示后自动隐藏）。
+    static var minimapCycles: Int {
+        Int(ProcessInfo.processInfo.environment["PHOTOFRAME_UI_MINIMAP_CYCLE"] ?? "") ?? 0
+    }
+
+    static func mark(_ event: String) {
+        handle?.write(Data("\(Date().timeIntervalSince1970) \(event)\n".utf8))
+    }
+}
+
 extension Workbench {
     func loadDemoIfRequested() async {
         // 空值等于没设置（避免把空路径当成当前目录导出）。
         let env = ProcessInfo.processInfo.environment.filter { !$0.value.isEmpty }
         // `PHOTOFRAME_UI_CURSOR_LOG=<文件>`：每 20 ms 记一次系统鼠标指针，变化时写一行（查指针闪烁用）。
         if let path = env["PHOTOFRAME_UI_CURSOR_LOG"] { CursorLogger.start(path: path) }
+        // `PHOTOFRAME_UI_EDR_LOG=<文件>`：记录屏幕 EDR 余量的变化和小地图的显示 / 隐藏。
+        if let path = env["PHOTOFRAME_UI_EDR_LOG"] { EDRLogger.start(path: path) }
         if let width = env["PHOTOFRAME_UI_WINDOW_WIDTH"].flatMap(Double.init), let window = NSApp.windows.first(where: \.isVisible) {
             window.setContentSize(NSSize(width: width, height: window.contentLayoutRect.height))
         }
