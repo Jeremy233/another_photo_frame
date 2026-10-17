@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import PhotoFrameCore
@@ -353,5 +354,36 @@ struct JobInterfaceTests {
         } catch let e as RenderError {
             #expect(e.code == "render.unsupported_format")
         }
+    }
+}
+
+@Suite("文字样式（D-111）")
+struct TextStyleRenderingTests {
+    static func traits(_ font: CTFont) -> (weight: Double, italic: Bool) {
+        let t = CTFontCopyTraits(font) as NSDictionary
+        let weight = (t[kCTFontWeightTrait] as? NSNumber)?.doubleValue ?? 0
+        return (weight, CTFontGetSymbolicTraits(font).contains(.traitItalic))
+    }
+
+    @Test("字重、斜体：系统字体与指定字族都取同一字族里最接近的样式", arguments: [nil, "Helvetica Neue"])
+    func weightAndItalic(_ family: String?) throws {
+        let regular = try TextBlock.make(text: "Z 8 · f/8", style: TextStyle(fontFamily: family, fontSizePx: 40)).0
+        let bold = try TextBlock.make(text: "Z 8 · f/8", style: TextStyle(fontFamily: family, fontWeight: .bold, fontSizePx: 40)).0
+        let light = try TextBlock.make(text: "Z 8 · f/8", style: TextStyle(fontFamily: family, fontWeight: .light, fontSizePx: 40)).0
+        let italic = try TextBlock.make(text: "Z 8 · f/8", style: TextStyle(fontFamily: family, italic: true, fontSizePx: 40))
+        #expect(Self.traits(bold.font).weight > Self.traits(regular.font).weight + 0.1)
+        #expect(Self.traits(light.font).weight < Self.traits(regular.font).weight - 0.1)
+        #expect(Self.traits(italic.0.font).italic && italic.1.isEmpty)
+        #expect(CTFontCopyFamilyName(bold.font) as String == CTFontCopyFamilyName(regular.font) as String)
+        #expect(CTFontGetSize(bold.font) == 40)
+    }
+
+    @Test("字间距：每个字符之后加上间距，文字框变宽")
+    func letterSpacing() throws {
+        let text = "ABCDEFGHIJ"
+        let plain = try TextBlock.make(text: text, style: TextStyle(fontSizePx: 30)).0
+        let wide = try TextBlock.make(text: text, style: TextStyle(fontSizePx: 30, letterSpacingPx: 4)).0
+        let grown = wide.naturalSize.width - plain.naturalSize.width
+        #expect((36...44).contains(grown), "宽度增加 \(grown)")
     }
 }

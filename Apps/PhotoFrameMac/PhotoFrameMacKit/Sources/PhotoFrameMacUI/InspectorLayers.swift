@@ -42,6 +42,9 @@ private struct LayerSection: View {
             } else if layer.type == .metadataText {
                 TextField("模板", text: text(\.template))
             }
+            if layer.type.usesText {
+                TextStyleRows(workbench: workbench, layer: layer)
+            }
             Picker("位置", selection: workbench.layerBinding(layer.layerId, \.anchor, default: .bottomRight)) {
                 ForEach(OverlayAnchor.allCases, id: \.self) { Text($0.title).tag($0) }
             }
@@ -58,6 +61,9 @@ private struct LayerSection: View {
             VisibilityPicker(workbench: workbench, layer: layer)
             Button("删除图层", role: .destructive) { workbench.removeLayer(layer.layerId) }
         }
+        if layer.type.usesAssetSlot {
+            CameraMatchSection(workbench: workbench, layer: layer)
+        }
     }
 
     private func optional(_ path: WritableKeyPath<OverlayLayer, Int>) -> Binding<Int?> {
@@ -72,6 +78,82 @@ private struct LayerSection: View {
                 var style = l.text ?? TextStyle()
                 style[keyPath: path] = value
                 l.text = style
+            } })
+    }
+}
+
+/// 文字样式（D-111）：字体、字重、斜体、字号、字间距、颜色。
+private struct TextStyleRows: View {
+    let workbench: Workbench
+    let layer: OverlayLayer
+
+    var body: some View {
+        TextField("字体", text: Binding(get: { style.fontFamily ?? "" }, set: { v in update { $0.fontFamily = v.isEmpty ? nil : v } }),
+                  prompt: Text("系统字体"))
+        Picker("字重", selection: Binding(get: { style.fontWeight }, set: { v in update { $0.fontWeight = v } })) {
+            ForEach(TextStyle.FontWeight.allCases, id: \.self) { Text($0.title).tag($0) }
+        }
+        Toggle("斜体", isOn: Binding(get: { style.italic }, set: { v in update { $0.italic = v } }))
+        NumberField(title: "字号", value: Binding(get: { style.fontSizePx }, set: { v in update { $0.fontSizePx = v } }))
+        NumberField(title: "字间距", value: Binding(get: { style.letterSpacingPx }, set: { v in update { $0.letterSpacingPx = v } }))
+        ColorField(title: "颜色", value: Binding(get: { style.color }, set: { v in if let v { update { $0.color = v } } }))
+    }
+
+    private var style: TextStyle { layer.text ?? TextStyle() }
+
+    private func update(_ body: (inout TextStyle) -> Void) {
+        workbench.updateLayer(layer.layerId) { l in
+            var s = l.text ?? TextStyle()
+            body(&s)
+            l.text = s
+        }
+    }
+}
+
+/// 小数输入框（px）。
+private struct NumberField: View {
+    let title: String
+    @Binding var value: Double
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 4) {
+                TextField(title, value: $value, format: .number.precision(.fractionLength(0...1)))
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 90)
+                Text("px").foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// 按相机自动选素材（D-111）：每条规则「品牌 / 型号 → 自己的素材槽」，匹配不到时用上面的默认素材。
+private struct CameraMatchSection: View {
+    let workbench: Workbench
+    let layer: OverlayLayer
+
+    var body: some View {
+        InspectorSection("按相机选素材") {
+            ForEach(Array(layer.cameraMatch.enumerated()), id: \.offset) { index, rule in
+                TextField("品牌", text: field(index, \.make), prompt: Text("例如 FUJIFILM"))
+                TextField("型号", text: field(index, \.model), prompt: Text("留空表示该品牌所有型号"))
+                SlotBindingRow(workbench: workbench, slotId: rule.slotId)
+                Button("删除规则", role: .destructive) { workbench.removeCameraRule(layer.layerId, at: index) }
+                Divider()
+            }
+            Button("添加相机规则") { workbench.addCameraRule(layer.layerId) }
+            Text("写了型号的规则优先，其次是只写品牌的；都匹配不到或没有素材时用默认素材。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func field(_ index: Int, _ path: WritableKeyPath<CameraMatchRule, String?>) -> Binding<String> {
+        Binding(
+            get: { layer.cameraMatch.indices.contains(index) ? layer.cameraMatch[index][keyPath: path] ?? "" : "" },
+            set: { value in workbench.updateLayer(layer.layerId) { l in
+                guard l.cameraMatch.indices.contains(index) else { return }
+                l.cameraMatch[index][keyPath: path] = value.isEmpty ? nil : value
             } })
     }
 }

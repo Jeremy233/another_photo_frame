@@ -141,10 +141,14 @@ struct TextBlock {
                 notes.append("找不到字体 \(family)，改用系统字体")
             }
         }
-        let attributes: [NSAttributedString.Key: Any] = [
+        font = styled(font, weight: style.fontWeight, italic: style.italic, notes: &notes)
+        var attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): color,
         ]
+        if style.letterSpacingPx != 0 {
+            attributes[NSAttributedString.Key(kCTKernAttributeName as String)] = style.letterSpacingPx
+        }
         let lines = text.components(separatedBy: "\n").map {
             CTLineCreateWithAttributedString(NSAttributedString(string: $0, attributes: attributes))
         }
@@ -155,6 +159,43 @@ struct TextBlock {
             width: max(1, Int(width.rounded(.up)) + 2 * pad),
             height: max(1, Int((lineHeight * Double(lines.count)).rounded(.up)) + 2 * pad))
         return (TextBlock(lines: lines, font: font, lineHeightPx: lineHeight, padding: pad, naturalSize: natural), notes)
+    }
+
+    /// 同一字族里最接近的字重与斜体（D-111，§7.1 文字样式）。字族没有斜体时保持正体并提示。
+    static func styled(_ font: CTFont, weight: TextStyle.FontWeight, italic: Bool, notes: inout [String]) -> CTFont {
+        var result = font
+        if weight != .regular {
+            let family = CTFontCopyFamilyName(font)
+            let descriptor = CTFontDescriptorCreateWithAttributes([
+                kCTFontFamilyNameAttribute: family,
+                kCTFontTraitsAttribute: [kCTFontWeightTrait: weightTrait(weight)],
+            ] as CFDictionary)
+            result = CTFontCreateWithFontDescriptor(descriptor, CTFontGetSize(font), nil)
+            if CTFontCopyFamilyName(result) as String != family as String { result = font }
+        }
+        if italic {
+            if let slanted = CTFontCreateCopyWithSymbolicTraits(result, 0, nil, .traitItalic, .traitItalic) {
+                result = slanted
+            } else {
+                notes.append("字体 \(CTFontCopyFamilyName(result) as String) 没有斜体，按正体绘制")
+            }
+        }
+        return result
+    }
+
+    /// 与 `NSFont.Weight` 的取值相同。
+    static func weightTrait(_ weight: TextStyle.FontWeight) -> Double {
+        switch weight {
+        case .ultraLight: -0.8
+        case .thin: -0.6
+        case .light: -0.4
+        case .regular: 0
+        case .medium: 0.23
+        case .semibold: 0.3
+        case .bold: 0.4
+        case .heavy: 0.56
+        case .black: 0.62
+        }
     }
 
     /// 在图层框里绘制。框比自然尺寸小时等比缩小；不放大。水平对齐跟随锚点（左／中／右），竖直居中。

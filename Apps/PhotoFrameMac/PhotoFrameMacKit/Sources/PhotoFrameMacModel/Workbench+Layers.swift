@@ -50,15 +50,50 @@ extension Workbench {
         }
     }
 
-    /// 删除图层；它的素材槽没有别的图层用时一起删除。
+    /// 删除图层；它的素材槽（含相机匹配规则的槽）没有别的图层用时一起删除。
     public func removeLayer(_ layerId: String) {
         edit { preset in
             guard let i = preset.layers.firstIndex(where: { $0.layerId == layerId }) else { return }
-            let slotId = preset.layers.remove(at: i).slotId
-            if let slotId, !preset.layers.contains(where: { $0.slotId == slotId }) {
-                preset.assetSlots.removeAll { $0.slotId == slotId }
-            }
+            let removed = preset.layers.remove(at: i)
+            Self.dropUnusedSlots([removed.slotId].compactMap { $0 } + removed.cameraMatch.map(\.slotId), in: &preset)
         }
+    }
+
+    /// 当前预览源图的相机（EXIF Make / Model），用来预填相机匹配规则。
+    public var previewCamera: CameraIdentity? {
+        guard let id = previewSubject?.sourceId, let metadata = sourceItem(id)?.inspection?.metadata else { return nil }
+        let camera = CameraIdentity(make: metadata["make"], model: metadata["model"])
+        return camera.isEmpty ? nil : camera
+    }
+
+    /// 给素材图层加一条相机匹配规则（D-111），同时加一个规则专用的素材槽。品牌、型号预填当前预览源图的相机。
+    public func addCameraRule(_ layerId: String) {
+        let camera = previewCamera
+        edit { preset in
+            guard let i = preset.layers.firstIndex(where: { $0.layerId == layerId }), preset.layers[i].type.usesAssetSlot else { return }
+            let used = Set(preset.assetSlots.map(\.slotId))
+            var n = preset.layers[i].cameraMatch.count + 1
+            while used.contains("\(layerId).camera-\(n)") { n += 1 }
+            let slotId = "\(layerId).camera-\(n)"
+            let label = [camera?.make, camera?.model].compactMap { $0 }.joined(separator: " ")
+            preset.assetSlots.append(AssetSlot(slotId: slotId, label: label.isEmpty ? "相机图标" : label))
+            preset.layers[i].cameraMatch.append(CameraMatchRule(make: camera?.make, model: camera?.model, slotId: slotId))
+        }
+    }
+
+    /// 删除一条相机匹配规则；它的素材槽没有别处用时一起删除。
+    public func removeCameraRule(_ layerId: String, at index: Int) {
+        edit { preset in
+            guard let i = preset.layers.firstIndex(where: { $0.layerId == layerId }),
+                  preset.layers[i].cameraMatch.indices.contains(index) else { return }
+            let rule = preset.layers[i].cameraMatch.remove(at: index)
+            Self.dropUnusedSlots([rule.slotId], in: &preset)
+        }
+    }
+
+    private static func dropUnusedSlots(_ slotIds: [String], in preset: inout ExportPreset) {
+        let used = Set(preset.layers.flatMap { [$0.slotId].compactMap { $0 } + $0.cameraMatch.map(\.slotId) })
+        preset.assetSlots.removeAll { slotIds.contains($0.slotId) && !used.contains($0.slotId) }
     }
 
     public func updateLayer(_ layerId: String, _ body: (inout OverlayLayer) -> Void) {

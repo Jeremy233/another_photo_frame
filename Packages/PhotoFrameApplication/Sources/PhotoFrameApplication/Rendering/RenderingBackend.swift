@@ -62,7 +62,8 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
             RenderJob.assets(from: $0, fileURL: assets.fileURL(for:))
         } ?? ([:], [])
         return RenderJob(
-            sourceURL: request.source.fileURL, preset: request.preset, assets: assetFiles, skippedLayerIds: skipped,
+            sourceURL: request.source.fileURL, preset: request.slots?.applied(to: request.preset) ?? request.preset,
+            assets: assetFiles, skippedLayerIds: skipped,
             outputDirectory: outputDirectory, sourceColorOverride: request.sourceColorOverride,
             maxCarouselItems: request.platform?.maxCarouselItems)
     }

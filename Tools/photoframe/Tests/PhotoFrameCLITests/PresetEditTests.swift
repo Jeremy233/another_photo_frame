@@ -37,6 +37,33 @@ struct PresetEditCommandTests {
         #expect(value?["hex"] as? String == "#FFFFFF")
     }
 
+    @Test("set：文字样式与相机匹配规则（D-111）用同一种字段路径")
+    func textStyleAndCameraMatch() async throws {
+        let box = try Sandbox()
+        _ = await runCLI(["preset", "duplicate", "instagram-standard", "--name", "Mine"], in: box.root)
+        let layers = #"[{"layerId": "exif", "type": "metadataText", "text": {"template": "{camera}"}}, "#
+            + #"{"layerId": "badge", "type": "cameraBadge", "slotId": "camera.badge", "sizePx": [48, 48]}]"#
+        let slots = #"[{"slotId": "camera.badge"}, {"slotId": "camera.fuji"}]"#
+        let base = await runCLI(["preset", "set", "mine", "layers", layers, "assetSlots", slots], in: box.root)
+        #expect(base.status == 0, "\(base.stderr.value)")
+        let set = await runCLI([
+            "preset", "set", "mine",
+            "layers[exif].text.fontWeight", "semibold", "layers[exif].text.italic", "true", "layers[exif].text.letterSpacingPx", "1.5",
+            "layers[badge].cameraMatch", #"[{"make": "FUJIFILM", "slotId": "camera.fuji"}]"#,
+        ], in: box.root)
+        #expect(set.status == 0, "\(set.stderr.value)")
+        let weight = await runCLI(["preset", "get", "mine", "layers[exif].text.fontWeight"], in: box.root)
+        #expect(weight.stdout.value.contains("semibold"))
+        let rule = await runCLI(["preset", "get", "mine", "layers[badge].cameraMatch[0].make"], in: box.root)
+        #expect(rule.stdout.value.contains("FUJIFILM"))
+
+        let badWeight = await runCLI(["preset", "set", "mine", "layers[exif].text.fontWeight", "extra"], in: box.root)
+        #expect(badWeight.status == 4)
+        let badSlot = await runCLI(["preset", "set", "mine", "layers[badge].cameraMatch[0].slotId", "nope"], in: box.root)
+        #expect(badSlot.status == 4)
+        #expect(badSlot.stderr.value.contains("相机匹配规则引用了不存在的素材槽"))
+    }
+
     @Test("set：追加和删除图层；不通过检查时不写入；用法错误")
     func layersAndFailures() async throws {
         let box = try Sandbox()

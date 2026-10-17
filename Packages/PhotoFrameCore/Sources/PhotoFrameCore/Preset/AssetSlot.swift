@@ -1,11 +1,21 @@
-/// 文字图层的内容与样式（§7.1）。
+/// 文字图层的内容与样式（§7.1）。字体样式字段 `fontWeight`、`italic`、`letterSpacingPx` 由 D-111 加入，
+/// 旧预设缺少时取默认值（常规、非斜体、0），schemaVersion 不变。
 public struct TextStyle: Hashable, Sendable, Codable {
+    /// 字重，取值与系统字重一一对应。找不到对应字重时渲染用最接近的。
+    public enum FontWeight: String, Hashable, Sendable, Codable, CaseIterable {
+        case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black
+    }
+
     /// `text` 图层的固定文字，例如签名。
     public var content: String?
     /// `metadataText` 图层的模板，例如 `"{camera} · {focalLength} · {aperture}"`。占位符的取值规则由渲染层定义。
     public var template: String?
     public var fontFamily: String?
+    public var fontWeight: FontWeight
+    public var italic: Bool
     public var fontSizePx: Double
+    /// 字间距（px，可为负）。
+    public var letterSpacingPx: Double
     /// 行距倍数。
     public var lineHeight: Double
     public var color: PresetColor
@@ -16,7 +26,10 @@ public struct TextStyle: Hashable, Sendable, Codable {
         content: String? = nil,
         template: String? = nil,
         fontFamily: String? = nil,
+        fontWeight: FontWeight = .regular,
+        italic: Bool = false,
         fontSizePx: Double = 14,
+        letterSpacingPx: Double = 0,
         lineHeight: Double = 1.2,
         color: PresetColor = PresetColor(hex: "#3A3A38"),
         paddingPx: Int = 0,
@@ -25,7 +38,10 @@ public struct TextStyle: Hashable, Sendable, Codable {
         self.content = content
         self.template = template
         self.fontFamily = fontFamily
+        self.fontWeight = fontWeight
+        self.italic = italic
         self.fontSizePx = fontSizePx
+        self.letterSpacingPx = letterSpacingPx
         self.lineHeight = lineHeight
         self.color = color
         self.paddingPx = paddingPx
@@ -33,7 +49,7 @@ public struct TextStyle: Hashable, Sendable, Codable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case content, template, fontFamily, fontSizePx, lineHeight, color, paddingPx
+        case content, template, fontFamily, fontWeight, italic, fontSizePx, letterSpacingPx, lineHeight, color, paddingPx
     }
 
     public init(from decoder: any Decoder) throws {
@@ -41,7 +57,10 @@ public struct TextStyle: Hashable, Sendable, Codable {
         content = try c.decodeIfPresent(String.self, forKey: .content)
         template = try c.decodeIfPresent(String.self, forKey: .template)
         fontFamily = try c.decodeIfPresent(String.self, forKey: .fontFamily)
+        fontWeight = try c.decodeIfPresent(FontWeight.self, forKey: .fontWeight) ?? .regular
+        italic = try c.decodeIfPresent(Bool.self, forKey: .italic) ?? false
         fontSizePx = try c.decodeIfPresent(Double.self, forKey: .fontSizePx) ?? 14
+        letterSpacingPx = try c.decodeIfPresent(Double.self, forKey: .letterSpacingPx) ?? 0
         lineHeight = try c.decodeIfPresent(Double.self, forKey: .lineHeight) ?? 1.2
         color = try c.decodeIfPresent(PresetColor.self, forKey: .color) ?? PresetColor(hex: "#3A3A38")
         paddingPx = try c.decodeIfPresent(Int.self, forKey: .paddingPx) ?? 0
@@ -53,7 +72,10 @@ public struct TextStyle: Hashable, Sendable, Codable {
         try c.encodeIfPresent(content, forKey: .content)
         try c.encodeIfPresent(template, forKey: .template)
         try c.encodeIfPresent(fontFamily, forKey: .fontFamily)
+        try c.encode(fontWeight, forKey: .fontWeight)
+        try c.encode(italic, forKey: .italic)
         try c.encode(fontSizePx, forKey: .fontSizePx)
+        try c.encode(letterSpacingPx, forKey: .letterSpacingPx)
         try c.encode(lineHeight, forKey: .lineHeight)
         try c.encode(color, forKey: .color)
         try c.encode(paddingPx, forKey: .paddingPx)

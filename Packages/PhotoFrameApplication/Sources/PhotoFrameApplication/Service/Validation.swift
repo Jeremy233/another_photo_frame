@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotoFrameCore
 import PhotoFrameStorage
 
@@ -84,15 +85,26 @@ enum ExportChecks {
     }
 
     /// 素材槽解析（D-14、D-28、D-29）。缺少必需素材时抛出 `slot.missing_required`。
+    /// 有图层写了相机匹配规则（D-111）时读源图的 EXIF Make / Model。
     static func resolveSlots(
-        _ resolver: SlotResolver?, preset: ExportPreset, bindings: [String: UUID]
+        _ resolver: SlotResolver?, preset: ExportPreset, bindings: [String: UUID], source: URL
     ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
         guard let resolver else { return (nil, []) }
+        let usesCamera = preset.layers.contains { $0.enabled && !$0.cameraMatch.isEmpty }
         do {
-            let slots = try resolver.resolve(preset, jobBindings: bindings)
+            let slots = try resolver.resolve(preset, jobBindings: bindings, camera: usesCamera ? camera(of: source) : nil)
             return (slots, slots.warnings.map { ApplicationWarning(code: $0.code, message: $0.message) })
         } catch {
             throw ApplicationError(code: error.code, message: error.message, hint: error.hint)
         }
+    }
+
+    /// 源图的相机（TIFF Make / Model）。读不到属性时是空的相机信息。
+    static func camera(of url: URL) -> CameraIdentity {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        else { return CameraIdentity(make: nil, model: nil) }
+        let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        return CameraIdentity(make: tiff[kCGImagePropertyTIFFMake] as? String, model: tiff[kCGImagePropertyTIFFModel] as? String)
     }
 }

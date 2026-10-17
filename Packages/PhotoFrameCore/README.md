@@ -102,6 +102,11 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 `layers[exif].text.fontSizePx`、`layers[+]`）和 `PresetEditor` 在未定型的 manifest JSON 上读取、设置、删除字段；
 CLI `preset get` / `preset set` 与 MCP `get_preset` / `update_preset` 共用。修改后的预设由 `PresetLibrary.edit` 走导入检查再保存。
 
+**D-111 新字段**（旧预设缺少时取默认值，schemaVersion 仍为 1，与 D-63 相同的做法）：文字样式 `fontWeight`
+（`ultraLight`…`black`，默认 `regular`）、`italic`（默认 false）、`letterSpacingPx`（默认 0）；素材图层的
+`cameraMatch: [{make?, model?, slotId}]`（`CameraMatch.swift`，空时不写出）。品牌按「EXIF Make 包含」匹配，型号按相等匹配
+（EXIF Model 开头的品牌可省略），都不区分大小写；`slotCandidates(for:)` 给出尝试顺序，解析在 PhotoFrameStorage。
+
 **图层存储与几何共用一套类型（D-23）**：`OverlayLayer` 是预设中的存储形式，它的 `anchor`、`reference`、`offset`、
 `visibility` 直接使用上文的 `OverlayAnchor`、`OverlayReference`、`OverlayOffset`、`OverlayVisibility`。
 渲染前调用 `layer.geometry(contentSize:)` 得到 `OverlayGeometry`，再交给 `OverlayPlacement` 或

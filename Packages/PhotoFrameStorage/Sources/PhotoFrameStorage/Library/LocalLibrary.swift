@@ -83,9 +83,11 @@ public struct LocalLibrary: Sendable {
     ///
     /// 必需素材缺失时抛出 ``SlotResolutionError``（`slot.missing_required`）；
     /// 失效绑定（素材已删除、格式不被接受）按 D-28 警告并回退，警告在 `resolution.warnings` 里。
-    public func resolveSlots(for preset: ExportPreset, jobBindings: [String: UUID] = [:]) throws(SlotResolutionError) -> ResolvedSlots {
+    public func resolveSlots(
+        for preset: ExportPreset, jobBindings: [String: UUID] = [:], camera: CameraIdentity? = nil
+    ) throws(SlotResolutionError) -> ResolvedSlots {
         let (resolver, warnings) = makeSlotResolver()
-        let resolution = try resolver.resolve(preset, jobBindings: jobBindings)
+        let resolution = try resolver.resolve(preset, jobBindings: jobBindings, camera: camera)
         var files: [String: ResolvedSlots.File] = [:]
         for (slotId, slot) in resolution.resolved {
             if let url = assets.contentURL(for: slot.asset.assetId) {

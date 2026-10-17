@@ -101,6 +101,12 @@ public enum SlotResolutionWarning: Hashable, Sendable {
     case incompatibleFormat(slotId: String, scope: BindingScope, assetId: UUID, format: AssetSlot.Format)
     /// 单任务绑定了预设中不存在（或没有图层使用）的 slot。
     case unusedJobBinding(slotId: String)
+    /// 相机匹配到的素材槽没有可用的绑定，改用下一个候选（D-111）。
+    case cameraMatchUnbound(slotId: String, layerId: String)
+    /// 图层写了相机匹配规则，但源图没有相机品牌 / 型号，用默认素材（D-111）。
+    case cameraUnknown(layerIds: [String])
+    /// 图层只靠相机匹配选素材（没有默认 slotId），这台相机没有匹配的规则或素材：跳过图层（D-111）。
+    case cameraNoMatch(layerId: String)
 
     public var code: String {
         switch self {
@@ -108,6 +114,9 @@ public enum SlotResolutionWarning: Hashable, Sendable {
         case .staleBinding: "slot.stale_binding"
         case .incompatibleFormat: "slot.incompatible_format"
         case .unusedJobBinding: "slot.unused_job_binding"
+        case .cameraMatchUnbound: "slot.camera_match_unbound"
+        case .cameraUnknown: "slot.camera_unknown"
+        case .cameraNoMatch: "slot.camera_no_match"
         }
     }
 
@@ -117,6 +126,9 @@ public enum SlotResolutionWarning: Hashable, Sendable {
         case .staleBinding(let s, let scope, _): "素材槽 \(s) 的\(scope.label)绑定指向已删除的素材"
         case .incompatibleFormat(let s, let scope, _, let f): "素材槽 \(s) 的\(scope.label)绑定是 \(f.rawValue)，该槽不接受这种格式"
         case .unusedJobBinding(let s): "本任务绑定的素材槽 \(s) 没有被预设使用"
+        case .cameraMatchUnbound(let s, let layer): "图层 \(layer) 按相机匹配到素材槽 \(s)，但它没有可用的素材，改用下一个候选"
+        case .cameraUnknown(let layers): "源图没有相机品牌和型号，图层 \(layers.joined(separator: ", ")) 使用默认素材"
+        case .cameraNoMatch(let layer): "这台相机没有匹配的相机图标，跳过图层 \(layer)"
         }
     }
 }
@@ -154,6 +166,8 @@ public struct ResolvedSlot: Hashable, Sendable {
 public struct SlotResolution: Hashable, Sendable {
     /// slotId → 解析结果。
     public var resolved: [String: ResolvedSlot]
+    /// 素材图层实际使用的素材槽（layerId → slotId）。按相机匹配（D-111）时可能不是图层自己的 `slotId`。
+    public var layerSlots: [String: String] = [:]
     /// 因可选素材缺失而跳过的图层。
     public var skippedLayerIds: [String]
     public var warnings: [SlotResolutionWarning]
@@ -163,6 +177,10 @@ public struct SlotResolution: Hashable, Sendable {
 ///
 /// 只解析被**启用的**素材图层引用的 slot；没有图层使用的 slot 不影响输出。
 /// 某一层的绑定失效（素材已删除、格式不符）时给出警告并继续尝试下一层。
+///
+/// 相机匹配（D-111）：图层按 ``OverlayLayer/slotCandidates(for:)`` 依次尝试候选槽，用第一个有可用素材的；
+/// 匹配到的槽没有素材时警告并退到下一个候选，最后是图层自己的 `slotId`。`required` 只对图层自己的 `slotId` 生效：
+/// 匹配到的槽缺素材从不阻止输出。
 public struct SlotResolver: Sendable {
     public var library: any AssetLookup
     public var bindings: AssetBindingTable
@@ -172,54 +190,105 @@ public struct SlotResolver: Sendable {
         self.bindings = bindings
     }
 
-    public func resolve(_ preset: ExportPreset, jobBindings: [String: UUID] = [:]) throws(SlotResolutionError) -> SlotResolution {
-        var resolved: [String: ResolvedSlot] = [:]
+    /// - Parameter camera: 源图的相机；nil 表示调用方不按相机匹配（只用图层自己的 `slotId`）。
+    public func resolve(
+        _ preset: ExportPreset, jobBindings: [String: UUID] = [:], camera: CameraIdentity? = nil
+    ) throws(SlotResolutionError) -> SlotResolution {
         var warnings: [SlotResolutionWarning] = []
-        var missingRequired: [String] = []
-        var skippedLayers: [String] = []
-
-        let layersBySlot = Dictionary(grouping: preset.layers.filter { $0.enabled && $0.type.usesAssetSlot && $0.slotId != nil },
-                                      by: { $0.slotId! })
-        let slots = preset.assetSlots.filter { layersBySlot[$0.slotId] != nil }
-
-        for slot in slots {
-            let candidates: [(BindingScope, UUID?)] = [
-                (.job, jobBindings[slot.slotId]),
-                (.presetLocal, bindings.presetBinding(preset.presetId, slotId: slot.slotId)),
-                (.userGlobal, bindings.userGlobal[slot.slotId]),
-            ]
-            var found: ResolvedSlot?
-            for case let (scope, assetId?) in candidates {
-                guard let record = library.asset(withId: assetId) else {
-                    warnings.append(.staleBinding(slotId: slot.slotId, scope: scope, assetId: assetId))
-                    continue
-                }
-                guard slot.acceptedFormats.contains(record.format) else {
-                    warnings.append(.incompatibleFormat(slotId: slot.slotId, scope: scope, assetId: assetId, format: record.format))
-                    continue
-                }
-                found = ResolvedSlot(slotId: slot.slotId, asset: record, scope: scope)
-                break
-            }
-            if let found {
-                resolved[slot.slotId] = found
-            } else if slot.required {
-                missingRequired.append(slot.slotId)
-            } else {
-                let layerIds = layersBySlot[slot.slotId, default: []].map(\.layerId)
-                skippedLayers += layerIds
-                warnings.append(.optionalSlotMissing(slotId: slot.slotId, layerIds: layerIds))
-            }
+        let slotsById = Dictionary(preset.assetSlots.map { ($0.slotId, $0) }, uniquingKeysWith: { first, _ in first })
+        let layers = preset.layers.filter { $0.enabled && $0.type.usesAssetSlot }
+        var candidates: [String: [String]] = [:]
+        for layer in layers {
+            candidates[layer.layerId] = layer.slotCandidates(for: camera).filter { slotsById[$0] != nil }
         }
 
-        let usedSlotIds = Set(slots.map(\.slotId))
-        for slotId in jobBindings.keys.sorted() where !usedSlotIds.contains(slotId) {
+        // 每个候选槽只解析一次。警告最后按预设中槽的顺序给出。
+        let wanted = Set(candidates.values.joined())
+        var resolved: [String: ResolvedSlot] = [:]
+        var bindingWarnings: [String: [SlotResolutionWarning]] = [:]
+        for slot in preset.assetSlots where wanted.contains(slot.slotId) {
+            if let found = resolveSlot(slot, preset: preset, jobBindings: jobBindings, warnings: &bindingWarnings[slot.slotId, default: []]) {
+                resolved[slot.slotId] = found
+            }
+        }
+        var cameraWarnings: [SlotResolutionWarning] = []
+
+        var layerSlots: [String: String] = [:]
+        var missingRequired = Set<String>()
+        var skippedBySlot: [String: [String]] = [:]
+        var skippedLayers: [String] = []
+        var unknownCamera: [String] = []
+        for layer in layers {
+            let list = candidates[layer.layerId] ?? []
+            if !layer.cameraMatch.isEmpty, let camera, camera.isEmpty { unknownCamera.append(layer.layerId) }
+            if let chosen = list.first(where: { resolved[$0] != nil }) {
+                layerSlots[layer.layerId] = chosen
+                for slotId in list.prefix(while: { $0 != chosen }) {
+                    cameraWarnings.append(.cameraMatchUnbound(slotId: slotId, layerId: layer.layerId))
+                }
+                continue
+            }
+            for slotId in list where slotId != layer.slotId {
+                cameraWarnings.append(.cameraMatchUnbound(slotId: slotId, layerId: layer.layerId))
+            }
+            skippedLayers.append(layer.layerId)
+            if let slotId = layer.slotId, let slot = slotsById[slotId] {
+                if slot.required { missingRequired.insert(slotId) } else { skippedBySlot[slotId, default: []].append(layer.layerId) }
+            } else {
+                cameraWarnings.append(.cameraNoMatch(layerId: layer.layerId))
+            }
+        }
+        for slot in preset.assetSlots {
+            warnings += bindingWarnings[slot.slotId] ?? []
+            if let layerIds = skippedBySlot[slot.slotId] { warnings.append(.optionalSlotMissing(slotId: slot.slotId, layerIds: layerIds)) }
+        }
+        if !unknownCamera.isEmpty { warnings.append(.cameraUnknown(layerIds: unknownCamera)) }
+        warnings += cameraWarnings
+
+        for slotId in jobBindings.keys.sorted() where !wanted.contains(slotId) {
             warnings.append(.unusedJobBinding(slotId: slotId))
         }
 
         guard missingRequired.isEmpty else {
-            throw SlotResolutionError(missingRequiredSlots: missingRequired, warnings: warnings)
+            let ordered = preset.assetSlots.map(\.slotId).filter { missingRequired.contains($0) }
+            throw SlotResolutionError(missingRequiredSlots: ordered, warnings: warnings)
         }
-        return SlotResolution(resolved: resolved, skippedLayerIds: skippedLayers, warnings: warnings)
+        let used = Set(layerSlots.values)
+        return SlotResolution(resolved: resolved.filter { used.contains($0.key) }, layerSlots: layerSlots,
+                              skippedLayerIds: skippedLayers, warnings: warnings)
+    }
+
+    /// 按 D-14 的优先级找第一个有效的绑定；失效的绑定给出警告（D-28）。
+    private func resolveSlot(
+        _ slot: AssetSlot, preset: ExportPreset, jobBindings: [String: UUID], warnings: inout [SlotResolutionWarning]
+    ) -> ResolvedSlot? {
+        let candidates: [(BindingScope, UUID?)] = [
+            (.job, jobBindings[slot.slotId]),
+            (.presetLocal, bindings.presetBinding(preset.presetId, slotId: slot.slotId)),
+            (.userGlobal, bindings.userGlobal[slot.slotId]),
+        ]
+        for case let (scope, assetId?) in candidates {
+            guard let record = library.asset(withId: assetId) else {
+                warnings.append(.staleBinding(slotId: slot.slotId, scope: scope, assetId: assetId))
+                continue
+            }
+            guard slot.acceptedFormats.contains(record.format) else {
+                warnings.append(.incompatibleFormat(slotId: slot.slotId, scope: scope, assetId: assetId, format: record.format))
+                continue
+            }
+            return ResolvedSlot(slotId: slot.slotId, asset: record, scope: scope)
+        }
+        return nil
+    }
+}
+
+extension SlotResolution {
+    /// 把素材图层的 `slotId` 换成实际使用的槽（D-111），渲染时按 `slotId` 取素材。
+    public func applied(to preset: ExportPreset) -> ExportPreset {
+        var out = preset
+        for i in out.layers.indices {
+            if let slotId = layerSlots[out.layers[i].layerId] { out.layers[i].slotId = slotId }
+        }
+        return out
     }
 }

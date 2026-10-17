@@ -206,6 +206,42 @@ struct RenderingBackendTests {
         #expect(plain.warnings.contains { $0.code == "preview.output_sdr" })
     }
 
+    @Test("相机图标按 EXIF 自动匹配（D-111）：读源图 Make / Model，渲染用匹配到的槽；没有相机信息时用默认并提示")
+    func cameraMatch() async throws {
+        let box = try Sandbox()
+        let fuji = try box.photo("Fuji.jpg", width: 800, height: 600, properties: [
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "FUJIFILM", kCGImagePropertyTIFFModel: "X100VI"],
+        ])
+        let plain = try box.photo("Plain.jpg", width: 800, height: 600)
+        #expect(ExportChecks.camera(of: fuji) == CameraIdentity(make: "FUJIFILM", model: "X100VI"))
+        #expect(ExportChecks.camera(of: plain).isEmpty)
+
+        let x100 = AssetRecord(assetId: UUID(), format: .png, displayName: "x100")
+        let fallback = AssetRecord(assetId: UUID(), format: .png, displayName: "default")
+        var table = AssetBindingTable()
+        table.bindGlobally(slotId: "camera.x100", assetId: x100.assetId)
+        table.bindGlobally(slotId: "camera.badge", assetId: fallback.assetId)
+        let resolver = SlotResolver(library: InMemoryAssetLibrary([x100, fallback]), bindings: table)
+        var preset = Self.preset("Instagram Standard")
+        preset.assetSlots = [AssetSlot(slotId: "camera.badge"), AssetSlot(slotId: "camera.x100")]
+        preset.layers = [OverlayLayer(layerId: "badge", type: .cameraBadge, sizePx: PixelSize(width: 48, height: 48), slotId: "camera.badge",
+                                      cameraMatch: [CameraMatchRule(make: "Fujifilm", model: "X100VI", slotId: "camera.x100")])]
+
+        let (matched, warnings) = try ExportChecks.resolveSlots(resolver, preset: preset, bindings: [:], source: fuji)
+        #expect(matched?.layerSlots == ["badge": "camera.x100"] && warnings.isEmpty)
+        let (unknown, unknownWarnings) = try ExportChecks.resolveSlots(resolver, preset: preset, bindings: [:], source: plain)
+        #expect(unknown?.layerSlots == ["badge": "camera.badge"])
+        #expect(unknownWarnings.map(\.code) == ["slot.camera_unknown"])
+
+        // 经由服务：库里没有素材时，匹配到的槽和默认槽都缺，图层跳过并说明。
+        let service = try LocalPhotoFrameService.makeDefault(.init(libraryRoot: box.root.appending(path: "Library")))
+        let source = try await service.addSource(fuji)
+        let preview = try await service.renderPreview(ExportPreviewRequest(source: .id(source.sourceId), preset: preset,
+                                                                         options: PreviewOptions(maxLongEdge: 200)))
+        #expect(preview.warnings.map(\.code).contains("slot.camera_match_unbound"))
+        #expect(preview.warnings.map(\.code).contains("slot.optional_missing"))
+    }
+
     @Test("源图色彩空间覆盖（D-04）：只对没有 ICC 的源图生效；有 ICC 时忽略并警告")
     func colorOverride() async throws {
         let box = try Sandbox()

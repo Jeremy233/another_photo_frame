@@ -41,7 +41,9 @@ final class Sandbox: Sendable {
     }
 
     /// 代码合成的「照片」：横向渐变，嵌入 Display P3 ICC（`profile: false` 时是去掉颜色描述的 PNG）。不使用任何真实照片。
-    func photo(_ name: String, width: Int, height: Int, type: UTType = .jpeg, profile: Bool = true) throws -> URL {
+    func photo(
+        _ name: String, width: Int, height: Int, type: UTType = .jpeg, profile: Bool = true, properties: [CFString: Any] = [:]
+    ) throws -> URL {
         let url = root.appending(path: name)
         let space = CGColorSpace(name: CGColorSpace.displayP3)!
         let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
@@ -52,7 +54,8 @@ final class Sandbox: Sendable {
         ] as CFArray, locations: [0, 1])!
         ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: 0), options: [])
         let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(dest, ctx.makeImage()!, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        let options = properties.merging([kCGImageDestinationLossyCompressionQuality: 0.9]) { a, _ in a }
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, options as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
         if !profile {
             precondition(type == .png, "只支持去掉 PNG 的颜色描述")

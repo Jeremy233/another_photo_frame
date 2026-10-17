@@ -110,6 +110,8 @@ probe（读属性：尺寸、方向）
 - 背景：预设 hex 按 sRGB 编码构造 `CIColor`，由 CI 转入工作空间；无损 PNG 输出精确等于原值（测试验证 `#FAFAF8` → `(250,250,248)`）。全景切片用 `padColor`。
 - 图层：按 `zIndex` 升序（同值按预设顺序）。
   - 文字：Core Text 画进 extended linear Rec.2020 的 RGBAh 上下文（坑 8）；框比文字小时等比缩小，不放大；水平对齐跟随锚点，竖直居中。
+    字重、斜体（D-111）取同一字族里最接近的样式（字族没有斜体时按正体并警告 `overlay.font_missing`），字间距用 `kCTKernAttributeName`。
+  - 相机图标按 EXIF 自动匹配（D-111）在渲染之前完成：PhotoFrameApplication 读源图 Make / Model，`SlotResolver` 选出槽后把图层的 `slotId` 换成匹配到的槽，渲染照常按 `slotId` 取素材。
   - PNG：先用 CG 画成预乘 RGBAh，再双线性缩放（坑 7；CI 直接对非预乘 PNG 采样会在浅色背景上出现灰边，测试 `alphaHalo` 覆盖）；等比放进图层框并居中。
   - SVG：受限解析（下节），矢量直接画到最终尺寸。
   - 不透明度：只缩放 alpha（CI 颜色滤镜在非预乘值上运算）；50% 白叠在 `#202020` 上得到 189（线性光），不是 144（gamma 空间）。

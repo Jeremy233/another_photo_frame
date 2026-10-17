@@ -139,16 +139,31 @@ extension ExportPreset {
                     if !assetSlots.contains(where: { $0.slotId == slotId }) {
                         error("unknown_slot_reference", "\(path).slotId", "图层引用了不存在的素材槽：\(slotId)")
                     }
-                } else {
-                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 图层必须指定 slotId")
+                } else if layer.cameraMatch.isEmpty {
+                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 图层必须指定 slotId 或 cameraMatch")
                 }
             } else if layer.slotId != nil {
                 warning("ignored_field", "\(path).slotId", "\(layer.type.rawValue) 图层不使用 slotId")
+            }
+            if !layer.type.usesAssetSlot, !layer.cameraMatch.isEmpty {
+                warning("ignored_field", "\(path).cameraMatch", "\(layer.type.rawValue) 图层不使用 cameraMatch")
+            }
+            for (j, rule) in layer.cameraMatch.enumerated() where layer.type.usesAssetSlot {
+                let rulePath = "\(path).cameraMatch[\(j)]"
+                usedSlots.insert(rule.slotId)
+                if (rule.make ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
+                   (rule.model ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
+                    error("invalid_camera_match", rulePath, "相机匹配规则至少要写 make 或 model")
+                }
+                if !assetSlots.contains(where: { $0.slotId == rule.slotId }) {
+                    error("unknown_slot_reference", "\(rulePath).slotId", "相机匹配规则引用了不存在的素材槽：\(rule.slotId)")
+                }
             }
             if layer.type.usesText {
                 if let text = layer.text {
                     if !(text.fontSizePx > 0) { error("invalid_text", "\(path).text.fontSizePx", "字号必须为正") }
                     if !(text.lineHeight > 0) { error("invalid_text", "\(path).text.lineHeight", "行距必须为正") }
+                    if !text.letterSpacingPx.isFinite { error("invalid_text", "\(path).text.letterSpacingPx", "字间距无效") }
                     if text.paddingPx < 0 { error("invalid_text", "\(path).text.paddingPx", "内边距不能为负") }
                     checkColor(text.color, "\(path).text.color")
                 } else {
