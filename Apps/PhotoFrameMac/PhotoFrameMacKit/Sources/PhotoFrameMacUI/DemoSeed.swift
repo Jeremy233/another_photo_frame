@@ -1,5 +1,5 @@
 #if DEBUG
-import Foundation
+import AppKit
 import PhotoFrameMacModel
 
 /// 只在 Debug 版本里：用环境变量准备演示内容，方便检查界面（截图）。
@@ -9,10 +9,27 @@ import PhotoFrameMacModel
 /// - `PHOTOFRAME_UI_TAB=canvas|panorama|layers|output`：右栏标签。
 /// - `PHOTOFRAME_UI_MODE=active|completed` 与 `PHOTOFRAME_UI_EXPORTS=<目录>`：导出到这个目录后显示「活跃」或「已完成」。
 ///   只改这些任务的目录，不改位置列表。
+/// - `PHOTOFRAME_UI_TOGGLE=<n>`：把左栏和 Inspector 各收起、展开 n 次（检查栏宽是否保持不变），
+///   间隔 `PHOTOFRAME_UI_TOGGLE_MS` 毫秒；`PHOTOFRAME_UI_COLLAPSE=1` 时最后停在收起状态；
+///   `PHOTOFRAME_UI_WINDOW_WIDTH=<pt>` 先把窗口改成这个宽度。
 extension Workbench {
     func loadDemoIfRequested() async {
         // 空值等于没设置（避免把空路径当成当前目录导出）。
         let env = ProcessInfo.processInfo.environment.filter { !$0.value.isEmpty }
+        if let width = env["PHOTOFRAME_UI_WINDOW_WIDTH"].flatMap(Double.init), let window = NSApp.windows.first(where: \.isVisible) {
+            window.setContentSize(NSSize(width: width, height: window.contentLayoutRect.height))
+        }
+        if let count = env["PHOTOFRAME_UI_TOGGLE"].flatMap(Int.init) {
+            for _ in 0..<count * 2 {
+                try? await Task.sleep(for: .milliseconds(Int(env["PHOTOFRAME_UI_TOGGLE_MS"] ?? "250") ?? 250))
+                showsSidebar.toggle()
+                showsInspector.toggle()
+            }
+            if env["PHOTOFRAME_UI_COLLAPSE"] != nil {
+                showsSidebar = false
+                showsInspector = false
+            }
+        }
         guard let dir = env["PHOTOFRAME_UI_DEMO"] else { return }
         let exports = env["PHOTOFRAME_UI_EXPORTS"].flatMap { $0.hasPrefix("/") ? $0 : nil }.map { URL(filePath: $0, directoryHint: .isDirectory) }
 

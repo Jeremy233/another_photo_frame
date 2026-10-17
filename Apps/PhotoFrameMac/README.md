@@ -41,6 +41,8 @@ PHOTOFRAME_UI_DEMO=/path/to/synthetic-images PHOTOFRAME_UI_TAB=layers \
 
 - 不用 SwiftUI 的 NavigationSplitView + inspector：系统会把顶栏按栏切成三段，而且窗口比三栏最小宽度之和窄时会反复调整约束而崩溃。
   也不要用 SwiftUI `VSplitView`（改用 `VerticalSplit`）。
+- 三栏的收起 / 展开用 `NSSplitViewItem.isCollapsed`，不做动画；栏宽自己保存（只在拖完分隔线时记录），不用 NSSplitView 的 autosave。
+  直接隐藏子视图会留下分隔线；动画中途再切换、或 autosave 恢复「已收起」，都会让展开后的栏越来越窄。测试见 `PhotoFrameMacUITests`。
 
 ## 结构
 

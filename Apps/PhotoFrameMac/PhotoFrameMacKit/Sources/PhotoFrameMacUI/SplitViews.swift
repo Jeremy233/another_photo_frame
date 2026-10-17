@@ -84,107 +84,182 @@ private final class ResettableSplitView: NSSplitView {
     }
 }
 
-/// 主窗口的三栏：左栏 | 中栏 | 右栏（Inspector），分隔线可拖动，宽度按 `autosaveName` 记住（规范 §4.1）。
+/// 主窗口的三栏：左栏 | 中栏 | 右栏（Inspector），分隔线可拖动，拖动后的栏宽按 `autosaveName` 记住（规范 §4.1）。
 ///
 /// 不用 NavigationSplitView + inspector：那样系统会把顶栏按栏切成三段，而且窗口比三栏最小宽度之和窄时会崩溃。
-/// 这里左右两栏收起时只隐藏对应的子视图；窗口变宽变窄时只有中栏跟着变。
-struct ColumnSplit<Leading: View, Center: View, Trailing: View>: NSViewRepresentable {
+/// 收起和展开交给 `NSSplitViewItem.isCollapsed`：收起时分隔线一起隐藏，展开时恢复收起前的宽度，
+/// 不会像直接隐藏子视图那样留下分隔线、每次展开宽度越来越窄。
+struct ColumnSplit<Leading: View, Center: View, Trailing: View>: NSViewControllerRepresentable {
     var autosaveName: String
     var showsLeading: Bool
     var showsTrailing: Bool
-    var leadingWidth: ClosedRange<CGFloat> = 200...420
-    var trailingWidth: ClosedRange<CGFloat> = 260...480
-    var centerMinWidth: CGFloat = 420
     @ViewBuilder var leading: Leading
     @ViewBuilder var center: Center
     @ViewBuilder var trailing: Trailing
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSSplitView {
-        let split = ColumnSplitView()
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.delegate = context.coordinator
-        let views: [NSView] = [host(leading), host(center), host(trailing)]
-        for view in views { split.addArrangedSubview(view) }
-        // 窗口缩放时左右栏保持宽度，只有中栏伸缩。
-        split.setHoldingPriority(.init(260), forSubviewAt: 0)
-        split.setHoldingPriority(.init(250), forSubviewAt: 1)
-        split.setHoldingPriority(.init(260), forSubviewAt: 2)
-        split.autosaveName = autosaveName
-        split.defaultWidths = (leadingWidth.lowerBound + 60, trailingWidth.lowerBound + 40)
-        split.minWidths = (leadingWidth.lowerBound, trailingWidth.lowerBound)
-        update(split, context: context)
-        return split
+    func makeNSViewController(context: Context) -> ColumnSplitController {
+        let controller = ColumnSplitController(
+            leading: host(leading), center: host(center), trailing: host(trailing), autosaveName: autosaveName)
+        controller.setVisibility(leading: showsLeading, trailing: showsTrailing)
+        return controller
     }
 
-    func updateNSView(_ split: NSSplitView, context: Context) {
-        (split.arrangedSubviews[0] as? NSHostingView<Leading>)?.rootView = leading
-        (split.arrangedSubviews[1] as? NSHostingView<Center>)?.rootView = center
-        (split.arrangedSubviews[2] as? NSHostingView<Trailing>)?.rootView = trailing
-        update(split, context: context)
+    func updateNSViewController(_ controller: ColumnSplitController, context: Context) {
+        (controller.leadingItem.viewController as? NSHostingController<Leading>)?.rootView = leading
+        (controller.centerItem.viewController as? NSHostingController<Center>)?.rootView = center
+        (controller.trailingItem.viewController as? NSHostingController<Trailing>)?.rootView = trailing
+        controller.setVisibility(leading: showsLeading, trailing: showsTrailing)
     }
 
-    private func update(_ split: NSSplitView, context: Context) {
-        context.coordinator.leadingWidth = leadingWidth
-        context.coordinator.trailingWidth = trailingWidth
-        context.coordinator.centerMinWidth = centerMinWidth
-        let leading = split.arrangedSubviews[0], trailing = split.arrangedSubviews[2]
-        guard leading.isHidden == showsLeading || trailing.isHidden == showsTrailing else { return }
-        leading.isHidden = !showsLeading
-        trailing.isHidden = !showsTrailing
-        split.adjustSubviews()
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSplitView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsViewController: ColumnSplitController, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 1200, height: proposal.height ?? 800)
     }
 
-    private func host<Content: View>(_ content: Content) -> NSHostingView<Content> {
-        let view = NSHostingView(rootView: content)
-        view.sizingOptions = []
-        return view
-    }
-
-    final class Coordinator: NSObject, NSSplitViewDelegate {
-        var leadingWidth: ClosedRange<CGFloat> = 200...420
-        var trailingWidth: ClosedRange<CGFloat> = 260...480
-        var centerMinWidth: CGFloat = 420
-
-        func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposed: CGFloat, ofSubviewAt index: Int) -> CGFloat {
-            if index == 0 { return max(proposed, leadingWidth.lowerBound) }
-            let leadingEnd = leadingVisible(splitView) ? splitView.arrangedSubviews[0].frame.maxX : 0
-            return max(proposed, splitView.bounds.width - trailingWidth.upperBound, leadingEnd + centerMinWidth)
-        }
-
-        func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposed: CGFloat, ofSubviewAt index: Int) -> CGFloat {
-            if index == 0 {
-                let trailingStart = trailingVisible(splitView) ? splitView.arrangedSubviews[2].frame.minX : splitView.bounds.width
-                return min(proposed, leadingWidth.upperBound, trailingStart - centerMinWidth)
-            }
-            return min(proposed, splitView.bounds.width - trailingWidth.lowerBound)
-        }
-
-        private func leadingVisible(_ split: NSSplitView) -> Bool { !split.arrangedSubviews[0].isHidden }
-        private func trailingVisible(_ split: NSSplitView) -> Bool { !split.arrangedSubviews[2].isHidden }
+    private func host<Content: View>(_ content: Content) -> NSHostingController<Content> {
+        let controller = NSHostingController(rootView: content)
+        // 不让 SwiftUI 内容的固有尺寸变成约束，栏宽只由分隔线决定。
+        controller.sizingOptions = []
+        return controller
     }
 }
 
-/// 可见的左右栏比最小宽度还窄时（第一次显示、重新显示、记住的宽度不合适），按默认宽度摆放。
-private final class ColumnSplitView: NSSplitView {
-    var defaultWidths: (leading: CGFloat, trailing: CGFloat) = (260, 300)
-    var minWidths: (leading: CGFloat, trailing: CGFloat) = (200, 260)
+/// 三栏分割的 AppKit 部分（也给测试直接用）。左右栏宽度有上下限，窗口缩放时只有中栏伸缩。
+final class ColumnSplitController: NSSplitViewController {
+    static let leadingWidth: ClosedRange<CGFloat> = 200...420
+    static let trailingWidth: ClosedRange<CGFloat> = 260...480
+    static let centerMinWidth: CGFloat = 420
 
-    override func layout() {
-        super.layout()
-        guard arrangedSubviews.count == 3, bounds.width > defaultWidths.leading + defaultWidths.trailing + 200 else { return }
-        let leading = arrangedSubviews[0], trailing = arrangedSubviews[2]
-        if !leading.isHidden, leading.frame.width < minWidths.leading {
-            setPosition(defaultWidths.leading, ofDividerAt: 0)
+    let leadingItem: NSSplitViewItem
+    let centerItem: NSSplitViewItem
+    let trailingItem: NSSplitViewItem
+
+    init(leading: NSViewController, center: NSViewController, trailing: NSViewController, autosaveName: String?) {
+        leadingItem = NSSplitViewItem(viewController: leading)
+        centerItem = NSSplitViewItem(viewController: center)
+        trailingItem = NSSplitViewItem(viewController: trailing)
+        dragTrackingSplitView = DragTrackingSplitView()
+        // 不用 NSSplitView 自带的 autosave：它连「已收起」一起恢复，和 NSSplitViewItem.isCollapsed 对不上，
+        // 再展开时栏宽退回最小值。这里只记左右栏展开时的宽度，收起与否由 view model 决定。
+        widthsKey = autosaveName.map { "ColumnSplit \($0)" }
+        super.init(nibName: nil, bundle: nil)
+        // 只在用户拖完分隔线后记栏宽：窗口缩放、收起展开、程序摆放都会发出 resize 通知，不能用通知判断。
+        splitView = dragTrackingSplitView
+        dragTrackingSplitView.didEndDrag = { [weak self] in self?.recordWidths() }
+        for (item, range) in [(leadingItem, Self.leadingWidth), (trailingItem, Self.trailingWidth)] {
+            item.canCollapse = true
+            item.minimumThickness = range.lowerBound
+            item.maximumThickness = range.upperBound
+            item.holdingPriority = .init(260)
         }
-        if !trailing.isHidden, trailing.frame.width < minWidths.trailing {
-            setPosition(bounds.width - defaultWidths.trailing, ofDividerAt: 1)
+        centerItem.minimumThickness = Self.centerMinWidth
+        centerItem.holdingPriority = .init(250)
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        for item in [leadingItem, centerItem, trailingItem] { addSplitViewItem(item) }
+    }
+
+    private let widthsKey: String?
+    private let dragTrackingSplitView: DragTrackingSplitView
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// 没有记住的栏宽时用的默认宽度（否则 AppKit 给最小宽度）。
+    static let defaultWidths: (leading: CGFloat, trailing: CGFloat) = (260, 300)
+    /// 左右栏展开时的宽度：拖动分隔线时更新，收起再展开时恢复。
+    private(set) var widths = ColumnSplitController.defaultWidths
+    private var placed = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        if let key = widthsKey, let saved = UserDefaults.standard.array(forKey: key) as? [Double], saved.count == 2 {
+            widths = (CGFloat(saved[0]).clamped(to: Self.leadingWidth), CGFloat(saved[1]).clamped(to: Self.trailingWidth))
         }
     }
+
+    /// 第一次有了足够的宽度时，按记住的（或默认的）栏宽摆放。放到这次布局之后做：布局过程中改分隔线会被随后的布局覆盖。
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        if canPlace { DispatchQueue.main.async { [weak self] in self?.placeIfNeeded() } }
+    }
+
+    private var canPlace: Bool {
+        !placed && view.bounds.width >= Self.leadingWidth.lowerBound + Self.trailingWidth.lowerBound + Self.centerMinWidth
+    }
+
+    /// 按记住的栏宽摆放一次（`viewDidLayout` 之后自动调用；测试里直接调用）。
+    func placeIfNeeded() {
+        guard canPlace else { return }
+        placed = true
+        applyWidths()
+    }
+
+    /// 每次 `setPosition` 之后先完成布局：连续两次 `setPosition` 时后一次会被前一次待做的布局覆盖。
+    private func applyWidths() {
+        let (leading, trailing) = fittedWidths()
+        if !leadingItem.isCollapsed {
+            splitView.setPosition(leading, ofDividerAt: 0)
+            splitView.layoutSubtreeIfNeeded()
+        }
+        if !trailingItem.isCollapsed {
+            splitView.setPosition(view.bounds.width - trailing - splitView.dividerThickness, ofDividerAt: 1)
+            splitView.layoutSubtreeIfNeeded()
+        }
+    }
+
+    /// 窗口放不下记住的栏宽时（中栏会小于最小宽度），左右栏按比例缩向最小宽度，只用于显示，不改记住的宽度。
+    func fittedWidths() -> (leading: CGFloat, trailing: CGFloat) {
+        let leading = leadingItem.isCollapsed ? 0 : widths.leading
+        let trailing = trailingItem.isCollapsed ? 0 : widths.trailing
+        let available = view.bounds.width - Self.centerMinWidth - 2 * splitView.dividerThickness
+        let excess = leading + trailing - available
+        guard excess > 0 else { return (leading, trailing) }
+        let slackL = leadingItem.isCollapsed ? 0 : leading - Self.leadingWidth.lowerBound
+        let slackT = trailingItem.isCollapsed ? 0 : trailing - Self.trailingWidth.lowerBound
+        let ratio = slackL + slackT > 0 ? min(excess / (slackL + slackT), 1) : 0
+        return (leading - slackL * ratio, trailing - slackT * ratio)
+    }
+
+
+    /// 记下展开着的左右栏的当前宽度并保存。
+    func recordWidths() {
+        if !leadingItem.isCollapsed { widths.leading = leadingItem.viewController.view.frame.width.clamped(to: Self.leadingWidth) }
+        if !trailingItem.isCollapsed { widths.trailing = trailingItem.viewController.view.frame.width.clamped(to: Self.trailingWidth) }
+        if let key = widthsKey { UserDefaults.standard.set([Double(widths.leading), Double(widths.trailing)], forKey: key) }
+    }
+
+    /// 显示或收起左右栏。状态没变时什么也不做，所以 SwiftUI 每次刷新调用也不会改动栏宽。
+    ///
+    /// 不做动画：动画进行中再次切换（快速连按 ⌃⌘S）时，AppKit 会把动画中途的宽度当成展开宽度记下，栏会越来越窄。
+    func setVisibility(leading: Bool, trailing: Bool) {
+        var expanded = false
+        for (item, visible) in [(leadingItem, leading), (trailingItem, trailing)] where item.isCollapsed == visible {
+            item.isCollapsed = !visible
+            expanded = expanded || visible
+        }
+        // 展开时明确恢复记住的宽度（AppKit 自己恢复时，窗口变过宽度就可能不准）。
+        if expanded, placed {
+            view.layoutSubtreeIfNeeded()
+            applyWidths()
+        }
+    }
+
+    /// 只显示、可拖动的分隔线：收起的栏旁边的分隔线隐藏。
+    override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+        dividerIndex == 0 ? leadingItem.isCollapsed : trailingItem.isCollapsed
+    }
+}
+
+/// 鼠标在分隔线上拖动结束时回调（`mouseDown` 在拖动结束后才返回）。
+final class DragTrackingSplitView: NSSplitView {
+    var didEndDrag: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        didEndDrag?()
+    }
+}
+
+private extension CGFloat {
+    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat { Swift.min(Swift.max(self, range.lowerBound), range.upperBound) }
 }
