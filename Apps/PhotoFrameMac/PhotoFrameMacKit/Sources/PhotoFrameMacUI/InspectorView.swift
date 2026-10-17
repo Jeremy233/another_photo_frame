@@ -71,11 +71,12 @@ struct InspectorView: View {
 struct ColumnHeader<Content: View>: View {
     @ViewBuilder var content: Content
 
+    /// 内容为空（例如 Inspector 没有选中任何东西）时也占满 28 pt，分隔线不会被顶到工具栏下面。
     var body: some View {
         VStack(spacing: 0) {
-            content
-                .controlSize(.small)
+            Color.clear
                 .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+                .overlay { content.controlSize(.small) }
             Divider()
         }
     }
