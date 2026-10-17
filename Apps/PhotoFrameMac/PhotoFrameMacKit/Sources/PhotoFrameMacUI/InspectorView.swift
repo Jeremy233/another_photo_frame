@@ -19,7 +19,7 @@ struct InspectorView: View {
             }
         }
         .background(Palette.panel)
-        .controlSize(.small)
+        .controlSize(.regular)
     }
 
     @ViewBuilder private var header: some View {
@@ -31,8 +31,8 @@ struct InspectorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-        case .source: Text("源图").font(.callout)
-        case .location: Text("位置").font(.callout)
+        case .source: Text("源图")
+        case .location: Text("位置")
         case .none: EmptyView()
         }
     }
@@ -42,7 +42,7 @@ struct InspectorView: View {
         case .none:
             VStack(spacing: 10) {
                 Text("没有可检查的内容").font(.title3).foregroundStyle(.secondary)
-                Text(Self.startHint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text(Self.startHint).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):
@@ -86,7 +86,7 @@ struct InspectorView: View {
 
 // MARK: - 共用的版式
 
-/// 每栏顶部一行（约 28 pt）：放小号分段控件或标题，居中。
+/// 每栏顶部一行（28 pt）：放常规尺寸的分段控件或标题，居中。
 struct ColumnHeader<Content: View>: View {
     @ViewBuilder var content: Content
 
@@ -95,7 +95,7 @@ struct ColumnHeader<Content: View>: View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
-                .overlay { content.controlSize(.small) }
+                .overlay { content.controlSize(.regular) }
             Hairline()
         }
     }
@@ -110,7 +110,7 @@ struct NoticeBar<Action: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(text, systemImage: symbol)
-                .font(.callout)
+                .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
             action
         }
@@ -127,9 +127,9 @@ extension NoticeBar where Action == EmptyView {
     }
 }
 
-/// 分节：小号粗体标题 + 圆角分组框，框里是两列的行（参照 Compressor 的 Inspector）。
+/// 分节：粗体标题 + 圆角分组框，框里是两列的行（参照 Compressor 的 Inspector）。
 ///
-/// 不用系统 `Form`：它按控件决定行高，带输入框的行高、纯文字的行矮，间距不齐。这里每一行最小 28 pt
+/// 不用系统 `Form`：它按控件决定行高，带输入框的行高、纯文字的行矮，间距不齐。这里每一行最小 32 pt
 /// （Compressor 弹出菜单行的行距），标签在固定宽度的左列右对齐、与值按首行基线对齐，分组框上下内边距相同。
 /// 行里用 `LabeledContent`（有标签）、`Toggle`（复选框放在值的一列）或 `InspectorRow`（只有值）。
 struct InspectorSection<Content: View>: View {
@@ -147,7 +147,7 @@ struct InspectorSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let title {
-                Text(title).font(.subheadline.weight(.semibold)).padding(.leading, 4)
+                Text(title).font(.body.weight(.semibold)).padding(.leading, 4)
             }
             VStack(alignment: .leading, spacing: 0) { content }
                 .labeledContentStyle(InspectorRowStyle())
@@ -162,14 +162,14 @@ struct InspectorSection<Content: View>: View {
 
 enum InspectorMetrics {
     /// 每一行的最小高度。
-    static let rowHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 32
     /// 左列（标签）的宽度。
-    static let labelWidth: CGFloat = 76
+    static let labelWidth: CGFloat = 88
     static let columnSpacing: CGFloat = 8
     /// 分组框上下内边距（相同）。
     static let groupPadding: CGFloat = 8
     /// 小号复选框的方框 + 间距，说明文字从这里开始，与复选框的文字对齐。
-    static let checkboxTextInset: CGFloat = 20
+    static let checkboxTextInset: CGFloat = 22
 }
 
 /// 一行：左列右对齐的标签 + 右列的值，按首行基线对齐，最小高度一致。
@@ -188,7 +188,7 @@ struct InspectorRowStyle: LabeledContentStyle {
     }
 }
 
-/// 复选框行，和其他行一样高（28 pt，单行居中）。和带标签的行在同一组时，复选框与其他行的值左对齐；
+/// 复选框行，和其他行一样高（32 pt，单行居中）。和带标签的行在同一组时，复选框与其他行的值左对齐；
 /// 整组都是复选框时（`leading`）从分组框左边开始。补充说明用 ``InspectorCheckboxNote`` 另起一行挂在下面。
 struct InspectorToggleStyle: ToggleStyle {
     var leading = false
@@ -216,7 +216,7 @@ struct InspectorCheckboxNote: View {
 
     var body: some View {
         Text(text)
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.leading, InspectorMetrics.checkboxTextInset)
@@ -292,20 +292,22 @@ struct InfoCard<Actions: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
-                Text(title).font(.headline).lineLimit(2)
+                // 一行放不下时中间省略（文件名的扩展名还在），悬停看全名。
+                Text(title).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle).help(title)
                 Spacer()
                 if let badge {
                     Text(badge)
-                        .font(.caption.weight(.bold))
+                        .font(.subheadline.weight(.bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(.fill.secondary, in: .rect(cornerRadius: 4))
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(lines, id: \.self) { Text($0) }
+                // 路径等长的行最多两行、中间省略，不逐字折成很多行。
+                ForEach(lines, id: \.self) { Text($0).lineLimit(2).truncationMode(.middle).help($0) }
             }
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(.secondary)
             .padding(.leading, 26)
             .textSelection(.enabled)
@@ -607,7 +609,7 @@ private struct OutputTab: View {
             }
             if workbench.field(\.output.format) == .single(.jpeg) {
                 LabeledContent("质量") {
-                    Slider(value: quality, in: 1...100, step: 1) { Text("质量") } minimumValueLabel: { Text("1") } maximumValueLabel: { Text("100") }
+                    Slider(value: quality, in: 1...100, step: 1) { Text("质量") } minimumValueLabel: { Text("1").font(.callout) } maximumValueLabel: { Text("100").font(.callout) }
                         .labelsHidden()
                 }
             }
@@ -655,7 +657,8 @@ private struct JobOutputSection: View {
             .help(workbench.jobField(\.destination).value?.displayPath ?? "")
             InspectorRow { Button("选取其他文件夹…") { choosingFolder = true } }
             InspectorTextField("作品目录", text: template, prompt: "多个值")
-            InspectorRow { Text("可用 {source}、{variant}、{preset}、{platform}").font(.caption).foregroundStyle(.secondary) }
+            // 值的一列放不下一行：按变量分成两行，不在中间断开。
+            InspectorRow { Text("可用：{source}、{variant}\n{preset}、{platform}").font(.callout).foregroundStyle(.secondary) }
         }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) {
             if case .success(let url) = $0 { workbench.setDestinationForSelection(url) }

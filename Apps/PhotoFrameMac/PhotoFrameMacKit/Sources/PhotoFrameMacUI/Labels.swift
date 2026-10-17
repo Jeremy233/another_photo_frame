@@ -160,3 +160,15 @@ extension TextStyle.FontWeight {
         }
     }
 }
+
+/// ImageIO 给出的色彩空间名（`kCGColorSpaceDisplayP3` 之类）换成给人看的名字；嵌入的 ICC 描述原样显示。
+enum ColorProfileName {
+    static func display(_ name: String) -> String {
+        guard name.hasPrefix("kCGColorSpace") else { return name }
+        let known = [
+            "kCGColorSpaceSRGB": "sRGB", "kCGColorSpaceDisplayP3": "Display P3", "kCGColorSpaceAdobeRGB1998": "Adobe RGB (1998)",
+            "kCGColorSpaceROMMRGB": "ProPhoto RGB", "kCGColorSpaceITUR_2020": "Rec. 2020", "kCGColorSpaceGenericGrayGamma2_2": "灰度",
+        ]
+        return known[name] ?? String(name.dropFirst("kCGColorSpace".count))
+    }
+}
