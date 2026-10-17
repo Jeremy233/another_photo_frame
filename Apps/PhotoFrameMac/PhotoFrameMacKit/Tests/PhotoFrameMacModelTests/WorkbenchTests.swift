@@ -343,6 +343,8 @@ import Testing
         let f = try Fixture()
         let wb = f.workbench
         #expect(wb.isQueuePaused)
+        // 队列启动时就是暂停的，但没有任务时不显示「继续」。
+        #expect(!wb.showsQueueControls)
         await wb.toggleQueuePaused()
         #expect(!wb.isQueuePaused)
         await wb.toggleQueuePaused()
@@ -386,5 +388,6 @@ import Testing
             sourceIds: [source.sourceId], presets: [preset], destination: ExportDestination(rootDirectory: f.exports)))
         await f.workbench.refreshJobs()
         #expect(f.workbench.activeCount == 1)
+        #expect(f.workbench.showsQueueControls)
     }
 }

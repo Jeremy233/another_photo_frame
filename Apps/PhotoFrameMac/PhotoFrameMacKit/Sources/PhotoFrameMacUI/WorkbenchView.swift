@@ -20,13 +20,16 @@ public struct WorkbenchView: View {
             showsTrailing: workbench.showsInspector
         ) {
             SidebarView(workbench: workbench)
+                .filling(Palette.sidebar)
         } center: {
             content
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if workbench.mode == .current { BottomBar(workbench: workbench) }
                 }
+                .filling(Palette.list)
         } trailing: {
             InspectorView(workbench: workbench)
+                .filling(Palette.panel)
         }
         // 工具栏下面一条贯穿整个窗口的黑线（系统自己的分隔线不是纯黑，由各栏决定画不画，所以关掉自己画）。
         .safeAreaInset(edge: .top, spacing: 0) { Hairline() }

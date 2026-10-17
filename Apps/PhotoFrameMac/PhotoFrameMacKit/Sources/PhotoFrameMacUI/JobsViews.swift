@@ -10,25 +10,23 @@ struct ActiveJobsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 没有任务时这一行是空的、下面是空表格（与 Compressor 一样，见 `showsQueueControls`）。
             ColumnHeader {
-                HStack {
-                    Button(workbench.isQueuePaused ? "继续" : "暂停", systemImage: workbench.isQueuePaused ? "play.fill" : "pause.fill") {
-                        Task { await workbench.toggleQueuePaused() }
+                if workbench.showsQueueControls {
+                    HStack {
+                        Button(workbench.isQueuePaused ? "继续" : "暂停", systemImage: workbench.isQueuePaused ? "play.fill" : "pause.fill") {
+                            Task { await workbench.toggleQueuePaused() }
+                        }
+                        .help("暂停只停止派发新任务，正在执行的任务会做完（D-51）")
+                        Spacer()
+                        if let progress = workbench.batchProgress { BatchProgressLabel(progress: progress) }
                     }
-                    .help("暂停只停止派发新任务，正在执行的任务会做完（D-51）")
-                    Spacer()
-                    if let progress = workbench.batchProgress { BatchProgressLabel(progress: progress) }
+                    .buttonStyle(.borderless)
+                    .padding(.horizontal, 10)
                 }
-                .buttonStyle(.borderless)
-                .padding(.horizontal, 10)
             }
-            if workbench.activeJobs.isEmpty {
-                ContentUnavailableView("没有活跃的任务", systemImage: "checkmark.circle")
-            } else {
-                table.scrollContentBackground(.hidden)
-            }
+            table.scrollContentBackground(.hidden)
         }
-        .background(Palette.list)
     }
 
     private var table: some View {
@@ -139,17 +137,17 @@ struct CompletedJobsView: View {
                 .buttonStyle(.borderless)
                 .padding(.horizontal, 10)
             }
+            // 没有记录时与「活跃」一样显示空表格（带列标题）。
             if workbench.finishedJobs.isEmpty {
-                ContentUnavailableView("还没有导出记录", systemImage: "tray")
+                table.scrollContentBackground(.hidden)
             } else {
                 VerticalSplit(autosaveName: "HistoryAndDetail", topFraction: 0.65) {
-                    table.scrollContentBackground(.hidden).background(Palette.list)
+                    table.scrollContentBackground(.hidden).filling(Palette.list)
                 } bottom: {
-                    JobDetail(record: selectedRecord).scrollContentBackground(.hidden).background(Palette.panel)
+                    JobDetail(record: selectedRecord).scrollContentBackground(.hidden).filling(Palette.panel)
                 }
             }
         }
-        .background(Palette.list)
     }
 
     private var table: some View {

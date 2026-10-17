@@ -43,6 +43,10 @@ extension Workbench {
     /// 正在执行和排队中的任务。
     public var activeJobs: [JobRecord] { jobs.filter { !$0.status.isTerminal } }
 
+    /// 「活跃」界面是否显示队列的暂停 / 继续和总进度：只在有活跃任务时显示。GUI 启动时队列本来就是暂停的
+    /// （先排队、再开始批处理），没有任务时显示「继续」只会让人困惑（与 Compressor 一样留空）。
+    public var showsQueueControls: Bool { activeCount > 0 }
+
     /// 顶栏「活跃 (N)」里的 N。
     public var activeCount: Int { jobs.count { !$0.status.isTerminal } }
 
