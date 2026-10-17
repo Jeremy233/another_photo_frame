@@ -25,13 +25,6 @@ public enum PreviewPage: Hashable, Sendable {
     case strip
 }
 
-public enum PreviewZoom: Hashable, Sendable {
-    case fit
-    /// 100%：一个成品像素对应一个屏幕像素。
-    case actualSize
-    case scale(Double)
-}
-
 public enum PreviewRange: String, CaseIterable, Identifiable, Sendable {
     case sdr, hdr
     public var id: Self { self }
@@ -48,6 +41,8 @@ public final class PreviewModel {
         didSet { if page != oldValue { render() } }
     }
     public var zoom: PreviewZoom = .fit
+    /// 「适合窗口」时的实际比例，由预览视图按当前画面和区域大小报告；放大缩小从这里起步，菜单标题也显示它。
+    public var fitScale: Double = 1
     /// 原图 / 成品对比。
     public var showsOriginal = false
     /// 成品按 SDR / HDR 预览（D-106）：HDR 时导出写 HDR 的页来自 gain map JPEG，以 EDR 显示。
