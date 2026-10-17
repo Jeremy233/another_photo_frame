@@ -527,7 +527,10 @@ My Landscape.photoframe   # ZIP container, versioned
       "sizePx": [48, 48],
       "opacity": 1.0,
       "zIndex": 1,
-      "slotId": "camera.badge"
+      "slotId": "camera.badge",
+      "cameraMatch": [
+        {"make": "Nikon", "slotId": "camera.nikon"}
+      ]
     },
     {
       "layerId": "exif",
@@ -543,7 +546,10 @@ My Landscape.photoframe   # ZIP container, versioned
       "zIndex": 0,
       "text": {
         "template": "{camera} · {focalLength} · {aperture}",
+        "fontWeight": "regular",
+        "italic": false,
         "fontSizePx": 18,
+        "letterSpacingPx": 0,
         "lineHeight": 1.2,
         "color": {"colorSpace": "sRGB", "hex": "#3A3A38"},
         "paddingPx": 0
@@ -556,6 +562,13 @@ My Landscape.photoframe   # ZIP container, versioned
       "kind": "image",
       "required": false,
       "label": "相机线稿",
+      "acceptedFormats": ["png", "svg"]
+    },
+    {
+      "slotId": "camera.nikon",
+      "kind": "image",
+      "required": false,
+      "label": "Nikon 相机线稿",
       "acceptedFormats": ["png", "svg"]
     }
   ],
@@ -575,6 +588,8 @@ My Landscape.photoframe   # ZIP container, versioned
 - `canvas.mode`：`fit`（默认）或 `crop`（D-21）。`crop` 时可写 `"crop": {"aspectRatio": [4, 5], "anchor": [0.5, 0.5]}`：`aspectRatio` 省略时取内框比例，`anchor` 取 0…1 表示裁切框位置。
 - `panorama.verticalMarginPx`：所有切片共用的上下边距（D-10）。
 - `layers[]`：图层的全部几何都在这里（§7.1、D-24）。指定页面时写 `"visibleOn": "selectedSlides", "slides": [0, 2]`（D-27）；以画布为参照时写 `"reference": "canvas"`，不写 `side`。
+- `cameraMatch`：素材图层按 EXIF 相机品牌 / 型号自动选槽的规则（D-111、D-116–D-118），每条写 `make`、`model`（至少一个）和 `slotId`；都不匹配时用图层自己的 `slotId`。
+- 文字样式 `fontWeight`（`ultraLight`…`black`，默认 `regular`）、`italic`（默认 `false`）、`letterSpacingPx`（默认 0）由 D-111 加入，旧预设缺字段时取默认值（D-119）。
 - `assetSlots[]`：只描述需要什么素材（`slotId`、`kind`、`required`、`label`、`acceptedFormats`），不含位置、尺寸和本地路径（D-24）。
 - 颜色只接受 `#RRGGBB`（D-35）；`output.format` 只有 `jpeg`、`png`（D-36）；`output.colorSpace` 是输出文件的色彩空间，与内部工作空间（D-03）无关。
 - 所有对象都可以带 `x-` 开头的自定义字段，程序原样保留（D-15）。
@@ -1076,7 +1091,7 @@ photoframe mcp serve
 - [x] **D-71** CLI 退出码：0 成功、1 内部错误、2 用法错误、3 找不到输入、4 输入无效、5 输出不可用、6 有导出任务失败、130 被中断（Ctrl-C）。以后保持稳定。备选：BSD sysexits（64–78）。【已确定 2026-10-16】
 - [x] **D-72** 一次 `export` 多张图、多个预设时先校验全部任务，任何一个有问题就什么都不写；校验通过后个别任务失败，其余照常完成，退出码 6。备选：有一个失败就取消剩下的任务。【已确定 2026-10-16】
 - [x] **D-73** 加了 `--overwrite` 又有两个任务指向同一个作品目录时，校验阶段报 `request.duplicate_output`，什么都不写。备选：第二个任务自动加版本后缀。【已确定 2026-10-16】
-- [x] **D-74** CLI 提供 `preview` 命令（D-08），把预览写成 sRGB PNG，文件名如 `Badlands_Panorama_preview_00_Cover.png`；目标已存在时拒绝，`--overwrite` 时替换。备选：CLI 不提供预览。【已确定 2026-10-16】
+- [x] **D-74** CLI 提供 `preview` 命令（D-08），把预览写成 sRGB PNG，文件名如 `Badlands_Panorama_preview_00_Cover.png`；目标已存在时拒绝，`--overwrite` 时替换。备选：CLI 不提供预览。【已确定 2026-10-16】（HDR 页的预览格式由 D-120 修改）
 - [x] **D-75** D-04 的源图色彩空间覆盖现在就实现：任务记录加字段，CLI 的 `export` / `preview` 加 `--assume-profile srgb|display-p3|adobe-rgb`，只对缺 ICC 的源图生效。备选：以后再做，先只警告并按 sRGB 处理。【已确定 2026-10-16】
 - [x] **D-76** `--preset` 和库里查找预设用同一套规则：以 `.photoframe` 结尾或含 `/` 的按文件；是 UUID 的按 ID；其余按名称，不区分大小写，空格、下划线、连字符等价（`instagram-panorama` = `Instagram Panorama`）；匹配到多个时报错。只保留一份实现（预设库的 `find`）。备选：只认 ID 和文件。【已确定 2026-10-16】
 - [x] **D-77** CLI `--json` 输出里没有值的字段直接省略，不写 `null`。备选：始终写出字段，值为 `null`。【已确定 2026-10-16】
@@ -1102,7 +1117,7 @@ photoframe mcp serve
 
 ### P6 — MCP 与 GUI（2026-10-16 审阅）
 
-> 实现本地 MCP 服务器（D-97–D-104）、整理 Compressor 参考截图（D-105）和实现 GUI（D-106–D-115）时确定的事项。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
+> 实现本地 MCP 服务器（D-97–D-104）、整理 Compressor 参考截图（D-105）和实现 GUI（D-106–D-122）时确定的事项。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
 
 - [x] **D-97** MCP 使用官方 `modelcontextprotocol/swift-sdk`，固定到确切版本 0.12.1（协议 2025-11-25，向下兼容到 2024-11-05；许可证 Apache-2.0 / MIT，符合 D-20）。升级 SDK 时单独评估。备选：自己实现协议的最小子集。【已确定 2026-10-16】
 - [x] **D-98** MCP 服务器是 CLI 的子命令 `photoframe mcp serve`，不另做 `photoframe-mcp` 程序；stdout 只写协议消息，其他输出都转到 stderr。备选：单独的可执行文件。【已确定 2026-10-16】
@@ -1113,16 +1128,23 @@ photoframe mcp serve
 - [x] **D-103** MCP 能修改预设（`update_preset`），但不提供导入预设、导入素材和删除操作，因为它们需要读取任意文件或会删除内容；这些操作用 GUI 或 CLI 完成。备选：在读写白名单约束下开放，删除需显式确认。【已确定 2026-10-16】
 - [x] **D-104** MCP 工具结果只带 `ok` 和 `error`，不带 CLI `--json` 的 `formatVersion` / `command` / `exitCode` 外壳；`validate_export` 返回 `ok: true` 并用 `valid` 表示是否通过。备选：与 CLI 完全相同的外壳。【已确定 2026-10-16】
 - [x] **D-105** GUI 界面固定深色，不跟随系统外观，也不做浅色模式，与 Compressor、Final Cut Pro 一致；看照片时界面亮度不随系统变化。配色参照 Compressor 截图取样（背景约 `#161616` / `#1e1e1e`，面板约 `#2d2d2d`）。备选：跟随系统外观，浅色模式用系统语义色。【已确定 2026-10-16】
-- [x] **D-106** 成品的 HDR 预览：在服务的预览参数里加颜色模式（SDR / HDR），GUI、CLI、MCP 共用；MCP 分支合并后马上补。在此之前，GUI 切到 HDR 时成品仍显示 SDR 并附说明。备选：V1 成品预览只给 SDR。【已确定 2026-10-16】
+- [x] **D-106** 成品的 HDR 预览：在服务的预览参数里加颜色模式（SDR / HDR），GUI、CLI、MCP 共用；MCP 分支合并后马上补。在此之前，GUI 切到 HDR 时成品仍显示 SDR 并附说明。备选：V1 成品预览只给 SDR。【已确定 2026-10-16】【已实现】
 - [x] **D-107** 左栏「位置」列表（常用导出目录）只存在 GUI 自己的偏好设置里，不放进共用本地库；CLI 用 `--output`，MCP 用写入白名单。备选：放进共用库，CLI 加 `--location <名称>`。【已确定 2026-10-16】
 - [x] **D-108** 点「开始批处理」后，已提交的源图和任务从「当前」移走，并自动切到「活跃」，与 Compressor 一致。备选：留在「当前」，方便改参数再导一次。【已确定 2026-10-16】
 - [x] **D-109** 底栏的「默认导出位置」只对之后新建的任务生效，不改已经在列表里的任务。备选：没单独改过位置的已有任务也跟着变。【已确定 2026-10-16】
 - [x] **D-110** App Sandbox 暂不开启，与签名方式（D-21）一起决定：只在 GitHub 发布可以不开，上 Mac App Store 必须开（届时导出位置用 security-scoped bookmark 保存权限）。备选：现在就按开沙盒实现。【已确定 2026-10-16】
-- [x] **D-111** V1 实现「相机图标按 EXIF 自动匹配」和「EXIF 文字字体样式」：预设加字段，渲染支持，界面接上。备选：放到 V2，V1 手动绑定相机图标、EXIF 文字只用默认字体。【已确定 2026-10-16】
+- [x] **D-111** V1 实现「相机图标按 EXIF 自动匹配」和「EXIF 文字字体样式」：预设加字段，渲染支持，界面接上。备选：放到 V2，V1 手动绑定相机图标、EXIF 文字只用默认字体。【已确定 2026-10-16】【已实现】
 - [x] **D-112** 强调色（选中、按钮）跟随系统设置，不用 Compressor 的紫色，也避免复制 Compressor 的视觉品牌。备选：固定一个强调色。【已确定 2026-10-16】
 - [x] **D-113** 主窗口最小宽度 1120 pt（更窄时三栏最小宽度之和放不下，会导致崩溃）。备选：更窄的窗口自动收起侧栏。【已确定 2026-10-16】
-- [x] **D-114** V1 提供 ⌘, 设置窗口，放并发数和内存预算（D-53）、「提交后是否切到活跃」等少量选项。备选：先只用默认值。【已确定 2026-10-16】
+- [x] **D-114** V1 提供 ⌘, 设置窗口，放并发数和内存预算（D-53）、「提交后是否切到活跃」等少量选项。备选：先只用默认值。【已确定 2026-10-16】【已实现】
 - [x] **D-115** GUI 工程结构：`Apps/PhotoFrameMac/project.yml` 用 XcodeGen 生成 `.xcodeproj`，生成结果一起提交（CI 和其他人不用另装 XcodeGen）；工程只负责打包 `.app`（Info.plist、entitlements、签名）；界面和状态代码放在本地包 `PhotoFrameMacKit`（`PhotoFrameMacModel` 不依赖 SwiftUI，可直接 `swift test`；`PhotoFrameMacUI` 是界面）。没有 Team ID 时不带 App Group entitlement，本地库退回同一个 Group Containers 路径（D-78）。备选：手写 Xcode 工程，界面代码直接放在 App target 里。【已确定 2026-10-16】
+- [x] **D-116** 相机规则的匹配：品牌按 EXIF Make「包含」该文字、不分大小写（`Nikon` 匹配 `NIKON CORPORATION`）；型号必须相同，但 EXIF Model 开头的品牌名可省略（`EOS R5` 匹配 `Canon EOS R5`）。带型号的规则优先于只写品牌的规则，同组内按数组顺序。备选：严格按数组顺序，第一条匹配即用。【已确定 2026-10-16】
+- [x] **D-117** 相机规则的回退（与 D-28 一致）：匹配到的槽没有可用素材（未绑定、素材已删、格式不符）时警告并尝试下一个候选，最后回退到图层自己的 `slotId`；只有图层自己的 `slotId` 保留「必需」含义，匹配到的槽的 `required` 不阻止导出；有规则但没有默认 `slotId` 的图层，都不匹配时跳过并警告；源图没有品牌型号时用默认槽并警告 `slot.camera_unknown`。备选：匹配到但没有素材就报错。【已确定 2026-10-16】
+- [x] **D-118** 每条相机规则指向一个素材槽，不直接指向素材，预设仍可分享（D-24），接收者自己绑定；GUI 用当前预览照片的品牌型号自动填写规则。备选：规则直接指向本地素材。【已确定 2026-10-16】
+- [x] **D-119** D-111 新增的预设字段不提升 `schemaVersion`（仍为 1，同 D-63），旧预设缺字段时取默认值；代价是更早的程序会按 D-26 拒绝使用新字段的预设，V1 发布前可以接受。备选：升到 2。【已确定 2026-10-16】
+- [x] **D-120** HDR 预览页（D-106）用增益图 JPEG（与 HDR 导出同一编码，质量 90），SDR 底图与 SDR 预览相同；其他页仍是 sRGB PNG。这修改了 D-74「预览一律 PNG」，只对 HDR 页例外；MCP 返回 `image/jpeg`。预设输出 SDR 时给出警告 `preview.output_sdr`。备选：HDR 页也只给 SDR PNG。【已确定 2026-10-16】
+- [x] **D-121** EXIF 文字的字体样式只做字重、斜体、字间距：字重取同一字体家族里最接近的；没有斜体时画正体并警告。不做大小写转换；对齐由锚点决定（D-65）。备选：再加全大写等大小写转换。【已确定 2026-10-16】
+- [x] **D-122** ⌘, 设置窗口（D-114）：「通用」里是「开始批处理后切到活跃」（默认开）；「高级」里是并发数（自动或 1–8）、内存预算（自动或 2 GB 起）和恢复默认，修改立即保存并作用到正在运行的队列。这些设置只对 GUI 生效，存在 GUI 自己的偏好设置里；CLI 和 MCP 仍用 D-53 的自动默认值。备选：存进共用本地库，三者共用。【已确定 2026-10-16】
 
 ---
 
