@@ -48,6 +48,16 @@ extension Workbench {
         }
         if let first = sources.first?.jobs.first { selection = [.job(first.id)] }
         if let tab = env["PHOTOFRAME_UI_TAB"], let value = InspectorTab(rawValue: tab) { inspectorTab = value }
+        // 预览：`PHOTOFRAME_UI_ZOOM=fit|<比例>`、`PHOTOFRAME_UI_PAGE=strip|<页码>`、`PHOTOFRAME_UI_ORIGINAL=1`、`PHOTOFRAME_UI_RANGE=hdr`；
+        // `PHOTOFRAME_UI_SELECT=<第几个任务>` 选别的任务（例如全景）。
+        if let n = env["PHOTOFRAME_UI_SELECT"].flatMap(Int.init), case let jobs = sources.flatMap(\.jobs), jobs.indices.contains(n) { selection = [.job(jobs[n].id)] }
+        if let zoom = env["PHOTOFRAME_UI_ZOOM"] { preview.zoom = Double(zoom).map(PreviewZoom.scale) ?? .fit }
+        if env["PHOTOFRAME_UI_ORIGINAL"] != nil { preview.showsOriginal = true }
+        if env["PHOTOFRAME_UI_RANGE"] == "hdr" { preview.range = .hdr }
+        if let page = env["PHOTOFRAME_UI_PAGE"] {
+            await settle()
+            preview.page = page == "strip" ? .strip : .page(Int(page) ?? 0)
+        }
         if inspectorTab == .layers {
             addLayer(.signature)
             addLayer(.exifText)

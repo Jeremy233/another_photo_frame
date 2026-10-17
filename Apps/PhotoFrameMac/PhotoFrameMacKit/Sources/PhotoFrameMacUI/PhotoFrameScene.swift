@@ -43,7 +43,7 @@ public struct PhotoFrameScene: Scene {
     }
 }
 
-/// 菜单与快捷键：添加图片 ⌘O、开始批处理 ⌘↩、三个界面 ⌘1…3。左栏 ⌃⌘S、Inspector ⌥⌘I。
+/// 菜单与快捷键：添加图片 ⌘O、开始批处理 ⌘↩、三个界面 ⌘1…3。左栏 ⌃⌘S、Inspector ⌥⌘I；预览缩放 ⌘+ / ⌘- / ⌘0（100%）/ ⌘9（适合窗口）。
 struct WorkbenchCommands: Commands {
     let workbench: Workbench
 
@@ -53,6 +53,17 @@ struct WorkbenchCommands: Commands {
                 .keyboardShortcut("o")
             Button("开始批处理") { Task { await workbench.startBatch() } }
                 .keyboardShortcut(.return)
+        }
+        CommandGroup(after: .toolbar) {
+            Button("放大预览") { workbench.preview.zoomIn() }
+                .keyboardShortcut("+", modifiers: .command)
+            Button("缩小预览") { workbench.preview.zoomOut() }
+                .keyboardShortcut("-", modifiers: .command)
+            Button("实际大小（100%）") { workbench.preview.zoom = .actualSize }
+                .keyboardShortcut("0", modifiers: .command)
+            Button("适合窗口") { workbench.preview.zoom = .fit }
+                .keyboardShortcut("9", modifiers: .command)
+            Divider()
         }
         CommandGroup(before: .sidebar) {
             Button(workbench.showsSidebar ? "隐藏左栏" : "显示左栏") { workbench.showsSidebar.toggle() }

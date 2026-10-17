@@ -43,12 +43,11 @@ struct PreviewPane: View {
     @ViewBuilder private var canvas: some View {
         if let subject = preview.subject {
             if preview.showsOriginal || subject.preset == nil {
-                OriginalImage(url: subject.sourceURL, zoom: preview.zoom, range: preview.range)
+                OriginalImage(url: subject.sourceURL, preview: preview)
             } else if preview.page == .strip {
-                PanoramaStrip(pages: preview.strip, showsSeams: preview.showsSeams)
+                PanoramaStrip(pages: preview.strip, showsSeams: preview.showsSeams, preview: preview)
             } else if let page = preview.pageImage {
-                ZoomableImage(image: page.displayImage().map { NSImage(cgImage: $0, size: .zero) }, pixelSize: page.pixelSize,
-                              zoom: preview.zoom, hdr: page.dynamicRange == .hdr)
+                PageImage(page: page, preview: preview)
             } else if let error = preview.error {
                 ContentUnavailableView("无法预览", systemImage: "exclamationmark.triangle", description: Text(error.message))
             }
@@ -78,7 +77,7 @@ private struct PreviewTitleBar: View {
                 }
                 .toggleStyle(.button)
                 .help("原图 / 成品对比")
-                ZoomMenu(zoom: $preview.zoom)
+                ZoomMenu(preview: preview)
                 Menu("显示") {
                     Picker("对比", selection: $preview.showsOriginal) {
                         Text("成品").tag(false)
@@ -162,61 +161,75 @@ private struct PreviewPageBar: View {
     }
 }
 
+/// 缩放菜单：标题显示当前比例。快捷键在菜单栏「显示」菜单里（⌘+ / ⌘- / ⌘0 / ⌘9）。
 private struct ZoomMenu: View {
-    @Binding var zoom: PreviewZoom
+    let preview: PreviewModel
 
     var body: some View {
-        Menu(title) {
-            Button("适合窗口") { zoom = .fit }
-            Button("100%") { zoom = .actualSize }
+        Menu(preview.zoomTitle) {
+            Button("适合窗口") { preview.zoom = .fit }
+            Button("实际大小（100%）") { preview.zoom = .actualSize }
             Divider()
-            ForEach([0.25, 0.5, 2.0], id: \.self) { scale in
-                Button("\(Int(scale * 100))%") { zoom = .scale(scale) }
+            Button("放大") { preview.zoomIn() }
+            Button("缩小") { preview.zoomOut() }
+            Divider()
+            ForEach(PreviewZoom.steps, id: \.self) { scale in
+                Button("\(Int((scale * 100).rounded()))%") { preview.zoom = .scale(scale) }
             }
         }
         .fixedSize()
+        .help("缩放：适合窗口、100%、放大缩小，也可以在触控板上捏合")
     }
+}
 
-    private var title: String {
-        switch zoom {
-        case .fit: "适合窗口"
-        case .actualSize: "100%"
-        case .scale(let s): "\(Int(s * 100))%"
+/// 可缩放的画面：「适合窗口」时整个内容放进预览区，其余比例按屏幕像素显示，超出时可以滚动查看；支持触控板捏合。
+/// `contentPixels` 是内容在 100% 时的像素尺寸；`content` 拿到显示尺寸（pt）后画出内容。
+private struct ZoomCanvas<Content: View>: View {
+    let preview: PreviewModel
+    let contentPixels: CGSize
+    @ViewBuilder var content: (CGSize) -> Content
+    @Environment(\.displayScale) private var displayScale
+    @State private var pinchBase: Double?
+
+    var body: some View {
+        GeometryReader { geo in
+            let fit = PreviewZoom.fitScale(contentPixels: contentPixels, in: geo.size, displayScale: displayScale)
+            let scale = preview.zoom == .fit ? fit : preview.effectiveScale
+            let size = CGSize(width: contentPixels.width * scale / displayScale, height: contentPixels.height * scale / displayScale)
+            ScrollView([.horizontal, .vertical]) {
+                content(size)
+                    .frame(width: size.width, height: size.height)
+                    .padding(16)
+                    .frame(minWidth: geo.size.width, minHeight: geo.size.height)
+            }
+            .scrollIndicators(preview.zoom == .fit ? .hidden : .automatic)
+            .onChange(of: fit, initial: true) { preview.fitScale = fit }
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let base = pinchBase ?? scale
+                        pinchBase = base
+                        preview.magnify(from: base, by: value.magnification)
+                    }
+                    .onEnded { _ in pinchBase = nil })
         }
     }
 }
 
-/// 按缩放显示一张位图。100% 时一个图像像素对应一个屏幕像素。
-private struct ZoomableImage: View {
-    let image: NSImage?
-    let pixelSize: PixelSize
-    let zoom: PreviewZoom
-    /// gain map 解码出的 HDR 页：允许 EDR 显示（D-106）。
-    let hdr: Bool
-    @Environment(\.displayScale) private var displayScale
+/// 一页成品。放大到 100% 以上时用最近邻插值，看得清每个像素。
+private struct PageImage: View {
+    let page: PreviewImage
+    let preview: PreviewModel
 
     var body: some View {
-        if let image {
-            switch zoom {
-            case .fit:
-                Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
-                    .allowedDynamicRange(hdr ? .high : .standard).padding()
-            case .actualSize:
-                scrolled(image, scale: 1)
-            case .scale(let s):
-                scrolled(image, scale: s)
+        let image = page.displayImage().map { NSImage(cgImage: $0, size: .zero) }
+        ZoomCanvas(preview: preview, contentPixels: CGSize(width: page.pixelSize.width, height: page.pixelSize.height)) { _ in
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(preview.effectiveScale >= 1 ? .none : .high)
+                    .allowedDynamicRange(page.dynamicRange == .hdr ? .high : .standard)
             }
-        }
-    }
-
-    private func scrolled(_ image: NSImage, scale: Double) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(scale >= 1 ? .none : .high)
-                .allowedDynamicRange(hdr ? .high : .standard)
-                .frame(width: Double(pixelSize.width) * scale / displayScale, height: Double(pixelSize.height) * scale / displayScale)
-                .padding()
         }
     }
 }
@@ -224,18 +237,18 @@ private struct ZoomableImage: View {
 /// 原图（对比用）。按需缩小解码；HDR 模式下允许 EDR 显示。
 private struct OriginalImage: View {
     let url: URL
-    let zoom: PreviewZoom
-    let range: PreviewRange
-    @State private var image: NSImage?
+    let preview: PreviewModel
+    @State private var image: CGImage?
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .allowedDynamicRange(range == .hdr ? .high : .standard)
-                    .padding()
+                ZoomCanvas(preview: preview, contentPixels: CGSize(width: image.width, height: image.height)) { _ in
+                    Image(nsImage: NSImage(cgImage: image, size: .zero))
+                        .resizable()
+                        .interpolation(preview.effectiveScale >= 1 ? .none : .high)
+                        .allowedDynamicRange(preview.range == .hdr ? .high : .standard)
+                }
             } else {
                 ProgressView()
             }
@@ -243,7 +256,7 @@ private struct OriginalImage: View {
         .task(id: url) { image = await Self.load(url) }
     }
 
-    private static func load(_ url: URL) async -> NSImage? {
+    private static func load(_ url: URL) async -> CGImage? {
         await Task.detached(priority: .userInitiated) {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
             let options: [CFString: Any] = [
@@ -253,34 +266,38 @@ private struct OriginalImage: View {
                 // gain map 源图也按 HDR 解码；SDR 模式下 `allowedDynamicRange(.standard)` 照常压回 SDR。
                 kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
             ]
-            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-            return NSImage(cgImage: cg, size: .zero)
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         }.value
     }
 }
 
-/// 全景长卷：封面在前，切片并排，标出接缝（UI 设计文档第 8.2、9 节）。
+/// 全景长卷：封面在前，切片并排，标出接缝（UI 设计文档第 8.2、9 节）。整条长卷一起缩放。
 private struct PanoramaStrip: View {
     let pages: [PreviewImage]
     let showsSeams: Bool
+    let preview: PreviewModel
+
+    /// 封面与切片之间的间隔（像素，按 100% 计）。
+    private static let gapPixels = 48.0
 
     var body: some View {
         let cover = pages.first { $0.role == .cover }
         let slides = pages.filter { $0.role != .cover }
-        GeometryReader { geo in
-            ScrollView(.horizontal) {
-                HStack(spacing: 24) {
-                    if let cover { page(cover, height: geo.size.height - 32) }
-                    HStack(spacing: 0) {
-                        ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
-                            page(slide, height: geo.size.height - 32)
-                                .overlay(alignment: .leading) {
-                                    if showsSeams, index > 0 { Rectangle().fill(.red).frame(width: 1) }
-                                }
-                        }
+        let height = Double(pages.map(\.pixelSize.height).max() ?? 1)
+        let widths = pages.map { Double($0.pixelSize.width) * height / Double(max($0.pixelSize.height, 1)) }
+        let total = widths.reduce(0, +) + (cover != nil && !slides.isEmpty ? Self.gapPixels : 0)
+        ZoomCanvas(preview: preview, contentPixels: CGSize(width: total, height: height)) { size in
+            let k = size.height / max(height, 1)
+            HStack(spacing: Self.gapPixels * k) {
+                if let cover { page(cover, height: size.height) }
+                HStack(spacing: 0) {
+                    ForEach(Array(slides.enumerated()), id: \.offset) { index, slide in
+                        page(slide, height: size.height)
+                            .overlay(alignment: .leading) {
+                                if showsSeams, index > 0 { Rectangle().fill(.red).frame(width: 1) }
+                            }
                     }
                 }
-                .padding(16)
             }
         }
     }
