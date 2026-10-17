@@ -40,20 +40,35 @@ struct InspectorView: View {
     @ViewBuilder private var content: some View {
         switch workbench.inspectorSubject {
         case .none:
-            Text("没有可检查的内容")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 200)
+            VStack(spacing: 10) {
+                Text("没有可检查的内容").font(.title3).foregroundStyle(.secondary)
+                Text(Self.startHint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):
+            NoticeBar(symbol: "hand.point.up.left", text: Self.startHint)
             if let item = workbench.sourceItem(id) { SourceInspector(workbench: workbench, item: item) }
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
-        case .jobs, .preset:
+        case .jobs, .preset(_):
+            if case .preset(let id) = workbench.inspectorSubject, workbench.presetEditor?.isReadOnly == true {
+                NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改。") {
+                    Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                }
+            }
             PresetInfoCard(workbench: workbench)
+            // 只读时不用 `.disabled`：系统的禁用样式在深色界面上暗到像是功能没做。这里只拦截操作、略微变淡，
+            // 内容仍看得清；view model 也会拒绝对只读内容的修改。
+            let editable = workbench.isInspectorEditable
             Group { tab }
-                .disabled(!workbench.isInspectorEditable)
+                .allowsHitTesting(editable)
+                .opacity(editable ? 1 : 0.75)
         }
     }
+
+    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上来创建任务。"
 
     @ViewBuilder private var tab: some View {
         switch workbench.inspectorTab {
@@ -79,6 +94,32 @@ struct ColumnHeader<Content: View>: View {
                 .overlay { content.controlSize(.small) }
             Hairline()
         }
+    }
+}
+
+/// Inspector 顶部的提示条：图标 + 一句话，可带一个操作按钮（例如内置预设的「复制后编辑」）。
+struct NoticeBar<Action: View>: View {
+    var symbol: String
+    var text: String
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(text, systemImage: symbol)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            action
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.accentColor.opacity(0.18), in: .rect(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) }
+    }
+}
+
+extension NoticeBar where Action == EmptyView {
+    init(symbol: String, text: String) {
+        self.init(symbol: symbol, text: text) { EmptyView() }
     }
 }
 
@@ -293,9 +334,7 @@ private struct PresetInfoCard: View {
         switch workbench.inspectorSubject {
         case .preset(let id):
             if let editor = workbench.presetEditor {
-                if editor.isReadOnly {
-                    Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
-                } else {
+                if !editor.isReadOnly {
                     Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
                     Button("存储") { Task { await workbench.savePresetEdits() } }.disabled(!editor.isDirty)
                 }
