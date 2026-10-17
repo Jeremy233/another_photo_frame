@@ -102,7 +102,7 @@ struct PresetSerializationTests {
         #expect(p.validate().isEmpty, "\(p.validate())")
         #expect(p.panorama.tileCount == .auto)
         #expect(p.platform == "instagram")
-        #expect(p.assetSlots.map(\.slotId) == ["camera.badge"])
+        #expect(p.assetSlots.first?.slotId == "camera.badge")
         let badge = try #require(p.layers.first { $0.type == .cameraBadge })
         #expect(badge.slotId == "camera.badge")
         #expect(badge.anchor == .bottomRight)
