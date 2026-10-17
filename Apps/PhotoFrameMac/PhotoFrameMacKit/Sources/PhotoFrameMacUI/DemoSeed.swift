@@ -11,7 +11,7 @@ import PhotoFrameMacModel
 ///   只改这些任务的目录，不改位置列表。
 /// - `PHOTOFRAME_UI_TOGGLE=<n>`：把左栏和 Inspector 各收起、展开 n 次（检查栏宽是否保持不变），
 ///   间隔 `PHOTOFRAME_UI_TOGGLE_MS` 毫秒；`PHOTOFRAME_UI_COLLAPSE=1` 时最后停在收起状态；
-///   `PHOTOFRAME_UI_WINDOW_WIDTH=<pt>` 先把窗口改成这个宽度。
+///   `PHOTOFRAME_UI_TOGGLE_SIDE=leading|trailing` 只切换一侧；`PHOTOFRAME_UI_WINDOW_WIDTH=<pt>` 先把窗口改成这个宽度。
 extension Workbench {
     func loadDemoIfRequested() async {
         // 空值等于没设置（避免把空路径当成当前目录导出）。
@@ -20,14 +20,15 @@ extension Workbench {
             window.setContentSize(NSSize(width: width, height: window.contentLayoutRect.height))
         }
         if let count = env["PHOTOFRAME_UI_TOGGLE"].flatMap(Int.init) {
+            let side = env["PHOTOFRAME_UI_TOGGLE_SIDE"]
             for _ in 0..<count * 2 {
                 try? await Task.sleep(for: .milliseconds(Int(env["PHOTOFRAME_UI_TOGGLE_MS"] ?? "250") ?? 250))
-                showsSidebar.toggle()
-                showsInspector.toggle()
+                if side != "trailing" { showsSidebar.toggle() }
+                if side != "leading" { showsInspector.toggle() }
             }
             if env["PHOTOFRAME_UI_COLLAPSE"] != nil {
-                showsSidebar = false
-                showsInspector = false
+                if side != "trailing" { showsSidebar = false }
+                if side != "leading" { showsInspector = false }
             }
         }
         guard let dir = env["PHOTOFRAME_UI_DEMO"] else { return }
