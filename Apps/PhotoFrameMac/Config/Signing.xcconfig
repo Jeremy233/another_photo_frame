@@ -1,0 +1,12 @@
+// 签名设置。Alpha / Beta 不签名（D-20）：默认本地签名（Sign to Run Locally），不带 entitlements，任何人都能直接 build。
+// 不带 App Group entitlement 时，PhotoFrameStorage 的 LibraryLocation.groupContainerRoot() 退回按路径计算的
+// ~/Library/Group Containers/<App Group ID>/…，仍与 CLI / MCP 共用一个本地库（D-78）。
+//
+// 有开发者账号时，复制 Signing.local.xcconfig.example 为 Signing.local.xcconfig（不提交），
+// 填入 Team ID，即用 App/PhotoFrameMac.entitlements 里的 App Group 签名。
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+CODE_SIGN_ENTITLEMENTS =
+
+#include? "Signing.local.xcconfig"
