@@ -142,8 +142,8 @@ private struct BatchTitleRow: View {
     }
 }
 
-/// 任务行的列宽：预设 | 输出 | 位置 | 作品目录。
 /// 任务行的列：预设 | 输出 | 位置 | 作品目录 | 按钮。按比例分配宽度，各行对齐，中栏变窄时一起缩。
+/// 每一格都必须是一个视图：没有内容的 `if` 不算子视图，后面的列会错位，所以可能为空的格子用 ``JobCell`` 包一层。
 struct JobColumns: Layout {
     static let fractions: [CGFloat] = [0.32, 0.2, 0.2, 0.28]
     static let trailing: CGFloat = 44
@@ -155,7 +155,8 @@ struct JobColumns: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let flexible = max(bounds.width - Self.trailing - Self.spacing * CGFloat(subviews.count - 1), 0)
+        // 按固定的列数算宽度：某一格暂时没有内容时，其他列的位置也不变。
+        let flexible = max(bounds.width - Self.trailing - Self.spacing * CGFloat(Self.fractions.count), 0)
         var x = bounds.minX
         for (index, subview) in subviews.enumerated() {
             let width = index < Self.fractions.count ? flexible * Self.fractions[index] : Self.trailing
@@ -175,6 +176,17 @@ struct JobColumns: Layout {
         .font(.caption)
         .foregroundStyle(.secondary)
         .lineLimit(1)
+    }
+}
+
+/// 任务行的一格：内容为空时也占一列（见 ``JobColumns``）。
+private struct JobCell<Content: View>: View {
+    var alignment: Alignment = .leading
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack(alignment: alignment) { content }
+            .frame(maxWidth: .infinity, alignment: alignment)
     }
 }
 
@@ -260,8 +272,8 @@ private struct JobRow: View {
             Label(workbench.locationName(for: job.destination) ?? job.destination.lastPathComponent, systemImage: "folder")
                 .lineLimit(1)
                 .help(job.destination.displayPath)
-            directory
-            trailing.frame(maxWidth: .infinity, alignment: .trailing)
+            JobCell { directory }
+            JobCell(alignment: .trailing) { trailing }
         }
         .font(.callout)
     }
