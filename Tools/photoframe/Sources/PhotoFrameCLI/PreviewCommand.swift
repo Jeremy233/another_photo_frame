@@ -66,15 +66,40 @@ struct PreviewCommand: AsyncParsableCommand {
             throw ctx.fail(error)
         }
 
-        // 写文件：先检查全部目标，任何一个已存在（且没有 --overwrite）就什么都不写。
-        let directory = env.resolvePath(output)
-        let workName = OutputNaming().workName(source: source, preset: entry.preset)
+        let targets: [URL]
+        do {
+            targets = try PreviewFiles.write(preview, source: source, preset: entry.preset, to: env.resolvePath(output), overwrite: overwrite)
+        } catch {
+            throw ctx.fail(error)
+        }
+
+        if json {
+            ctx.emit(PreviewJSON(
+                source: source.fileURL.path,
+                preset: PresetRefJSON(presetId: entry.preset.presetId.uuidString, name: entry.preset.name),
+                files: zip(preview.pages, targets).map { PreviewFileJSON($0, path: $1.path) },
+                positions: preview.roles.map(\.carouselPosition),
+                warnings: (entry.warnings + preview.warnings).map(WarningJSON.init)))
+        } else {
+            ctx.warn(entry.warnings + preview.warnings)
+            for url in targets { env.stdout.line(url.path) }
+        }
+    }
+}
+
+/// 把预览页写成 PNG（CLI `preview` 与 MCP `preview_export` 共用，D-74）。
+enum PreviewFiles {
+    /// 先检查全部目标，任何一个已存在（且没有 `overwrite`）就什么都不写。返回写出的文件，与 `preview.pages` 一一对应。
+    static func write(
+        _ preview: ExportPreview, source: PhotoSource, preset: ExportPreset, to directory: URL, overwrite: Bool
+    ) throws(ApplicationError) -> [URL] {
+        let workName = OutputNaming().workName(source: source, preset: preset)
         let targets = preview.pages.map { page in
             directory.appending(path: "\(workName)_preview_" + OutputNaming.fileName(for: page.role, format: .png, outputCount: preview.roles.count))
         }
         if !overwrite, let existing = targets.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
-            throw ctx.fail(ApplicationError(code: "preview.file_exists", message: "预览文件已存在：\(existing.path)",
-                                            hint: "换一个输出目录，或加 --overwrite 替换"))
+            throw ApplicationError(code: "preview.file_exists", message: "预览文件已存在：\(existing.path)",
+                                   hint: "换一个输出目录，或加 --overwrite 替换")
         }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -82,23 +107,8 @@ struct PreviewCommand: AsyncParsableCommand {
                 try page.pngData.write(to: url, options: .atomic)
             }
         } catch {
-            throw ctx.fail(ApplicationError(code: "preview.write_failed", message: "无法写入预览文件：\(error.localizedDescription)"))
+            throw ApplicationError(code: "preview.write_failed", message: "无法写入预览文件：\(error.localizedDescription)")
         }
-
-        if json {
-            ctx.emit(PreviewJSON(
-                source: source.fileURL.path,
-                preset: PresetRefJSON(presetId: entry.preset.presetId.uuidString, name: entry.preset.name),
-                files: zip(preview.pages, targets).map { page, url in
-                    PreviewFileJSON(role: page.role.kindName, position: page.role.carouselPosition, path: url.path,
-                                    width: page.pixelSize.width, height: page.pixelSize.height,
-                                    exportWidth: page.exportPixelSize.width, exportHeight: page.exportPixelSize.height)
-                },
-                positions: preview.roles.map(\.carouselPosition),
-                warnings: (entry.warnings + preview.warnings).map(WarningJSON.init)))
-        } else {
-            ctx.warn(entry.warnings + preview.warnings)
-            for url in targets { env.stdout.line(url.path) }
-        }
+        return targets
     }
 }

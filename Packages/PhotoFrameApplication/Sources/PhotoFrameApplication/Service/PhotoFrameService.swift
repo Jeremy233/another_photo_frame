@@ -47,6 +47,9 @@ public protocol PhotoFrameService: Sendable {
     func deletePreset(_ reference: PresetReference) async throws(ApplicationError)
     /// 在「用户保存」和「导入」两组之间移动（D-81、D-94）；内容和时间不变。内置预设不能移动（`library.builtin_read_only`）。
     func movePreset(_ reference: PresetReference, to group: PresetOrigin) async throws(ApplicationError) -> CatalogPresetSummary
+    /// 逐项修改库里的预设（D-93，字段路径见 `PresetFieldPath`）。改完的预设必须通过与导入相同的检查，原子写入；
+    /// 内置预设只读（`library.builtin_read_only`，先复制）。
+    func updatePreset(_ reference: PresetReference, edits: [PresetEdit]) async throws(ApplicationError) -> CatalogPresetUpdate
 
     // 素材库与绑定（§8.2、D-14）
 
@@ -286,6 +289,18 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let id = try libraryId(reference)
         do {
             return summary(try library.presets.move(id, to: group))
+        } catch {
+            throw ApplicationError(error)
+        }
+    }
+
+    public func updatePreset(_ reference: PresetReference, edits: [PresetEdit]) async throws(ApplicationError) -> CatalogPresetUpdate {
+        let id = try libraryId(reference)
+        do {
+            let result = try library.presets.edit(id, edits)
+            return CatalogPresetUpdate(
+                preset: summary(result.entry), content: result.entry.preset,
+                warnings: result.warnings.map { ApplicationWarning(code: $0.code, message: "\($0.path)：\($0.message)") })
         } catch {
             throw ApplicationError(error)
         }
