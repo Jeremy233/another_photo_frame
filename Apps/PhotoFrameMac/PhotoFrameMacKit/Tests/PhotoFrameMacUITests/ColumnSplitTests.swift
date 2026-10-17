@@ -54,11 +54,20 @@ import Testing
             let after = widths(c)
             #expect(zip(before, after).allSatisfy { abs($0 - $1) <= 1 }, "\(before) → \(after)")
         }
-        // 只收起一侧也一样。
+        // 只收起左栏、只收起 Inspector 也一样；收起的一侧没有分隔线，另一侧的分隔线还在。
         for _ in 0..<20 {
             c.setVisibility(leading: false, trailing: true)
-            _ = widths(c)
+            #expect(widths(c)[0] == 0 && abs(widths(c)[2] - before[2]) <= 1)
+            #expect(c.splitView(c.splitView, shouldHideDividerAt: 0) && !c.splitView(c.splitView, shouldHideDividerAt: 1))
             c.setVisibility(leading: true, trailing: true)
+            #expect(zip(before, widths(c)).allSatisfy { abs($0 - $1) <= 1 })
+        }
+        for _ in 0..<20 {
+            c.setVisibility(leading: true, trailing: false)
+            #expect(widths(c)[2] == 0 && abs(widths(c)[0] - before[0]) <= 1)
+            #expect(!c.splitView(c.splitView, shouldHideDividerAt: 0) && c.splitView(c.splitView, shouldHideDividerAt: 1))
+            c.setVisibility(leading: true, trailing: true)
+            #expect(zip(before, widths(c)).allSatisfy { abs($0 - $1) <= 1 })
         }
         #expect(zip(before, widths(c)).allSatisfy { abs($0 - $1) <= 1 })
         #expect(window.frame.width == windowWidth)
