@@ -58,6 +58,10 @@ struct InspectorView: View {
                         .controlSize(.regular)
                 }
             }
+            if case .jobs(let ids) = workbench.inspectorSubject, ids.count == 1,
+               let issues = workbench.job(ids[0])?.issues, !issues.isEmpty {
+                InspectorSection("警告") { JobIssueList(issues: issues) }
+            }
             PresetInfoCard(workbench: workbench)
             // 只读时不用 `.disabled`：系统的禁用样式在深色界面上暗到像是功能没做。这里只拦截操作、略微变淡，
             // 内容仍看得清；view model 也会拒绝对只读内容的修改。
@@ -130,10 +134,13 @@ extension NoticeBar where Action == EmptyView {
 /// 行里用 `LabeledContent`（有标签）、`Toggle`（复选框放在值的一列）或 `InspectorRow`（只有值）。
 struct InspectorSection<Content: View>: View {
     var title: String?
+    /// 整组都是复选框（没有带标签的行）时为 true：复选框从分组框左边开始，不留空的标签列。
+    var checkboxes = false
     @ViewBuilder var content: Content
 
-    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ title: String? = nil, checkboxes: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.checkboxes = checkboxes
         self.content = content()
     }
 
@@ -144,7 +151,7 @@ struct InspectorSection<Content: View>: View {
             }
             VStack(alignment: .leading, spacing: 0) { content }
                 .labeledContentStyle(InspectorRowStyle())
-                .toggleStyle(InspectorToggleStyle())
+                .toggleStyle(InspectorToggleStyle(leading: checkboxes))
                 .padding(.horizontal, 12)
                 .padding(.vertical, InspectorMetrics.groupPadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -161,6 +168,8 @@ enum InspectorMetrics {
     static let columnSpacing: CGFloat = 8
     /// 分组框上下内边距（相同）。
     static let groupPadding: CGFloat = 8
+    /// 小号复选框的方框 + 间距，说明文字从这里开始，与复选框的文字对齐。
+    static let checkboxTextInset: CGFloat = 20
 }
 
 /// 一行：左列右对齐的标签 + 右列的值，按首行基线对齐，最小高度一致。
@@ -179,14 +188,40 @@ struct InspectorRowStyle: LabeledContentStyle {
     }
 }
 
-/// 复选框行：标签列留空，复选框和其他行的值左对齐（与 Compressor 一样）。
+/// 复选框行，和其他行一样高（28 pt，单行居中）。和带标签的行在同一组时，复选框与其他行的值左对齐；
+/// 整组都是复选框时（`leading`）从分组框左边开始。补充说明用 ``InspectorCheckboxNote`` 另起一行挂在下面。
 struct InspectorToggleStyle: ToggleStyle {
+    var leading = false
+
     func makeBody(configuration: Configuration) -> some View {
-        LabeledContent {
+        if leading {
+            // 分组里设了两列的 LabeledContent 样式，复选框内部也会用到它（标签跑到左边、方框到右边），这里换回系统样式。
             Toggle(configuration).toggleStyle(.checkbox)
-        } label: {
-            Text(verbatim: "")
+                .labeledContentStyle(.automatic)
+                .frame(maxWidth: .infinity, minHeight: InspectorMetrics.rowHeight, alignment: .leading)
+        } else {
+            LabeledContent {
+                Toggle(configuration).toggleStyle(.checkbox)
+            } label: {
+                Text(verbatim: "")
+            }
         }
+    }
+}
+
+/// 挂在复选框下面的说明（例如 GPS 的隐私提示）：与复选框的文字对齐，不改变复选框行本身的高度。
+struct InspectorCheckboxNote: View {
+    var text: String
+    var color: Color = .secondary
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, InspectorMetrics.checkboxTextInset)
+            .padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -522,7 +557,7 @@ private struct PanoramaTab: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
-        InspectorSection {
+        InspectorSection(checkboxes: true) {
             Toggle("全景分割", isOn: workbench.binding(\.panorama.enabled, default: false))
             Toggle("封面", isOn: workbench.binding(\.panorama.cover, default: true))
         }
@@ -537,7 +572,7 @@ private struct PanoramaTab: View {
                 }
                 IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
             }
-            InspectorSection("预览") {
+            InspectorSection("预览", checkboxes: true) {
                 Toggle("显示接缝位置", isOn: Bindable(workbench.preview).showsSeams)
             }
         }
@@ -586,13 +621,11 @@ private struct OutputTab: View {
                 LabeledContent("实际输出") { Text(result).foregroundStyle(.secondary) }
             }
         }
-        InspectorSection("元数据") {
+        InspectorSection("元数据", checkboxes: true) {
             Toggle("保留拍摄参数", isOn: workbench.binding(\.output.metadata.keepShootingInfo, default: false))
             Toggle("保留作者和版权", isOn: workbench.binding(\.output.metadata.keepAuthorAndCopyright, default: false))
-            Toggle(isOn: workbench.binding(\.output.metadata.keepGps, default: false)) {
-                Text("保留 GPS")
-                Text("照片里的位置会随图片一起公开").foregroundStyle(.orange)
-            }
+            Toggle("保留 GPS", isOn: workbench.binding(\.output.metadata.keepGps, default: false))
+            InspectorCheckboxNote(text: "照片里的位置会随图片一起公开", color: .orange)
         }
         if case .jobs = workbench.inspectorSubject {
             JobOutputSection(workbench: workbench)
@@ -611,13 +644,15 @@ private struct JobOutputSection: View {
 
     var body: some View {
         InspectorSection("位置与命名") {
+            // 菜单按最长的一项定宽：不在位置列表里的文件夹只显示名字，完整路径看悬停提示，长路径不会把右栏撑宽。
             InspectorPicker("输出位置", selection: destination) {
                 ForEach(workbench.locations.locations) { Text($0.name).tag(URL?.some($0.url)) }
                 if let url = workbench.jobField(\.destination).value, workbench.locationName(for: url) == nil {
-                    Text(url.displayPath).tag(URL?.some(url))
+                    Text(url.lastPathComponent).tag(URL?.some(url))
                 }
                 if workbench.jobField(\.destination) == .mixed { Text("多个值").tag(URL?.none) }
             }
+            .help(workbench.jobField(\.destination).value?.displayPath ?? "")
             InspectorRow { Button("选取其他文件夹…") { choosingFolder = true } }
             InspectorTextField("作品目录", text: template, prompt: "多个值")
             InspectorRow { Text("可用 {source}、{variant}、{preset}、{platform}").font(.caption).foregroundStyle(.secondary) }

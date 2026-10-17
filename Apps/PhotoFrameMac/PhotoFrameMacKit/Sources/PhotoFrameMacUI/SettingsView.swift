@@ -32,6 +32,11 @@ private struct GeneralSettings: View {
             }
             .help("已提交的任务总会离开「当前」；关掉后界面留在「当前」")
             .formLabel("开始批处理后：")
+            Toggle(isOn: $settings.reviewsWarningsBeforeStart) {
+                Text("有警告时先询问")
+            }
+            .help("有任务带警告时，开始前询问继续、查看还是取消")
+            .formLabel("开始批处理前：")
         }
         .formStyle(.columns)
         .padding(20)

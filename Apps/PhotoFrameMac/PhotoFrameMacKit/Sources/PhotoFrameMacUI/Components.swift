@@ -1,4 +1,5 @@
 import AppKit
+import PhotoFrameMacModel
 import SwiftUI
 
 /// 需要输入名称的操作（重命名、存储为预设）。
@@ -120,5 +121,39 @@ extension View {
     /// 撑满所在的栏并铺上中性灰：内容（例如空状态）比栏矮时，也不会露出被壁纸染色的窗口底色（D-105）。
     func filling(_ color: Color) -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).background(color)
+    }
+}
+
+/// 任务的错误和警告：每条完整显示，有修改建议的另起一行（任务行的弹出框和 Inspector 的「警告」共用）。
+struct JobIssueList: View {
+    let issues: [JobIssue]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(issues) { issue in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    JobIssueIcon(isError: issue.isError)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(issue.message)
+                        if let hint = issue.hint {
+                            Text("建议：\(hint)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+    }
+}
+
+struct JobIssueIcon: View {
+    let isError: Bool
+
+    var body: some View {
+        Image(systemName: isError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+            .foregroundStyle(isError ? Color.red : Color.yellow)
     }
 }

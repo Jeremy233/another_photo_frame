@@ -269,6 +269,31 @@ import Testing
         #expect(outputs.first?.path.hasSuffix("Instagram/Badlands_Standard/00_Cover.jpg") == true)
     }
 
+    @Test func warningsAreListedAndAskedBeforeStart() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let wb = f.workbench
+        // 3:2 的照片做全景：「照片不够宽」警告，带修改建议。
+        let jobId = try await f.addJob(preset: "Instagram Panorama")
+        let issues = try #require(wb.job(jobId)?.issues)
+        let issue = try #require(issues.first { $0.code == "panorama.not_wide_enough" }, "\(issues)")
+        #expect(!issue.isError && issue.hint != nil)
+
+        // 开始前先询问；「查看」不开始，选中带警告的任务。
+        await wb.startBatch()
+        let prompt = try #require(wb.warningPrompt)
+        #expect(prompt.jobIds == [jobId] && prompt.warningCount >= 1)
+        #expect(wb.job(jobId) != nil)
+        await wb.resolveWarnings(.review)
+        #expect(wb.warningPrompt == nil && wb.selection == [.job(jobId)] && wb.job(jobId) != nil)
+
+        // 「继续」+「不再询问」：开始批处理，以后不再询问。
+        await wb.startBatch()
+        await wb.resolveWarnings(.proceed, dontAskAgain: true)
+        #expect(wb.job(jobId) == nil && !wb.settings.reviewsWarningsBeforeStart)
+        await f.waitForRun()
+    }
+
     @Test func existingOutputAsksBeforeOverwrite() async throws {
         let f = try Fixture()
         await f.workbench.load()
