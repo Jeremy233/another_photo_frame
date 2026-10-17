@@ -46,7 +46,7 @@ enum MCPResources {
           `text`（`content` 或 `template`，`fontFamily`、`fontWeight`（`ultraLight` … `regular` … `black`）、`italic`、
           `fontSizePx`、`letterSpacingPx`、`lineHeight`、`color`、`paddingPx`）
         - `assetSlots[]`：`slotId`、`kind`、`required`、`label`、`acceptedFormats`（`png` / `svg`）；不含位置和本地路径
-        - `output`：`format`（`jpeg` / `png`）、`quality`（1…100）、`colorSpace`、`dynamicRange`（`sdr` / `hdr`）、
+        - `output`：`format`（`jpeg` / `png`）、`quality`（1…100）、`colorSpace`、`dynamicRange`（`auto` 跟随源图：源图是 HDR 且格式是 JPEG 时输出 HDR，否则 SDR，新建和内置预设的默认值；`sdr` / `hdr` 强制，D-125）、
           `metadata`（`keepShootingInfo`、`keepAuthorAndCopyright`、`keepGps`，默认都是 false）
         - 颜色只接受 `#RRGGBB`；任何对象都可以带 `x-` 开头的自定义字段。
 

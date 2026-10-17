@@ -67,11 +67,33 @@ struct PresetSerializationTests {
         #expect(p.canvas.background == .defaultBackground)
         #expect(p.canvas.minMarginPx == 60)
         #expect(p.panorama == .disabled)
-        #expect(p.output == OutputSettings())
+        #expect(p.output == OutputSettings(dynamicRange: .sdr), "旧预设缺字段时保持 SDR（D-125）")
         #expect(p.output.quality == 100)
         #expect(p.output.metadata.keepGps == false && p.output.metadata.keepShootingInfo == false)
         #expect(p.output.metadata.keepAuthorAndCopyright == false, "旧预设缺字段时默认 false")
         #expect(p.validate().errors.isEmpty)
+    }
+
+    @Test("动态范围 auto（D-125）：新建预设默认 auto；缺字段保持 SDR；按源图和格式决定实际输出")
+    func dynamicRangeAuto() throws {
+        #expect(OutputSettings().dynamicRange == .auto)
+        let head = #""schemaVersion": 1, "presetId": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "name": "n", "canvas": {"width": 1080, "height": 1440}"#
+        let missing = try PresetSchema.decode(jsonData("{\(head), \"output\": {\"format\": \"jpeg\"}}")).preset
+        #expect(missing.output.dynamicRange == .sdr)
+        let auto = try PresetSchema.decode(jsonData("{\(head), \"output\": {\"dynamicRange\": \"auto\"}}")).preset
+        #expect(auto.output.dynamicRange == .auto)
+        #expect(auto.validate().errors.isEmpty)
+        #expect(String(decoding: try PresetSchema.encode(auto), as: UTF8.self).contains(#""dynamicRange" : "auto""#))
+
+        func effective(_ range: OutputSettings.DynamicRange, _ format: OutputSettings.Format, hdrSource: Bool) -> OutputSettings.DynamicRange {
+            OutputSettings(format: format, dynamicRange: range).effectiveDynamicRange(sourceHasHDR: hdrSource)
+        }
+        #expect(effective(.auto, .jpeg, hdrSource: true) == .hdr)
+        #expect(effective(.auto, .jpeg, hdrSource: false) == .sdr)
+        #expect(effective(.auto, .png, hdrSource: true) == .sdr)
+        #expect(effective(.sdr, .jpeg, hdrSource: true) == .sdr)
+        #expect(effective(.hdr, .jpeg, hdrSource: true) == .hdr)
+        #expect(effective(.hdr, .jpeg, hdrSource: false) == .sdr)
     }
 
     @Test("tileCount 接受 \"auto\" 和整数")

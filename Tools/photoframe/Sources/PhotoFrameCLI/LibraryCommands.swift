@@ -4,7 +4,7 @@ import PhotoFrameApplication
 import PhotoFrameStorage
 
 // 预设库与素材库（§8、§11.3、D-08：GUI 里对预设和素材能做的事，命令行都能做）。
-// 库的根目录默认是 App Group 共享容器（D-78），GUI、CLI、MCP 看到同一个库；环境变量 PHOTOFRAME_LIBRARY 可以改。
+// 库的根目录按 LibraryLocation.defaultRoot() 的规则选（D-78、D-124），GUI、CLI、MCP 看到同一个库；环境变量 PHOTOFRAME_LIBRARY 可以改。
 
 extension CommandContext {
     /// 调用服务；ApplicationError 按退出码表结束命令。

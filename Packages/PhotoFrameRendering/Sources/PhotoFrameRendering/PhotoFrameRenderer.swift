@@ -85,12 +85,15 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
                                                warnings: &warnings)
 
         // 4. 照片：SDR 版本与（需要时）HDR 版本
-        let wantsHDR = output.dynamicRange == .hdr
+        // auto（D-125）跟随源图：不是 HDR、没有余量或输出 PNG 时安静地按 SDR；强制 HDR 时才警告。
+        let wantsHDR = output.dynamicRange == .hdr || (output.dynamicRange == .auto && output.format == .jpeg)
         let hasHeadroom = (source.headroom ?? 1) > SourceDecoder.sdrWhiteTolerance
         let writesHDR = wantsHDR && source.hdr != nil && hasHeadroom
-        if wantsHDR && source.hdr == nil {
+        if output.dynamicRange != .hdr {
+            // auto：不警告
+        } else if source.hdr == nil {
             warnings.append(RenderWarning(code: "output.hdr_source_not_hdr", message: "源图不是 HDR，按 SDR 输出"))
-        } else if wantsHDR && !writesHDR {
+        } else if !writesHDR {
             warnings.append(RenderWarning(code: "output.hdr_no_headroom",
                                           message: "源图标为 HDR，但画面没有超过 SDR 白的内容（headroom = 1），按 SDR 输出"))
         }

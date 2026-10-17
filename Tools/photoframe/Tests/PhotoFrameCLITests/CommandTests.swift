@@ -33,7 +33,7 @@ struct InfoCommandTests {
         #expect((pano["canvas"] as? [String: Int]) == ["width": 1080, "height": 1080])
         #expect(pano["panorama"] is [String: Any])
         #expect(pano["format"] as? String == "jpeg")
-        #expect(pano["dynamicRange"] as? String == "sdr")
+        #expect(pano["dynamicRange"] as? String == "auto", "内置预设跟随源图（D-125）")
         #expect(presets.first?["panorama"] == nil)
     }
 
@@ -140,11 +140,22 @@ struct InfoCommandTests {
         let image = CGImageSourceCreateWithURL(URL(filePath: path) as CFURL, nil)!
         #expect(CGImageSourceCopyAuxiliaryDataInfoAtIndex(image, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil)
 
-        let sdr = await runCLI(["preview", "Bright.tif", "--preset", "instagram-standard", "-o", "p", "--dynamic-range", "hdr"],
+        // 内置预设跟随源图（D-125）：HDR 源图同样写 gain map JPEG。
+        let auto = await runCLI(["preview", "Bright.tif", "--preset", "instagram-standard", "-o", "p", "--dynamic-range", "hdr",
+                                 "--overwrite"], in: box.root)
+        #expect(auto.status == 0, "\(auto.stderr.value)")
+        #expect(auto.stdout.lines.first?.hasSuffix("_preview_00_Cover.jpg") == true)
+        #expect(!auto.stderr.value.contains("preview.output_sdr"))
+
+        #expect(await runCLI(["preset", "set", "HDR", "output.dynamicRange", "sdr"], in: box.root).status == 0)
+        let sdr = await runCLI(["preview", "Bright.tif", "--preset", "HDR", "-o", "p", "--dynamic-range", "hdr"],
                                in: box.root)
-        #expect(sdr.status == 0)
+        #expect(sdr.status == 0, "\(sdr.stderr.value)")
         #expect(sdr.stdout.lines.first?.hasSuffix("_preview_00_Cover.png") == true)
         #expect(sdr.stderr.value.contains("preview.output_sdr"))
+
+        // 预览模式只有 sdr / hdr。
+        #expect(await runCLI(["preview", "Bright.tif", "--preset", "HDR", "-o", "p", "--dynamic-range", "auto"], in: box.root).status != 0)
     }
 }
 

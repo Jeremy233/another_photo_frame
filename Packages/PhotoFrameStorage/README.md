@@ -109,7 +109,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 ### 目录布局
 
 ```text
-<root>/                         默认 ~/Library/Group Containers/<App Group>/Library/Application Support/AnotherPhotoFrame/
+<root>/                         见下面「根目录」
 ├── Presets/<presetId>.json     每个用户预设一个文件
 ├── Assets/<assetId>/           每个素材一个目录：asset.json（元信息）+ content.png | content.svg
 ├── Assets/.staging/            导入中的素材；完成后整个目录一次改名到位
@@ -117,15 +117,18 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 └── .lock                       修改 bindings.json 时的跨进程文件锁
 ```
 
-**根目录（D-78）**：放在 App Group 共享容器里，沙盒 GUI 与不在沙盒里的 CLI / MCP 读写同一个库。
+**根目录（D-78，D-124 修改）**：GUI、CLI、MCP 都调用 `LibraryLocation.defaultRoot()`，按同一套规则落到同一个库：
 
-- App Group ID 是常量 `LibraryLocation.appGroupIdentifier`，目前是占位值 `group.org.anotherphotoframe`；
-  真实值依赖开发者 Team ID，签名时一并确定。
-- CLI / MCP：`LibraryLocation.defaultRoot()` 直接按路径计算
-  `~/Library/Group Containers/<App Group ID>/Library/Application Support/AnotherPhotoFrame/`，不调用容器 API；
-  `~` 取当前用户真实的主目录（`getpwuid`），不受沙盒容器影响。`LocalLibrary(platforms:)` 默认用它。
-- GUI：`LibraryLocation.groupContainerRoot()` 先用 `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`；
-  返回 nil（未签名、未配置 App Group）时退回上面按路径计算的结果。
+1. 环境变量 `PHOTOFRAME_LIBRARY`（非空，支持 `~`）；
+2. 进程带本 App Group 的 entitlement（已签名的 GUI，用 `SecTask` 检查）：`containerURL(forSecurityApplicationGroupIdentifier:)` 给出的容器里的
+   `Library/Application Support/AnotherPhotoFrame/`；
+3. `~/Library/Group Containers/<App Group ID>/` 已经存在（签名的 GUI 建过）：用它里面的同一个目录；
+4. 否则 `~/Library/Application Support/AnotherPhotoFrame/`。
+
+- 不能只看 `containerURL(forSecurityApplicationGroupIdentifier:)` 是否返回路径：它对未签名、没有 entitlement 的进程也会返回
+  `~/Library/Group Containers/<ID>/`，而 macOS 不允许这样的进程在 Group Containers 下建目录（Operation not permitted）。
+- `~` 取当前用户真实的主目录（`getpwuid`），不受沙盒容器影响。规则本身是 `resolveRoot(environment:entitledContainer:home:…)`，可以单独测试。
+- App Group ID 是常量 `LibraryLocation.appGroupIdentifier`，目前是占位值 `group.org.anotherphotoframe`；真实值依赖开发者 Team ID，签名时一并确定。
 - 根目录始终可以注入：`LocalLibrary(root:platforms:)`（测试、自定义位置）。
 
 - 预设文件：`{"storageFormat": 1, "origin": "user"|"imported", "createdAt", "modifiedAt", "preset": {manifest}}`。
@@ -145,8 +148,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 
 ```swift
 let catalog = try PlatformCatalogStore.builtIn()
-let library = LocalLibrary(platforms: catalog)            // CLI / MCP；测试：LocalLibrary(root: tmp, platforms: catalog)
-let guiLibrary = LocalLibrary(root: LibraryLocation.groupContainerRoot(), platforms: catalog)   // GUI
+let library = LocalLibrary(platforms: catalog)            // GUI / CLI / MCP；测试：LocalLibrary(root: tmp, platforms: catalog)
 
 // 预设（UI 设计文档第 7 节；CLI preset list/import/export）
 let listing = library.presets.list()                      // .builtIn / .user / .imported / .warnings
@@ -219,7 +221,7 @@ RenderJob.assets(from: resolution, fileURL: library.assets.contentURL(for:))    
 
 ### 本地库：已确定（2026-10-16）
 
-1. **D-78 根目录**：App Group 共享容器，规则见上面「根目录」。
+1. **D-78 根目录**（D-124 修改）：规则见上面「根目录」。
 2. **D-79 副本命名**：存储层默认「原名 Copy」「原名 Copy 2」…（英文）；GUI 可以传入本地化名称（`duplicate(_:name:)`）。
 3. **D-80 导入另存为副本**：留在「导入」组，名称按复制预设的规则加后缀（「原名 Copy」「原名 Copy 2」…）。
 4. **D-81 分组**：预设留在原来的组，除非用户自己拖动或移动。导入的预设编辑后仍在「导入」组；

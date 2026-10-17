@@ -240,6 +240,8 @@ struct MCPToolTests {
         #expect(hdr["files"]?.arrayValue?.first?.objectValue?["dynamicRange"]?.stringValue == "sdr")
         args["dynamicRange"] = .string("edr")
         #expect(try await h.call("preview_export", args).code == "mcp.invalid_arguments")
+        args["dynamicRange"] = .string("auto")
+        #expect(try await h.call("preview_export", args).code == "mcp.invalid_arguments")
     }
 
     @Test("create_export_job → get_job_status → 文件落盘；版本后缀与显式覆盖")

@@ -1,9 +1,10 @@
 import Foundation
+import Security
 
 /// 库目录的布局与文件操作。
 ///
 /// ```text
-/// <root>/                         默认 ~/Library/Group Containers/<App Group>/Library/Application Support/AnotherPhotoFrame/
+/// <root>/                         见 LibraryLocation（App Group 容器或 ~/Library/Application Support/AnotherPhotoFrame/）
 /// ├── Presets/<presetId>.json     每个用户预设一个文件（LibraryPresetFile）
 /// ├── Assets/<assetId>/           每个素材一个目录
 /// │   ├── asset.json              元信息（AssetInfo）
@@ -16,30 +17,52 @@ import Foundation
 /// 每个条目单独一个文件，任何一个损坏只影响它自己。所有写入都是「写临时文件 → fsync → rename」，
 /// 进程中途崩溃只会留下以 `.` 开头的临时文件，读取时忽略。
 ///
-/// 根目录放在 App Group 共享容器里（D-78），沙盒 GUI 与不在沙盒里的 CLI / MCP 用同一个库：
-/// - CLI / MCP：``defaultRoot()``，直接按路径计算，不调用容器 API。
-/// - GUI：``groupContainerRoot()``，先用 `FileManager.containerURL(forSecurityApplicationGroupIdentifier:)`，
-///   返回 nil（未签名、未配置 App Group）时退回按路径计算的结果。
-/// - 两者都可以被 `LocalLibrary(root:)` 覆盖（测试、自定义位置）。
+/// 根目录（D-78，D-124 修改）。GUI、CLI、MCP 都调用 ``defaultRoot()``，按同一套规则落到同一个库：
+/// 1. 环境变量 `PHOTOFRAME_LIBRARY`（非空）；
+/// 2. 进程带本 App Group 的 entitlement（已签名的 GUI）：系统给出的 App Group 容器；
+/// 3. `~/Library/Group Containers/<App Group ID>/` 已经存在（签名的 GUI 建过）：用它；
+/// 4. 否则 `~/Library/Application Support/AnotherPhotoFrame/`。
+///
+/// 未签名的进程没有 App Group entitlement，macOS 不允许它在 Group Containers 下建目录（Operation not permitted），
+/// 所以不能只看 `containerURL(forSecurityApplicationGroupIdentifier:)`：它对未签名进程也会返回路径。
+/// 也可以用 `LocalLibrary(root:)` 指定任意目录（测试、自定义位置）。
 public enum LibraryLocation {
     public static let directoryName = "AnotherPhotoFrame"
+    public static let environmentVariable = "PHOTOFRAME_LIBRARY"
 
     /// App Group ID。占位值：真实值依赖开发者 Team ID，签名时一并确定。
     public static let appGroupIdentifier = "group.org.anotherphotoframe"
 
-    /// 默认根目录：`~/Library/Group Containers/<appGroupIdentifier>/Library/Application Support/AnotherPhotoFrame/`。
-    ///
-    /// `~` 取当前用户真实的主目录（不受沙盒容器影响），因此在任何进程里算出的都是同一个路径。
+    /// 本进程的库根目录（规则见类型说明）。
     public static func defaultRoot(appGroupIdentifier: String = appGroupIdentifier) -> URL {
-        root(inGroupContainer: groupContainerPath(appGroupIdentifier: appGroupIdentifier, home: userHomeDirectory()))
+        let entitled = hasAppGroupEntitlement(appGroupIdentifier)
+            ? FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) : nil
+        return resolveRoot(
+            environment: ProcessInfo.processInfo.environment, entitledContainer: entitled,
+            home: userHomeDirectory(), appGroupIdentifier: appGroupIdentifier)
     }
 
-    /// GUI 用：优先用系统给出的 App Group 容器，拿不到时退回 ``defaultRoot(appGroupIdentifier:)``。
-    public static func groupContainerRoot(appGroupIdentifier: String = appGroupIdentifier) -> URL {
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            return root(inGroupContainer: container)
+    /// ``defaultRoot(appGroupIdentifier:)`` 的规则本身（可测试）。`entitledContainer` 是带 entitlement 时系统给出的容器。
+    public static func resolveRoot(
+        environment: [String: String], entitledContainer: URL?, home: URL, appGroupIdentifier: String = appGroupIdentifier,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }
+    ) -> URL {
+        if let path = environment[environmentVariable], !path.isEmpty {
+            return URL(filePath: (path as NSString).expandingTildeInPath, directoryHint: .isDirectory)
         }
-        return defaultRoot(appGroupIdentifier: appGroupIdentifier)
+        if let entitledContainer { return root(inGroupContainer: entitledContainer) }
+        let container = groupContainerPath(appGroupIdentifier: appGroupIdentifier, home: home)
+        if fileExists(container) { return root(inGroupContainer: container) }
+        return home.appending(path: "Library/Application Support", directoryHint: .isDirectory)
+            .appending(path: directoryName, directoryHint: .isDirectory)
+    }
+
+    /// 进程是否带 `com.apple.security.application-groups` entitlement 且包含这个 App Group。
+    static func hasAppGroupEntitlement(_ identifier: String) -> Bool {
+        guard let task = SecTaskCreateFromSelf(nil),
+              let value = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil)
+        else { return false }
+        return (value as? [String])?.contains(identifier) == true
     }
 
     /// `<home>/Library/Group Containers/<appGroupIdentifier>`。

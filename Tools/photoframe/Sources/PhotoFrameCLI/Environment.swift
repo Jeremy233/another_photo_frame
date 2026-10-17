@@ -61,7 +61,7 @@ public struct CLIEnvironment: Sendable {
     public var stderr: TextSink
     public var currentDirectory: URL
     public var interrupts: InterruptMonitor
-    /// 本地库（预设库、素材库、绑定）的根目录；nil 用 App Group 共享容器（D-78）。
+    /// 本地库（预设库、素材库、绑定）的根目录；nil 按 `LibraryLocation.defaultRoot()` 的规则选（D-78、D-124）。
     /// 可执行文件从环境变量 `PHOTOFRAME_LIBRARY` 取；测试指向临时目录。
     public var libraryRoot: URL?
     /// 进程环境变量（`mcp serve` 读 `PHOTOFRAME_MCP_ALLOW_READ` / `PHOTOFRAME_MCP_ALLOW_WRITE`）。测试里默认为空。

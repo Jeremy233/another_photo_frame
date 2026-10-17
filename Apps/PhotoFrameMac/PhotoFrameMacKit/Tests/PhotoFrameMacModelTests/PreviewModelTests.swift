@@ -79,6 +79,32 @@ import Testing
         #expect(preview.warnings.contains { $0.code == "preview.output_sdr" })
     }
 
+    @Test func autoRangeFollowsSource() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        try await f.addJob("Bright.tif", hdr: true)
+        let preview = f.workbench.preview
+        preview.range = .hdr
+        await f.workbench.settle()
+        // 内置预设跟随源图（D-125）：HDR 源图直接导出 HDR，不用手动改。
+        #expect(f.workbench.editedPreset?.output.dynamicRange == .auto)
+        #expect(f.workbench.autoRangeResult == "HDR（源图是 HDR）")
+        #expect(preview.pageImage?.dynamicRange == .hdr)
+        #expect(!preview.warnings.contains { $0.code == "preview.output_sdr" })
+
+        f.workbench.setField(\.output.format, .png)
+        await f.workbench.settle()
+        #expect(f.workbench.autoRangeResult == "SDR（PNG 不支持 HDR）")
+        #expect(preview.pageImage?.dynamicRange == .sdr)
+
+        f.workbench.setField(\.output.dynamicRange, .sdr)
+        #expect(f.workbench.autoRangeResult == nil)
+
+        let plain = try await f.addJob("Plain.jpg")
+        f.workbench.selection = [.job(plain)]
+        #expect(f.workbench.autoRangeResult == "SDR（源图不是 HDR）")
+    }
+
     @Test func presetPreviewUsesFirstSource() async throws {
         let f = try Fixture()
         await f.workbench.load()

@@ -43,7 +43,7 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 | `--max-output-mb <n>` | 20480 | 本次会话写出的文件总量上限（导出成品 + 预览文件），在每次写请求前检查 |
 | `--jobs <n>` | 性能核数的一半（1–4，D-53） | 同时执行的任务数 |
 
-本地库（预设、素材、绑定）与 GUI、CLI 共用（D-78）；`PHOTOFRAME_LIBRARY=<目录>` 改用别的库（D-96）。
+本地库（预设、素材、绑定）与 GUI、CLI 共用，位置规则见 [CLI.md](CLI.md)「本地库」（D-78、D-124）；`PHOTOFRAME_LIBRARY=<目录>` 改用别的库（D-96）。
 
 ### Claude Desktop
 
@@ -216,7 +216,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `assumeProfile`、`bindings` | | 同导出 |
 
 与导出同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG（不带元数据，D-74）。`dynamicRange: "hdr"` 时，导出实际写 HDR 的页改为带 gain map 的
-JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看到的是 SDR 版本）；其余页仍是 PNG，预设输出 SDR 时警告 `preview.output_sdr`。
+JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看到的是 SDR 版本）；其余页仍是 PNG；没有一页是 HDR 时警告 `preview.output_sdr` 并说明原因（预设输出 SDR，或预设跟随源图（`auto`，D-125）而源图不是 HDR、格式是 PNG）。
 返回 `{source, preset, files: [...], positions, warnings}`：
 `files[]` 是 `{role, position, width, height, exportWidth, exportHeight, dynamicRange, hdrHeadroom?, path?}`，写文件时有 `path`；
 `positions` 是导出会写出的全部轮播位置。
@@ -284,7 +284,7 @@ JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看
 
 - 路径检查与实际读写之间存在时间差（TOCTOU）。如果有别的程序在这段时间里把白名单内的目录换成指向外面的符号链接，检查无法发现。
   威胁模型是「AI 客户端只能通过工具访问文件」，不防御本机上同时运行的恶意程序。
-- `update_preset` 写的是本地库（App Group 容器，D-78），不在 `--allow-write` 范围内；它只能修改预设内容，不能写任意文件。
+- `update_preset` 写的是本地库（D-78、D-124），不在 `--allow-write` 范围内；它只能修改预设内容，不能写任意文件。
 - stdio 传输由 SDK 实现；客户端本身是用户启动的可信进程。
 
 ### 本地 MCP ≠ 云端 AI 的完全隐私保证（§11.4）
@@ -339,3 +339,5 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 | D-103 | MCP 不提供预设导入、素材导入和删除；`update_preset` 只改库里已有的非内置预设 |
 | D-104 | 结果只有 `ok` + `error` 外层，不带 CLI 的 `formatVersion` / `command` / `exitCode`；`validate_export` 用 `valid` 表示能否导出 |
 | D-106 | `preview_export` 的 `dynamicRange: "hdr"`：HDR 页返回 gain map JPEG |
+| D-124 | 本地库位置规则，与 GUI、CLI 相同（见 CLI.md「本地库」） |
+| D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图）；`preview_export` 的 `dynamicRange` 仍只有 `sdr` / `hdr` |

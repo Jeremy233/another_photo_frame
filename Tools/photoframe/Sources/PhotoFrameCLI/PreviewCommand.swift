@@ -51,6 +51,8 @@ struct PreviewCommand: AsyncParsableCommand {
     func validate() throws {
         guard maxEdge > 0 else { throw ValidationError("--max-edge 应为正整数。") }
         guard pages.allSatisfy({ $0 >= 0 }) else { throw ValidationError("--page 不能为负数。") }
+        // 预览的颜色模式只有 sdr / hdr；预设的 auto（D-125）不是预览模式。
+        guard dynamicRange != .auto else { throw ValidationError("--dynamic-range 只能是 sdr、hdr。") }
     }
 
     func run() async throws {

@@ -154,8 +154,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         public var startsPaused: Bool
         /// 平台配置；nil 用应用附带的 `platforms.json`。
         public var platformCatalog: PlatformCatalog?
-        /// 本地库根目录；nil 用 App Group 共享容器（D-78，`LibraryLocation.defaultRoot()`）。
-        /// GUI 传 `LibraryLocation.groupContainerRoot()`，测试传临时目录。
+        /// 本地库根目录；nil 按 `LibraryLocation.defaultRoot()` 的规则选（D-78、D-124），GUI、CLI、MCP 都用这条；测试传临时目录。
         public var libraryRoot: URL?
 
         public init(
@@ -549,13 +548,26 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         do {
             var preview = try await analyzer.preview(job, options: request.options)
             var modeWarnings: [ApplicationWarning] = []
-            if request.options.dynamicRange == .hdr, request.preset.output.dynamicRange == .sdr {
-                modeWarnings.append(ApplicationWarning(code: "preview.output_sdr", message: "预设输出 SDR，成品没有 HDR 版本，HDR 预览显示 SDR"))
+            // HDR 预览里没有 HDR 页：说明成品为什么是 SDR（强制 HDR 的原因由渲染器警告）。
+            if request.options.dynamicRange != .sdr, !preview.pages.contains(where: { $0.dynamicRange == .hdr }),
+               let message = Self.sdrOutputReason(request.preset.output, platform: platform) {
+                modeWarnings.append(ApplicationWarning(code: "preview.output_sdr", message: message))
             }
             preview.warnings = presetWarnings + slotWarnings + modeWarnings + preview.warnings
             return preview
         } catch {
             throw JobQueue.applicationError(error)
+        }
+    }
+
+    static func sdrOutputReason(_ output: OutputSettings, platform: PlatformProfile?) -> String? {
+        switch output.dynamicRange {
+        case .sdr: "预设输出 SDR，成品没有 HDR 版本"
+        case .hdr: nil
+        case .auto:
+            if output.format != .jpeg { "PNG 不支持 HDR，成品按 SDR 输出" }
+            else if platform?.hdr.status == .unsupported { "\(platform!.displayName) 不支持 HDR，成品按 SDR 输出" }
+            else { "源图不是 HDR，成品按 SDR 输出" }
         }
     }
 

@@ -134,8 +134,8 @@ PhotoFrameRendering 的适配器是 `RenderingBackend`，它同时实现 `ImageA
 
 注入点：
 
-- **本地库** `LocalLibrary`（PhotoFrameStorage）：预设、素材、绑定。`makeDefault(.init(libraryRoot:))` 默认用 App Group 共享容器（D-78），
-  GUI 传 `LibraryLocation.groupContainerRoot()`，测试传临时目录；直接 `init(renderer:…)` 不传库时用系统临时目录里一个新的空库。
+- **本地库** `LocalLibrary`（PhotoFrameStorage）：预设、素材、绑定。`makeDefault(.init(libraryRoot:))` 默认按 `LibraryLocation.defaultRoot()` 选根目录（D-78、D-124，
+  GUI、CLI、MCP 同一套规则），测试传临时目录；直接 `init(renderer:…)` 不传库时用系统临时目录里一个新的空库。
 - **素材来源** `AssetProvider`（`QueueConfiguration.assets`，默认就是本地库）：每次校验任务时取一次 `slotResolver()`，
   渲染时用 `fileURL(for:)` 找素材文件。`NoAssetLibrary` 表示没有素材：必需素材缺失照常报 `slot.missing_required`。
 

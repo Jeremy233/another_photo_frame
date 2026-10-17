@@ -61,8 +61,11 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
         let (assetFiles, skipped) = request.slots.map {
             RenderJob.assets(from: $0, fileURL: assets.fileURL(for:))
         } ?? ([:], [])
+        var preset = request.slots?.applied(to: request.preset) ?? request.preset
+        // auto（D-125）遇到不支持 HDR 的平台按 SDR 输出。
+        if preset.output.dynamicRange == .auto, request.platform?.hdr.status == .unsupported { preset.output.dynamicRange = .sdr }
         return RenderJob(
-            sourceURL: request.source.fileURL, preset: request.slots?.applied(to: request.preset) ?? request.preset,
+            sourceURL: request.source.fileURL, preset: preset,
             assets: assetFiles, skippedLayerIds: skipped,
             outputDirectory: outputDirectory, sourceColorOverride: request.sourceColorOverride,
             maxCarouselItems: request.platform?.maxCarouselItems)
@@ -106,7 +109,7 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
         do {
             result = try await renderer.renderPreview(PreviewRequest(
                 job: job, size: .maxLongEdge(options.maxLongEdge), pages: options.pages,
-                color: options.dynamicRange == .hdr ? .gainMap : .sRGB))
+                color: options.dynamicRange == .sdr ? .sRGB : .gainMap))
             let pages = try result.pages.map(previewImage)
             return ExportPreview(pages: pages, roles: result.roles.map(JobOutputRole.init),
                                  warnings: result.warnings.map(ApplicationWarning.init))
