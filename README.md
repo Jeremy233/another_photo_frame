@@ -37,8 +37,9 @@ AnotherPhotoFrame 是一个免费、开源、完全在本地运行的 macOS 摄�
 | `PhotoFrameStorage`：`.photoframe` 预设包、素材绑定（SlotResolver）、平台配置、内置预设 | ✅ 已完成 |
 | `PhotoFrameApplication`：任务队列、原子导出、PhotoFrameService（预设、检查、校验、预览、提交、状态、取消）；接入渲染模块，GUI / CLI / MCP 共用 | ✅ 已完成 |
 | `PhotoFrameRendering`：解码、色彩管理、合成、全景切片、图层、JPEG / PNG（SDR / HDR）编码、预览 | ✅ 已完成 |
-| CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset …`（列出、导入、导出、复制、重命名、删除）、`asset …`（素材库与绑定），见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成 |
-| MCP、GUI | 未开始 |
+| CLI `photoframe`（`Tools/photoframe`）：`export`、`preview`、`image inspect`、`preset …`（列出、查看与逐项修改、导入、导出、复制、重命名、删除）、`asset …`（素材库与绑定），见 [docs/CLI.md](docs/CLI.md) | ✅ 已完成 |
+| 本地 stdio MCP `photoframe mcp serve`：预设、检查、校验、预览、异步导出任务，目录白名单，见 [docs/MCP.md](docs/MCP.md) | ✅ 已完成 |
+| GUI | 未开始 |
 
 Alpha / Beta 版本不做代码签名；V1.0 发布前再决定是否公证。
 
@@ -69,6 +70,7 @@ swift test
 - [PhotoFrameCore 说明](Packages/PhotoFrameCore/README.md)
 - [PhotoFrameStorage 说明](Packages/PhotoFrameStorage/README.md)
 - [PhotoFrameRendering 说明](Packages/PhotoFrameRendering/README.md)与[渲染管线](docs/RenderingPipeline.md)
+- [命令行工具](docs/CLI.md)与[本地 MCP 服务器](docs/MCP.md)
 
 ### 参与贡献
 
@@ -121,8 +123,9 @@ The project is in the **specification stage**; there is no usable app yet.
 | `PhotoFrameStorage`: `.photoframe` preset packages, asset binding (SlotResolver), platform catalog, built-in presets | ✅ Done |
 | `PhotoFrameApplication`: job queue, atomic export, PhotoFrameService (presets, inspect, validate, preview, submit, status, cancel); wired to the rendering module, shared by GUI / CLI / MCP | ✅ Done |
 | `PhotoFrameRendering`: decoding, color management, compositing, panorama slicing, overlays, JPEG / PNG (SDR / HDR) encoding, preview | ✅ Done |
-| CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset …` (list, import, export, duplicate, rename, delete), `asset …` (asset library and bindings); see [docs/CLI.md](docs/CLI.md) | ✅ Done |
-| MCP, GUI | Not started |
+| CLI `photoframe` (`Tools/photoframe`): `export`, `preview`, `image inspect`, `preset …` (list, view and edit field by field, import, export, duplicate, rename, delete), `asset …` (asset library and bindings); see [docs/CLI.md](docs/CLI.md) | ✅ Done |
+| Local stdio MCP server `photoframe mcp serve`: presets, inspect, validate, preview, async export jobs, directory allow-lists; see [docs/MCP.md](docs/MCP.md) | ✅ Done |
+| GUI | Not started |
 
 Alpha / Beta builds are not code-signed; whether to notarize will be decided before V1.0.
 
@@ -155,6 +158,7 @@ The documents are currently written in Chinese.
 - [PhotoFrameCore notes](Packages/PhotoFrameCore/README.md)
 - [PhotoFrameStorage notes](Packages/PhotoFrameStorage/README.md)
 - [PhotoFrameRendering notes](Packages/PhotoFrameRendering/README.md) and [rendering pipeline](docs/RenderingPipeline.md)
+- [Command-line tool](docs/CLI.md) and [local MCP server](docs/MCP.md)
 
 ### Contributing
 

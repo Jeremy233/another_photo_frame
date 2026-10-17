@@ -180,6 +180,33 @@ struct PresetLibraryTests {
         #expect(try presets.importPackage(builtInData).entry.presetId != builtIn.presetId)
     }
 
+    @Test("逐项修改（D-93）：通过与导入相同的检查后原子写入；失败时不改文件；内置只读")
+    func edit() throws {
+        let copy = try presets.duplicate(presets.list().builtIn[0].presetId, name: "Mine")
+        let margin = try PresetFieldPath(parsing: "canvas.minMarginPx")
+        let result = try presets.edit(copy.presetId, [.set(margin, .number(80))])
+        #expect(result.entry.preset.canvas.minMarginPx == 80)
+        #expect(result.entry.origin == .user && result.entry.createdAt == copy.createdAt)
+        #expect(try presets.entry(copy.presetId).preset.canvas.minMarginPx == 80)
+        let before = try Data(contentsOf: presets.fileURL(copy.presetId))
+
+        let unknown = try PresetFieldPath(parsing: "canvas.blur")
+        #expect(code { () throws(LibraryError) in _ = try presets.edit(copy.presetId, [.set(margin, .number(10)), .set(unknown, .number(1))]) }
+                == "package.invalid_preset")
+        #expect(code { () throws(LibraryError) in _ = try presets.edit(copy.presetId, [.set(margin, .string("wide"))]) }
+                == "preset.invalid_field")
+        #expect(code { () throws(LibraryError) in _ = try presets.edit(copy.presetId, [.set(margin, .number(-5))]) }
+                == "package.invalid_preset")
+        let id = try PresetFieldPath(parsing: "presetId")
+        #expect(code { () throws(LibraryError) in _ = try presets.edit(copy.presetId, [.set(id, .string(UUID().uuidString))]) }
+                == "preset.field_read_only")
+        #expect(try Data(contentsOf: presets.fileURL(copy.presetId)) == before)
+
+        let builtIn = presets.list().builtIn[0].presetId
+        #expect(code { () throws(LibraryError) in _ = try presets.edit(builtIn, [.set(margin, .number(80))]) } == "library.builtin_read_only")
+        #expect(root.allFiles().filter { $0.contains(".tmp-") }.isEmpty)
+    }
+
     @Test("导入失败的包不写任何文件")
     func importInvalid() throws {
         var newer = try JSONSerialization.jsonObject(with: PresetSchema.encode(samplePreset())) as! [String: Any]

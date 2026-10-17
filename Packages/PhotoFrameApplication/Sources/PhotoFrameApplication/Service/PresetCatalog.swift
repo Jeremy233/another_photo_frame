@@ -181,6 +181,14 @@ public struct CatalogPresetImport: Hashable, Sendable, Codable {
     public var warnings: [ApplicationWarning]
 }
 
+/// `updatePreset` 的结果（D-93）。
+public struct CatalogPresetUpdate: Hashable, Sendable {
+    public var preset: CatalogPresetSummary
+    /// 修改后的完整预设。
+    public var content: ExportPreset
+    public var warnings: [ApplicationWarning]
+}
+
 // MARK: - 素材
 
 /// `listAssets` 的结果。`AssetInfo` 不含文件路径（§11.4 `list_assets`）。

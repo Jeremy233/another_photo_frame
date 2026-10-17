@@ -125,7 +125,20 @@ public enum PresetPackage {
 
     /// 读取并导入。任何 error 级问题都会抛出。
     public static func importPreset(_ data: Data, options: PresetImportOptions = .init()) throws(PresetPackageError) -> ImportedPreset {
-        let result = try analyze(data, options: options)
+        try imported(analyze(data, options: options))
+    }
+
+    /// 对一份 manifest（不是 ZIP）做与导入完全相同的检查（D-93：逐项修改后的预设必须能通过导入）。
+    /// 任何 error 级问题都会抛出。
+    public static func validateManifest(_ manifestData: Data, options: PresetImportOptions = .init()) throws(PresetPackageError) -> ImportedPreset {
+        guard manifestData.count <= options.limits.maxEntryUncompressedBytes else {
+            throw .archive(.entryTooLarge(name: manifestName, bytes: manifestData.count, limit: options.limits.maxEntryUncompressedBytes))
+        }
+        return try imported(analyzeManifest(manifestData, issues: [], options: options))
+    }
+
+    /// 有 error 级问题时抛出，否则返回导入结果。
+    private static func imported(_ result: Analysis) throws(PresetPackageError) -> ImportedPreset {
         if let schemaError = result.schemaError { throw .schema(schemaError) }
         let errors = result.preview.issues.errors
         guard errors.isEmpty, let decoded = result.decoded else { throw .invalidPreset(result.preview.issues) }
@@ -179,7 +192,12 @@ public enum PresetPackage {
             issues.append(PresetIssue(.warning, code: "package.ignored_entry", path: entry.name,
                                       message: "忽略预设包中的额外文件：\(entry.name)"))
         }
+        return analyzeManifest(manifestData, issues: issues, options: options)
+    }
 
+    /// 检查 `manifest.json` 的内容：schema、不认识的字段、取值与引用、平台能力。导入和逐项修改（D-93）共用。
+    static func analyzeManifest(_ manifestData: Data, issues: [PresetIssue], options: PresetImportOptions) -> Analysis {
+        var issues = issues
         var preview = PresetImportPreview(currentSchemaVersion: PresetSchema.currentVersion)
         // 先读出未定型的基本信息，这样即使版本较新或内容有误，预览也能显示名称和版本。
         do {

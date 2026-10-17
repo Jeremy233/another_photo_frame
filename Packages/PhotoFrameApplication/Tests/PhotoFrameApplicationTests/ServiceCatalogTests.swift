@@ -127,6 +127,27 @@ struct PresetCatalogTests {
         await #expect { try await service.resolvePreset(.library("my landscape")) } throws: { code($0) == "library.ambiguous_preset" }
     }
 
+    @Test("逐项修改预设（D-93）：内置只读、文件预设不在库里、修改后列表和快照都更新")
+    func updatePreset() async throws {
+        let box = try Sandbox()
+        let service = LocalPhotoFrameService(renderer: FakeRenderer(), library: try makeLibrary(box))
+        let margin = try PresetFieldPath(parsing: "canvas.minMarginPx")
+        await #expect { try await service.updatePreset(.library("xhs-standard"), edits: [.set(margin, .number(80))]) } throws: {
+            code($0) == "library.builtin_read_only"
+        }
+        let file = box.root.appending(path: "X.photoframe")
+        try PresetPackage.export(ExportPreset.testPanorama, to: file)
+        await #expect { try await service.updatePreset(.file(file), edits: [.set(margin, .number(80))]) } throws: {
+            code($0) == "library.preset_not_in_library"
+        }
+        let dup = try await service.duplicatePreset(.library("xhs-standard"), name: "Square")
+        let updated = try await service.updatePreset(.library("square"), edits: [.set(margin, .number(80))])
+        #expect(updated.preset.presetId == dup.presetId && updated.preset.minMarginPx == 80)
+        #expect(updated.content.canvas.minMarginPx == 80)
+        #expect(try await service.resolvePreset(.library("square")).preset.canvas.minMarginPx == 80)
+        await #expect { try await service.updatePreset(.library("square"), edits: []) } throws: { code($0) == "preset.invalid_edit" }
+    }
+
     @Test(".photoframe 文件：只读取不放进库，之后出现在列表里；损坏文件有稳定错误码")
     func presetFile() async throws {
         let box = try Sandbox()

@@ -98,6 +98,10 @@ Fit 和全景长卷共用一套规则（`Placement.swift`）：
 全部是 `Codable`、`Sendable` 的纯数据。读写 JSON 用 `PresetSchema`（版本检查、迁移、不认识字段的登记），
 内容校验用 `ExportPreset.validate()`。`.photoframe` 打包、导入检查和素材绑定在 `PhotoFrameStorage`。
 
+**逐项修改（D-93）**：`PresetEditing.swift` 的 `PresetFieldPath`（`canvas.minMarginPx`、`layers[0].opacity`、
+`layers[exif].text.fontSizePx`、`layers[+]`）和 `PresetEditor` 在未定型的 manifest JSON 上读取、设置、删除字段；
+CLI `preset get` / `preset set` 与 MCP `get_preset` / `update_preset` 共用。修改后的预设由 `PresetLibrary.edit` 走导入检查再保存。
+
 **图层存储与几何共用一套类型（D-23）**：`OverlayLayer` 是预设中的存储形式，它的 `anchor`、`reference`、`offset`、
 `visibility` 直接使用上文的 `OverlayAnchor`、`OverlayReference`、`OverlayOffset`、`OverlayVisibility`。
 渲染前调用 `layer.geometry(contentSize:)` 得到 `OverlayGeometry`，再交给 `OverlayPlacement` 或

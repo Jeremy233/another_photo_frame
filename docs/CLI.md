@@ -2,7 +2,7 @@
 
 > 对应规范 §10.3、§11.1–11.3、§12.2、§14.1（D-08：GUI 的每项操作都能通过 CLI 完成）。
 > 代码在 `Tools/photoframe`：命令在 `PhotoFrameCLI` 库里，可执行文件只处理信号与退出码。
-> 后端是 `LocalPhotoFrameService.makeDefault()`（`Packages/PhotoFrameApplication`，D-70），GUI 和以后的 MCP 用的是同一个服务。
+> 后端是 `LocalPhotoFrameService.makeDefault()`（`Packages/PhotoFrameApplication`，D-70），GUI 和 MCP（`photoframe mcp serve`，见 [MCP.md](MCP.md)）用的是同一个服务。
 > 本文涉及的决策：D-70～D-77、D-93～D-96（规范 §16），列表见文末「相关决策」。
 
 ## 构建
@@ -41,6 +41,8 @@ photoframe preview <图片> --preset <id|名称|文件> --output <目录>
 photoframe image inspect <图片> [--json]
 
 photoframe preset list [--json]
+photoframe preset get <预设> [<字段路径>] [--json]
+photoframe preset set <预设> [<字段路径> <值>]... [--unset <字段路径>]... [--json]
 photoframe preset import <文件> [--replace] [--json]
 photoframe preset export <预设> --output <文件|目录> [--overwrite] [--json]
 photoframe preset duplicate <预设> [--name <名称>] [--json]
@@ -57,13 +59,16 @@ photoframe asset bind <素材> --slot <slotId> [--preset <预设>]
 photoframe asset unbind --slot <slotId> [--preset <预设>]
 photoframe asset bindings [--json]
 
+photoframe mcp serve [--allow-read <目录>]... [--allow-write <目录>]... [--max-input-mb <n>] [--max-preview-edge <px>]
+                     [--max-active-jobs <n>] [--max-output-mb <n>] [--jobs <n>]
+
 photoframe --help | --version
 ```
 
 `export` 和 `preview` 还接受 `--bind <slotId>=<素材>`（可重复），见「素材绑定」。
 
-`mcp serve`（做 MCP 时）还没有实现，帮助里也不列出。预设的内容编辑（画布、图层等）是 GUI 的 Inspector 操作，逐项编辑的命令
-和 MCP 一起设计（D-93）；现在可以用「导出 → 编辑 manifest → 导入 `--replace`」完成，见「待补」。
+`mcp serve` 以 stdio 运行本地 MCP 服务器（D-97、D-98），给 AI 客户端用，配置、工具和安全边界见 [docs/MCP.md](MCP.md)。
+预设内容（画布、图层、输出等）用 `preset get` / `preset set` 逐项查看和修改，字段路径与 MCP 的 `get_preset` / `update_preset` 相同（D-93）。
 
 ### 指定预设：`--preset <id|名称|文件>`（D-76）
 
@@ -161,12 +166,42 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | 命令 | 说明 | stdout（文本） |
 |---|---|---|
 | `preset list` | 列出内置、用户保存、导入三组（D-81、D-82 的顺序）。读库时跳过的损坏文件等作为警告写到 stderr | 每行：短名称、名称、来源（`builtIn`/`user`/`imported`）、平台、画布、`standard`/`panorama`、presetId |
+| `preset get <预设> [<路径>]` | 输出预设内容（与 `manifest.json` 相同的 JSON），或其中一个字段，见下文「逐项修改预设」。内置预设和 `.photoframe` 文件也能看 | 这个 JSON 值 |
+| `preset set <预设> <路径> <值>… [--unset <路径>]…` | 逐项修改库里的预设（D-93），见下文。内置预设只读（`library.builtin_read_only`，退出码 4） | `presetId  名称` |
 | `preset import <文件>` | 把 `.photoframe` 导入「导入」组。presetId 与已有预设相同时默认**另存为副本**（新 ID，名称加 ` Copy`，D-39、D-80），`--replace` 时替换同 ID 的预设（内置预设不能替换） | `presetId  名称` |
 | `preset export <预设> -o <文件或目录>` | 导出为 `.photoframe`：只含布局，素材只以 slot 出现，拒绝带本地路径的预设（D-37）。内置预设也能导出。`-o` 是已存在的目录时文件名取预设名称；目标文件已存在时要 `--overwrite`（否则 `preset.export_exists`，退出码 5） | 写出的文件路径 |
 | `preset duplicate <预设> [--name]` | 复制到「用户保存」组，默认名称「原名 Copy」（D-79），本地绑定一起复制（D-84）。内置预设也能复制 | `presetId  名称` |
 | `preset rename <预设> <新名称>` | 内置预设不能改（`library.builtin_read_only`，退出码 4） | `presetId  名称` |
 | `preset move <预设> --to user\|imported` | 在「用户保存」和「导入」两组之间移动（D-81、D-94），内容、ID 和时间不变；已经在目标组时什么也不做。内置预设不能移动（`library.builtin_read_only`，退出码 4）；`.photoframe` 文件不在库里（`library.preset_not_in_library`，退出码 4） | `presetId  名称` |
 | `preset delete <预设>` | 删除库里的预设和它的本地绑定；内置预设不能删 | `presetId  名称` |
+
+### 逐项修改预设：`preset get` / `preset set`（D-93、D-99）
+
+字段路径直接用 `manifest.json` 的字段名（字段说明见规范 §8.1），CLI 与 MCP（`get_preset` / `update_preset`）共用：
+
+| 写法 | 含义 |
+|---|---|
+| `canvas.minMarginPx` | 对象字段（`.` 分隔） |
+| `layers[0].opacity` | 数组下标，从 0 开始 |
+| `layers[exif].text.fontSizePx` | 方括号里不是纯数字时，按 `layerId` / `slotId` 找元素 |
+| `layers[+]` | 在数组末尾追加（只能用于设置，只能是最后一段） |
+
+```bash
+photoframe preset duplicate instagram-standard --name "My IG"
+photoframe preset set "My IG" canvas.minMarginPx 80 canvas.background.hex '#FFFFFF'
+photoframe preset set "My IG" 'layers[+]' '{"layerId": "exif", "type": "metadataText", …}'
+photoframe preset set "My IG" --unset 'layers[exif]'
+photoframe preset get "My IG" canvas
+```
+
+- **值**先按 JSON 解析（`80`、`true`、`[0,16]`、`{…}`、`null`），解析不了时当作字符串（`#FFFFFF`、`My Name`）。要写内容是数字的字符串，
+  加引号：`'"80"'`。
+- 一次命令里的修改：先按顺序应用全部「路径 值」，再应用 `--unset`。
+- 改完的整份预设走一遍**与 `preset import` 完全相同的检查**（schema、不认识的字段、取值范围、引用、平台能力、1 MiB 上限），通过后原子写入
+  （临时文件 → fsync → rename）；任何一项不通过都不修改，退出码 4。分组和创建时间不变（D-81）。
+- 内置预设只读，先 `preset duplicate`；`presetId`、`schemaVersion` 不能改（`preset.field_read_only`）。
+- 设置不存在的字段即新增，拼错的字段名按不认识的字段拒绝（D-26）；中间的对象必须已存在。删除不存在的字段报 `preset.path_not_found`。
+- 路径写错：`preset.invalid_path`；一次超过 100 项或没有修改：`preset.invalid_edit`。都是退出码 4。
 
 ### `asset …`：素材库与绑定
 
@@ -189,9 +224,9 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 |---|---|---|
 | 0 | 成功（`--dry-run` 时表示校验通过） | |
 | 1 | 内部错误，不应发生，请报告问题 | `service.unavailable`、`cli.internal` |
-| 2 | 用法错误：参数缺失、未知选项或命令、取值不对 | （ArgumentParser 的信息，只写 stderr） |
+| 2 | 用法错误：参数缺失、未知选项或命令、取值不对 | （ArgumentParser 的信息，只写 stderr）；`mcp serve` 的目录参数无效：`mcp.invalid_root` |
 | 3 | 找不到输入 | `source.not_found`、`preset.file_not_found`、`library.preset_not_found`、`asset.not_found`、`asset.file_not_found` |
-| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`render.svg_rejected`、`job.source_unreadable`、`job.invalid_preset`、`slot.missing_required`、`library.ambiguous_preset`、`library.builtin_read_only`、`library.invalid_name`、`library.preset_not_in_library`、`asset.ambiguous`、`asset.svg_rejected`、`asset.type_mismatch`、`asset.too_large`、`binding.*`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
+| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`render.svg_rejected`、`job.source_unreadable`、`job.invalid_preset`、`slot.missing_required`、`library.ambiguous_preset`、`library.builtin_read_only`、`library.invalid_name`、`library.preset_not_in_library`、`preset.invalid_path`、`preset.path_not_found`、`preset.field_read_only`、`preset.invalid_edit`、`asset.ambiguous`、`asset.svg_rejected`、`asset.type_mismatch`、`asset.too_large`、`binding.*`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
 | 5 | 输出不可用 | `job.destination_unavailable`、`job.destination_invalid`、`export.overwrite_refused`、`export.overwrite_contains_source`、`export.versions_exhausted`、`export.staging_failed`、`export.publish_failed`、`request.duplicate_output`、`preview.file_exists`、`preview.write_failed`、`preset.export_exists`、`library.io` |
 | 6 | 校验通过后至少一个导出任务失败（其余任务照常完成） | 任务记录里的错误码，如 `render.*`、`export.*` |
 | 130 | 被 Ctrl-C（SIGINT）或 SIGTERM 中断 | |
@@ -400,6 +435,18 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 
 `preset delete` 没有 `path`。
 
+### `preset get` / `set`
+
+```json
+{ "command" : "preset get", "exitCode" : 0, "formatVersion" : 1, "ok" : true,
+  "path" : "canvas.background", "preset" : { …与 preset list 的一项相同… }, "value" : { "colorSpace" : "sRGB", "hex" : "#FFFFFF" } }
+
+{ "changed" : [ "canvas.minMarginPx", "canvas.background.hex" ], "command" : "preset set", "exitCode" : 0, "formatVersion" : 1,
+  "ok" : true, "preset" : { …修改后的摘要… }, "warnings" : [ ] }
+```
+
+`preset get` 不带 `--json` 时 stdout 只有 `value`；整份预设时没有 `path`。
+
 ### `asset list` / `import` / `rename` / `set-category`
 
 ```json
@@ -427,12 +474,6 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 `bindings[].scope`：`preset`（预设本地，有 `presetId`）或 `default`（用户默认）。`asset delete` 的 `bindings` 是仍指向被删素材的绑定；
 `asset bindings` 输出全部保存的绑定和 `warnings`。
 
-## 待补
-
-- **预设内容编辑（D-93）**：GUI 的 Inspector 能改画布、图层、输出设置等；命令行没有逐项修改的命令，和 MCP 一起设计。
-  现在可以「`preset export` → 编辑 `manifest.json` → `preset import --replace`」。
-- `mcp serve`：做 MCP 时再加。
-
 ## 相关决策
 
 | 编号 | 内容 |
@@ -445,10 +486,12 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | D-75 | `--assume-profile`：只对没有 ICC 的源图生效，有 ICC 时忽略并警告 `source.override_ignored`（D-04） |
 | D-76 | `--preset` 匹配：文件路径，否则由 `PresetLibrary.find` 按 presetId、完整名称、短名称匹配 |
 | D-77 | JSON 里值为空的可选字段省略，不写 `null` |
-| D-93 | 预设内容逐项编辑的命令和 MCP 一起设计 |
+| D-93 | 预设内容逐项编辑：`preset get` / `preset set` 与 MCP `get_preset` / `update_preset` 共用字段路径和校验 |
 | D-94 | `preset move <预设> --to user\|imported`；内置预设不能移动（`library.builtin_read_only`） |
 | D-95 | `asset set-category <素材> <分组>` |
 | D-96 | 库目录只用环境变量 `PHOTOFRAME_LIBRARY` 指定，不加命令行参数 |
+| D-98 | MCP 入口是子命令 `photoframe mcp serve`（详见 [MCP.md](MCP.md)，D-97…D-104） |
+| D-99 | 字段路径写法；`preset set` 的值先按 JSON 解析，否则当字符串；先应用设置再应用 `--unset` |
 
 ## 测试
 
@@ -458,5 +501,5 @@ swift test --scratch-path "$TMPDIR/photoframe-build"
 ```
 
 测试只用代码合成的图片，写在系统临时目录里：参数解析与退出码、各命令的 JSON 输出、从命令行一路导出到真实文件（校验尺寸、
-sRGB ICC、文件名、没有残留临时目录）、`--overwrite` 与版本后缀、Ctrl-C 取消、预设库与素材库命令、导入素材 → 绑定 → 导出后
-成品里确实画出了图层，以及以子进程运行可执行文件（stdout / stderr 分离、SIGINT）。测试的本地库都在临时目录里，不碰真实的 App Group 库。子进程测试需要 `swift test` 构建出的 `photoframe`，也可以用环境变量 `PHOTOFRAME_EXECUTABLE` 指定。
+sRGB ICC、文件名、没有残留临时目录）、`--overwrite` 与版本后缀、Ctrl-C 取消、预设库与素材库命令、`preset get` / `set`、导入素材 → 绑定 → 导出后
+成品里确实画出了图层，以及以子进程运行可执行文件（stdout / stderr 分离、SIGINT）。测试的本地库都在临时目录里，不碰真实的 App Group 库。MCP 的测试见 [MCP.md](MCP.md)「测试」。子进程测试需要 `swift test` 构建出的 `photoframe`，也可以用环境变量 `PHOTOFRAME_EXECUTABLE` 指定。

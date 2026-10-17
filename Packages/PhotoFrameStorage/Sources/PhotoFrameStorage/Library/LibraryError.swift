@@ -19,8 +19,10 @@ public enum LibraryError: Error, Hashable, Sendable {
     case invalidPreset([PresetIssue])
     /// 库里的文件无法读取（损坏、schema 版本过新等），不能对它做修改。
     case unreadableItem(id: String, reason: String)
-    /// 导入或导出预设包失败。
+    /// 导入或导出预设包失败；逐项修改后没通过导入检查（D-93）。
     case package(PresetPackageError)
+    /// 逐项修改的路径或请求本身有问题（D-93）。
+    case edit(PresetEditError)
     case assetNotFound(UUID)
     /// 预设里没有这个素材槽（或 slotId 不合法）。
     case unknownSlot(String)
@@ -42,6 +44,7 @@ public enum LibraryError: Error, Hashable, Sendable {
         case .invalidPreset: "library.invalid_preset"
         case .unreadableItem: "library.unreadable_item"
         case .package(let e): e.code
+        case .edit(let e): e.code
         case .assetNotFound: "asset.not_found"
         case .unknownSlot: "binding.unknown_slot"
         case .incompatibleAsset: "binding.incompatible_format"
@@ -63,6 +66,7 @@ public enum LibraryError: Error, Hashable, Sendable {
         case .invalidPreset(let issues): "预设内容无效：" + issues.errors.map(\.message).joined(separator: "；")
         case .unreadableItem(let id, let reason): "无法读取 \(id)：\(reason)"
         case .package(let e): e.message
+        case .edit(let e): e.message
         case .assetNotFound(let id): "找不到素材 \(id.uuidString)"
         case .unknownSlot(let s): "预设中没有素材槽 \(s)"
         case .incompatibleAsset(let s, let f): "素材槽 \(s) 不接受 \(f.rawValue.uppercased()) 素材"
@@ -80,6 +84,7 @@ public enum LibraryError: Error, Hashable, Sendable {
         case .newerStorageFormat: "请升级 PhotoFrame"
         case .unreadableItem: "该文件已被跳过；可以删除它，或用较新的 PhotoFrame 打开"
         case .package(let e): e.hint
+        case .edit(let e): e.hint
         case .assetRejected(let r): r.hint
         default: nil
         }
