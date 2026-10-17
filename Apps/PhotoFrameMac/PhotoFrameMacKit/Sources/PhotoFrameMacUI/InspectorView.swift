@@ -47,6 +47,7 @@ struct InspectorView: View {
             .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):
             NoticeBar(symbol: "hand.point.up.left", text: Self.startHint)
+            issues
             if let item = workbench.sourceItem(id) { SourceInspector(workbench: workbench, item: item) }
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
@@ -58,10 +59,7 @@ struct InspectorView: View {
                         .controlSize(.regular)
                 }
             }
-            if case .jobs(let ids) = workbench.inspectorSubject, ids.count == 1,
-               let issues = workbench.job(ids[0])?.issues, !issues.isEmpty {
-                InspectorSection("警告") { JobIssueList(issues: issues) }
-            }
+            issues
             PresetInfoCard(workbench: workbench)
             // 只读时不用 `.disabled`：系统的禁用样式在深色界面上暗到像是功能没做。这里只拦截操作、略微变淡，
             // 内容仍看得清；view model 也会拒绝对只读内容的修改。
@@ -69,6 +67,14 @@ struct InspectorView: View {
             Group { tab }
                 .allowsHitTesting(editable)
                 .opacity(editable ? 1 : 0.75)
+        }
+    }
+
+    /// 任务校验的错误和警告，以及预览的提示（预览区本身不显示提示）。
+    @ViewBuilder private var issues: some View {
+        let issues = workbench.inspectorIssues
+        if !issues.isEmpty {
+            InspectorSection("警告", key: "warnings") { JobIssueList(issues: issues) }
         }
     }
 
@@ -132,31 +138,66 @@ extension NoticeBar where Action == EmptyView {
 /// 不用系统 `Form`：它按控件决定行高，带输入框的行高、纯文字的行矮，间距不齐。这里每一行最小 32 pt
 /// （Compressor 弹出菜单行的行距），标签在固定宽度的左列右对齐、与值按首行基线对齐，分组框上下内边距相同。
 /// 行里用 `LabeledContent`（有标签）、`Toggle`（复选框放在值的一列）或 `InspectorRow`（只有值）。
+///
+/// 有标题的分节可以折叠：点标题或它前面常驻的三角（与左栏的三角一致）。折叠状态按分节的种类（`key`，默认是标题）
+/// 记在用户默认设置里，切换任务、重新打开 App 后不变；默认全部展开。
 struct InspectorSection<Content: View>: View {
     var title: String?
+    var key: String?
     /// 整组都是复选框（没有带标签的行）时为 true：复选框从分组框左边开始，不留空的标签列。
     var checkboxes = false
     @ViewBuilder var content: Content
+    @AppStorage("InspectorCollapsedSections") private var collapsed = ""
 
-    init(_ title: String? = nil, checkboxes: Bool = false, @ViewBuilder content: () -> Content) {
+    init(_ title: String? = nil, key: String? = nil, checkboxes: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.key = key ?? title
         self.checkboxes = checkboxes
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let title {
-                Text(title).font(.body.weight(.semibold)).padding(.leading, 4)
+            if let title { header(title) }
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 0) { content }
+                    .labeledContentStyle(InspectorRowStyle())
+                    .toggleStyle(InspectorToggleStyle(leading: checkboxes))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, InspectorMetrics.groupPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.group, in: .rect(cornerRadius: 8))
             }
-            VStack(alignment: .leading, spacing: 0) { content }
-                .labeledContentStyle(InspectorRowStyle())
-                .toggleStyle(InspectorToggleStyle(leading: checkboxes))
-                .padding(.horizontal, 12)
-                .padding(.vertical, InspectorMetrics.groupPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Palette.group, in: .rect(cornerRadius: 8))
         }
+    }
+
+    private func header(_ title: String) -> some View {
+        Button { toggle() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 12)
+                Text(title).font(.body.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? "已展开" : "已折叠")
+        .help(isExpanded ? "折叠" : "展开")
+    }
+
+    private var collapsedKeys: Set<String> { Set(collapsed.split(separator: "\n").map(String.init)) }
+
+    private var isExpanded: Bool { key.map { !collapsedKeys.contains($0) } ?? true }
+
+    private func toggle() {
+        guard let key else { return }
+        var keys = collapsedKeys
+        if keys.contains(key) { keys.remove(key) } else { keys.insert(key) }
+        collapsed = keys.sorted().joined(separator: "\n")
     }
 }
 
@@ -293,7 +334,7 @@ struct InfoCard<Actions: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
                 // 一行放不下时中间省略（文件名的扩展名还在），悬停看全名。
-                Text(title).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle).help(title)
+                Text(title).font(.body.weight(.semibold)).lineLimit(1).truncationMode(.middle).help(title)
                 Spacer()
                 if let badge {
                     Text(badge)
@@ -559,7 +600,7 @@ private struct PanoramaTab: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
-        InspectorSection(checkboxes: true) {
+        InspectorSection("全景", checkboxes: true) {
             Toggle("全景分割", isOn: workbench.binding(\.panorama.enabled, default: false))
             Toggle("封面", isOn: workbench.binding(\.panorama.cover, default: true))
         }

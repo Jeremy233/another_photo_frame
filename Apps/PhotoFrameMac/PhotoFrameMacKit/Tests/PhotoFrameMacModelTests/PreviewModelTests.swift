@@ -77,6 +77,9 @@ import Testing
         await f.workbench.settle()
         #expect(preview.pageImage?.dynamicRange == .sdr)
         #expect(preview.warnings.contains { $0.code == "preview.output_sdr" })
+        // 预览区不显示提示，Inspector 的「警告」里有，作为说明排在最后。
+        let issue = try #require(f.workbench.inspectorIssues.last)
+        #expect(issue.code == "preview.output_sdr" && issue.isInfo)
     }
 
     @Test func autoRangeFollowsSource() async throws {

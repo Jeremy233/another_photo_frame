@@ -28,7 +28,7 @@ struct PreviewPane: View {
             }
             .onTapGesture(count: 2) { if preview.subject != nil { enlarged = true } }
             Hairline()
-            PreviewPageBar(preview: preview, note: statusNote)
+            PreviewPageBar(preview: preview)
         }
         .background(Palette.panel)
         .sheet(isPresented: $enlarged) {
@@ -49,28 +49,22 @@ struct PreviewPane: View {
             } else if let page = preview.pageImage {
                 PageImage(page: page, preview: preview)
             } else if let error = preview.error {
-                ContentUnavailableView("无法预览", systemImage: "exclamationmark.triangle", description: Text(error.message))
+                EmptyState(title: "无法预览", symbol: "exclamationmark.triangle", description: error.message)
             }
         } else {
-            ContentUnavailableView("没有预览", systemImage: "photo", description: Text("选中一个任务或源图"))
+            EmptyState(title: "没有预览", symbol: "photo", description: "选中一个任务或源图")
         }
-    }
-
-    private var statusNote: String? {
-        let notes = preview.warnings.map(\.message)
-        return notes.isEmpty ? nil : notes.joined(separator: " · ")
     }
 }
 
-/// 预览上方一行：标题居中，右侧是原图对比、缩放、「显示」菜单。
+/// 预览上方一行：左边源图文件名，正中（按整栏宽度居中）预设名，右侧是原图对比、缩放、「显示」菜单。
 private struct PreviewTitleBar: View {
     @Bindable var preview: PreviewModel
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text(title).font(.callout).lineLimit(1).truncationMode(.middle)
-                .frame(maxWidth: .infinity)
-                .help(title)
+        TitleBarLayout(spacing: 10) {
+            title(preview.subject?.sourceURL.lastPathComponent ?? "")
+            title(preview.subject?.preset?.name ?? "")
             HStack(spacing: 10) {
                 // 带文字的分段控件：一眼看出是在两种画面间切换、现在显示的是哪一种（分屏图标会让人以为是左右对比）。
                 Picker("对比", selection: $preview.showsOriginal) {
@@ -104,18 +98,52 @@ private struct PreviewTitleBar: View {
         .frame(height: 28)
     }
 
-    private var title: String {
-        guard let subject = preview.subject else { return "" }
-        let name = subject.sourceURL.lastPathComponent
-        return subject.preset.map { "\(name) - \($0.name)" } ?? name
+    /// 放不下时中间省略，悬停看全文。
+    private func title(_ text: String) -> some View {
+        Text(text).font(.callout).lineLimit(1).truncationMode(.middle).help(text)
     }
 }
 
-/// 预览下方一行：翻页（封面、切片 1…N、全景长卷），左侧是预览提示，右侧是 SDR / HDR。
+/// 标题栏的排法：[左对齐的文字, 居中的文字, 右侧控件]。居中的文字以整行中点为中心，
+/// 宽度不超过它到右侧控件的距离的两倍，并给左边的文字至少留 `minLeading`；左边的文字用到居中文字之前，互不重叠。
+private struct TitleBarLayout: Layout {
+    var spacing: CGFloat
+    var minLeading: CGFloat = 60
+    /// 居中时预设名至少要有的宽度，再窄就改为跟在文件名后面。
+    var minCentered: CGFloat = 80
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? 400, height: subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+        let (leading, center, trailing) = (subviews[0], subviews[1], subviews[2])
+        let trailingSize = trailing.sizeThatFits(.unspecified)
+        trailing.place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing, proposal: ProposedViewSize(trailingSize))
+        let limit = bounds.maxX - trailingSize.width - spacing
+        let natural = center.sizeThatFits(.unspecified).width
+        let room = min(limit - bounds.midX, bounds.midX - bounds.minX - minLeading - spacing)
+        var centerWidth = natural == 0 ? 0 : min(natural, max(room, 0) * 2)
+        var centerMidX = bounds.midX
+        if centerWidth < min(natural, minCentered) {
+            // 栏太窄、右侧控件已越过中点：没法居中，两段文字分用控件左边的空间，预设名在剩下部分里居中。
+            let available = max(limit - bounds.minX - spacing, 0)
+            let leadingNatural = leading.sizeThatFits(.unspecified).width
+            centerWidth = min(natural, max(available / 2, available - leadingNatural))
+            let leadingEnd = bounds.minX + available - centerWidth
+            centerMidX = (leadingEnd + spacing + limit) / 2
+        }
+        let centerMinX = centerWidth == 0 ? limit + spacing : centerMidX - centerWidth / 2
+        center.place(at: CGPoint(x: centerMidX, y: bounds.midY), anchor: .center, proposal: ProposedViewSize(width: centerWidth, height: bounds.height))
+        let leadingWidth = max(centerMinX - spacing - bounds.minX, 0)
+        leading.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(width: leadingWidth, height: bounds.height))
+    }
+}
+
+/// 预览下方一行：翻页（封面、切片 1…N、全景长卷），右侧是 SDR / HDR。预览的提示只在 Inspector 的「警告」里显示。
 private struct PreviewPageBar: View {
     @Bindable var preview: PreviewModel
-    let note: String?
-    @State private var pagerWidth: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -147,13 +175,7 @@ private struct PreviewPageBar: View {
                     .disabled(index < 0 || index >= preview.roles.count - 1)
             }
             .disabled(preview.roles.count < 2)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pagerWidth = $0 }
             HStack {
-                if let note {
-                    // 用中间翻页控件左边的全部空间；放不下时截断，悬停看全文。
-                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(note)
-                        .frame(maxWidth: max((width - pagerWidth) / 2 - 12, 0), alignment: .leading)
-                }
                 Spacer()
                 Picker("动态范围", selection: $preview.range) {
                     Text("SDR").tag(PreviewRange.sdr)

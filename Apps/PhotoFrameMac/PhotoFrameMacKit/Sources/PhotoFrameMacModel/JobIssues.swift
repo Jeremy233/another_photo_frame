@@ -42,3 +42,25 @@ extension DraftJob {
             + validation.warnings.map { JobIssue(isError: false, code: $0.code, message: $0.message, hint: JobIssue.hint(for: $0.code)) }
     }
 }
+
+extension JobIssue {
+    /// 只是说明、不算问题（例如 HDR 预览里成品为什么是 SDR）：显示成灰色的信息，不计入警告数。
+    public var isInfo: Bool { code.hasPrefix("preview.") }
+}
+
+extension Workbench {
+    /// Inspector「警告」里的内容：选中一个任务时它的校验结果，再加上当前预览渲染时的提示（校验里已有的同类不重复）。
+    /// 预览区不再显示这些提示，选中预设或源图时它们也只在这里。
+    public var inspectorIssues: [JobIssue] {
+        var issues: [JobIssue] = []
+        if case .jobs(let ids) = inspectorSubject {
+            guard ids.count == 1, let job = job(ids[0]) else { return [] }
+            issues = job.issues
+        }
+        guard preview.subject == previewSubject else { return issues }
+        let codes = Set(issues.map(\.code))
+        let extra = preview.warnings.filter { !codes.contains($0.code) }
+            .map { JobIssue(isError: false, code: $0.code, message: $0.message, hint: JobIssue.hint(for: $0.code)) }
+        return issues + extra.filter { !$0.isInfo } + extra.filter(\.isInfo)
+    }
+}
