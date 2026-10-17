@@ -254,7 +254,7 @@ private struct JobDetail: View {
                 }
             }
         } else {
-            ContentUnavailableView("选中一个任务查看详情", systemImage: "info.circle")
+            EmptyState(title: "选中一个任务查看详情", symbol: "info.circle")
         }
     }
 }
@@ -304,10 +304,16 @@ struct BottomBar: View {
         ColumnFooter {
             Button { workbench.isAddingImages = true } label: { Image(systemName: "plus") }
                 .help("添加图片（⌘O）")
-            Picker("位置", selection: defaultLocation) {
-                ForEach(workbench.locations.locations) { location in
-                    Text(location.name).tag(UUID?.some(location.id))
+            // 标签到菜单边框的空隙与预览标题栏里「成品 | 原图」到缩放菜单的一样（看上去 14 pt；弹出菜单自带 2 pt 内缩）。
+            // 标签字号保持系统表单标签的 13 pt。
+            HStack(spacing: 12) {
+                Text("位置").font(.body)
+                Picker("位置", selection: defaultLocation) {
+                    ForEach(workbench.locations.locations) { location in
+                        Text(location.name).tag(UUID?.some(location.id))
+                    }
                 }
+                .labelsHidden()
             }
             .fixedSize()
             .help("新任务的默认导出位置：\(workbench.locations.defaultLocation?.url.displayPath ?? "")")

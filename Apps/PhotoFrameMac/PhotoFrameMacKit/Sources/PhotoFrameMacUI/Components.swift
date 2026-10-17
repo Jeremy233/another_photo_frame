@@ -50,10 +50,9 @@ struct ColumnFooter<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             Hairline()
-            HStack(spacing: 6) {
-                content
-                Spacer(minLength: 0)
-            }
+            // 不用末尾的 Spacer：它和最后一个控件之间还会多出 6 pt 间距，右边距就比左边宽。
+            HStack(spacing: 6) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
             .buttonStyle(.bordered)
             .menuStyle(.button)
             .menuIndicator(.hidden)
@@ -132,7 +131,11 @@ struct JobIssueList: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(issues) { issue in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    JobIssueIcon(isError: issue.isError)
+                    if issue.isInfo {
+                        Image(systemName: "info.circle").foregroundStyle(.secondary)
+                    } else {
+                        JobIssueIcon(isError: issue.isError)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(issue.message)
                         if let hint = issue.hint {
@@ -155,5 +158,35 @@ struct JobIssueIcon: View {
     var body: some View {
         Image(systemName: isError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(isError ? Color.red : Color.yellow)
+    }
+}
+
+/// 空状态：图标 + 15 pt 半粗标题 + 13 pt 说明，与 Inspector 的「没有可检查的内容」同一套字号。
+/// 不用系统 `ContentUnavailableView`：它的字号随所在区域变化，几处空状态大小不一。
+struct EmptyState<Actions: View>: View {
+    var title: String
+    var symbol: String
+    var description: String?
+    var alignment: TextAlignment = .center
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 32)).foregroundStyle(.tertiary)
+            Text(title).font(.title3.weight(.semibold))
+            if let description {
+                Text(description).font(.body).foregroundStyle(.secondary).multilineTextAlignment(alignment)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actions.padding(.top, 4)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension EmptyState where Actions == EmptyView {
+    init(title: String, symbol: String, description: String? = nil, alignment: TextAlignment = .center) {
+        self.init(title: title, symbol: symbol, description: description, alignment: alignment) { EmptyView() }
     }
 }

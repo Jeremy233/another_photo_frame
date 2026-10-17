@@ -27,12 +27,11 @@ struct BatchList: View {
     var body: some View {
         Group {
             if workbench.sources.isEmpty {
-                ContentUnavailableView {
-                    Label("拖入图片", systemImage: "photo.on.rectangle.angled")
-                } description: {
-                    Text("1. 从 Finder 拖入 JPEG、PNG 或 TIFF，或点下面的按钮\n2. 把左栏的预设拖到图片上，创建导出任务\n3. 选中任务，在右栏修改设置，然后点「开始批处理」")
-                        .multilineTextAlignment(.leading)
-                } actions: {
+                EmptyState(
+                    title: "拖入图片", symbol: "photo.on.rectangle.angled",
+                    description: "1. 从 Finder 拖入 JPEG、PNG 或 TIFF，或点下面的按钮\n2. 把左栏的预设拖到图片上，创建导出任务\n3. 选中任务，在右栏修改设置，然后点「开始批处理」",
+                    alignment: .leading
+                ) {
                     Button("添加图片…") { workbench.isAddingImages = true }
                 }
             } else {

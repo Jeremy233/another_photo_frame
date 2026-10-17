@@ -35,7 +35,7 @@ private struct LayerSection: View {
     let layer: OverlayLayer
 
     var body: some View {
-        InspectorSection("\(layer.type.title) · \(layer.layerId)") {
+        InspectorSection("\(layer.type.title) · \(layer.layerId)", key: "layer.\(layer.type)") {
             Toggle("启用", isOn: workbench.layerBinding(layer.layerId, \.enabled, default: true))
             if let slotId = layer.slotId, layer.type.usesAssetSlot {
                 SlotBindingRow(workbench: workbench, slotId: slotId)
@@ -137,7 +137,7 @@ private struct CameraMatchSection: View {
     let layer: OverlayLayer
 
     var body: some View {
-        InspectorSection("按相机选素材") {
+        InspectorSection("按相机选素材", key: "cameraMatch") {
             ForEach(Array(layer.cameraMatch.enumerated()), id: \.offset) { index, rule in
                 InspectorTextField("品牌", text: field(index, \.make), prompt: "例如 FUJIFILM")
                 InspectorTextField("型号", text: field(index, \.model), prompt: "留空表示该品牌所有型号")
