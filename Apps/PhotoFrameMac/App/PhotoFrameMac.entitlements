@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- D-78：本地库放在 App Group 共享容器。ID 是占位值，随签名方式（D-20）一起确定，
+	     同时要改 PhotoFrameStorage 的 LibraryLocation.appGroupIdentifier。
+	     V1 暂不开 App Sandbox：开沙盒后导出位置需要 security-scoped bookmark。 -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.org.anotherphotoframe</string>
+	</array>
+</dict>
+</plist>

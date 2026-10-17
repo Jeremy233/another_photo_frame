@@ -22,10 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - id: find
-        name: Find every Package.swift under Packages/ and Tools/
+        name: Find every Package.swift under Packages/, Tools/ and Apps/
         run: |
-          packages=$(find Packages Tools -mindepth 2 -maxdepth 2 -name Package.swift -exec dirname {} \; \
-            | sort | jq -R . | jq -cs .)
+          packages=$( { find Packages Tools -mindepth 2 -maxdepth 2 -name Package.swift; \
+                        find Apps -mindepth 3 -maxdepth 3 -name Package.swift; } \
+            | xargs -n1 dirname | sort | jq -R . | jq -cs .)
           echo "Found: $packages"
           echo "packages=$packages" >> "$GITHUB_OUTPUT"
 
@@ -53,3 +54,17 @@ jobs:
           swift --version
       - name: Test
         run: swift test
+
+  app:
+    name: Build macOS app
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Apps/PhotoFrameMac
+        # 本地签名（D-20：Alpha 不签名）；CI 上不签名。
+        run: |
+          xcodebuild -project Apps/PhotoFrameMac/PhotoFrameMac.xcodeproj -scheme PhotoFrameMac \
+            -configuration Release -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
