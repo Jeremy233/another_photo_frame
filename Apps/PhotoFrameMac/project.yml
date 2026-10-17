@@ -1,0 +1,49 @@
+# XcodeGen 配置：只描述 .app 外壳（Info.plist、entitlements、签名）。界面与状态代码全部在 PhotoFrameMacKit 包里。
+# 修改后运行 `xcodegen generate`，并提交生成的 PhotoFrameMac.xcodeproj（CI 和贡献者不需要安装 XcodeGen）。
+name: PhotoFrameMac
+options:
+  bundleIdPrefix: org.anotherphotoframe
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: zh-Hans
+packages:
+  PhotoFrameMacKit:
+    path: PhotoFrameMacKit
+targets:
+  PhotoFrameMac:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: PhotoFrameMacKit
+        product: PhotoFrameMacUI
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: AnotherPhotoFrame
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.photography
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: Apache-2.0
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: org.anotherphotoframe.preset
+            UTTypeDescription: AnotherPhotoFrame 预设
+            UTTypeConformsTo: [public.zip-archive, public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [photoframe]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: AnotherPhotoFrame
+        PRODUCT_BUNDLE_IDENTIFIER: org.anotherphotoframe.mac
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        ARCHS: arm64
+        SWIFT_VERSION: "6.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        # 签名设置在 Config/Signing.xcconfig（D-20）；App Group entitlement 在 App/PhotoFrameMac.entitlements（D-78），
+        # 只在配置了开发者账号的本地签名里使用。
