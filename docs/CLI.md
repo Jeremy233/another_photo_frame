@@ -67,7 +67,7 @@ photoframe --help | --version
 
 `export` 和 `preview` 还接受 `--bind <slotId>=<素材>`（可重复），见「素材绑定」。
 
-`mcp serve` 以 stdio 运行本地 MCP 服务器，给 AI 客户端用，配置、工具和安全边界见 [docs/MCP.md](MCP.md)。
+`mcp serve` 以 stdio 运行本地 MCP 服务器（D-97、D-98），给 AI 客户端用，配置、工具和安全边界见 [docs/MCP.md](MCP.md)。
 预设内容（画布、图层、输出等）用 `preset get` / `preset set` 逐项查看和修改，字段路径与 MCP 的 `get_preset` / `update_preset` 相同（D-93）。
 
 ### 指定预设：`--preset <id|名称|文件>`（D-76）
@@ -175,7 +175,7 @@ D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解
 | `preset move <预设> --to user\|imported` | 在「用户保存」和「导入」两组之间移动（D-81、D-94），内容、ID 和时间不变；已经在目标组时什么也不做。内置预设不能移动（`library.builtin_read_only`，退出码 4）；`.photoframe` 文件不在库里（`library.preset_not_in_library`，退出码 4） | `presetId  名称` |
 | `preset delete <预设>` | 删除库里的预设和它的本地绑定；内置预设不能删 | `presetId  名称` |
 
-### 逐项修改预设：`preset get` / `preset set`（D-93）
+### 逐项修改预设：`preset get` / `preset set`（D-93、D-99）
 
 字段路径直接用 `manifest.json` 的字段名（字段说明见规范 §8.1），CLI 与 MCP（`get_preset` / `update_preset`）共用：
 
@@ -490,6 +490,8 @@ photoframe preset get "My IG" canvas
 | D-94 | `preset move <预设> --to user\|imported`；内置预设不能移动（`library.builtin_read_only`） |
 | D-95 | `asset set-category <素材> <分组>` |
 | D-96 | 库目录只用环境变量 `PHOTOFRAME_LIBRARY` 指定，不加命令行参数 |
+| D-98 | MCP 入口是子命令 `photoframe mcp serve`（详见 [MCP.md](MCP.md)，D-97…D-104） |
+| D-99 | 字段路径写法；`preset set` 的值先按 JSON 解析，否则当字符串；先应用设置再应用 `--unset` |
 
 ## 测试
 
