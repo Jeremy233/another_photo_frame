@@ -321,7 +321,11 @@ private struct PresetInfoCard: View {
         }
         if let preset = workbench.editedPreset {
             lines.append("画布：\(preset.canvas.width) × \(preset.canvas.height)，\(preset.canvas.mode == .fit ? "完整嵌入" : "比例裁切")")
-            let range = preset.output.dynamicRange == .hdr ? "HDR" : "SDR"
+            let range = switch preset.output.dynamicRange {
+            case .sdr: "SDR"
+            case .hdr: "HDR"
+            case .auto: "动态范围跟随源图"
+            }
             lines.append("输出：\(preset.output.format.rawValue.uppercased())，\(range)，\(preset.output.colorSpace)")
             if case .jobs(let ids) = workbench.inspectorSubject, let outputs = workbench.job(ids[0])?.validation?.outputs, !outputs.isEmpty {
                 lines.append(outputs.count == 1 ? "1 张图" : "封面 + \(outputs.count - 1) 张切片")
@@ -573,9 +577,13 @@ private struct OutputTab: View {
                 }
             }
             InspectorPicker("动态范围", selection: workbench.binding(\.output.dynamicRange)) {
+                Text("跟随源图").tag(OutputSettings.DynamicRange?.some(.auto))
                 Text("SDR").tag(OutputSettings.DynamicRange?.some(.sdr))
                 Text("HDR").tag(OutputSettings.DynamicRange?.some(.hdr))
                 if workbench.field(\.output.dynamicRange) == .mixed { Text("多个值").tag(OutputSettings.DynamicRange?.none) }
+            }
+            if let result = workbench.autoRangeResult {
+                LabeledContent("实际输出") { Text(result).foregroundStyle(.secondary) }
             }
         }
         InspectorSection("元数据") {

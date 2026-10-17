@@ -230,4 +230,13 @@ extension Workbench {
     func refreshPreview() {
         preview.update(previewSubject)
     }
+
+    /// 动态范围选「跟随源图」（D-125）时，预览的这张源图实际会导出成什么；不是 auto 或没有源图时为 nil。
+    public var autoRangeResult: String? {
+        guard let output = editedPreset?.output, output.dynamicRange == .auto,
+              let id = previewSubject?.sourceId, let hdr = sourceItem(id)?.inspection?.hdr else { return nil }
+        let sourceHasHDR = hdr.kind != "none" && (hdr.headroom.map { $0 > 1.01 } ?? true)
+        if output.effectiveDynamicRange(sourceHasHDR: sourceHasHDR) == .hdr { return "HDR（源图是 HDR）" }
+        return output.format == .jpeg ? "SDR（源图不是 HDR）" : "SDR（PNG 不支持 HDR）"
+    }
 }

@@ -115,8 +115,19 @@ private struct PreviewTitleBar: View {
 private struct PreviewPageBar: View {
     @Bindable var preview: PreviewModel
     let note: String?
+    @State private var pagerWidth: CGFloat = 0
 
     var body: some View {
+        GeometryReader { geo in
+            bar(width: geo.size.width)
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+    }
+
+    private func bar(width: CGFloat) -> some View {
         ZStack {
             HStack(spacing: 8) {
                 Button { step(-1) } label: { Image(systemName: "chevron.backward") }
@@ -130,14 +141,18 @@ private struct PreviewPageBar: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+                // 段数变了换一个新控件：复用的 NSSegmentedControl 不会按新的段重新算宽度。
+                .id(PageSegments(count: preview.roles.count, strip: preview.hasStrip))
                 Button { step(1) } label: { Image(systemName: "chevron.forward") }
                     .disabled(index < 0 || index >= preview.roles.count - 1)
             }
             .disabled(preview.roles.count < 2)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pagerWidth = $0 }
             HStack {
                 if let note {
-                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(note)
-                        .frame(maxWidth: 260, alignment: .leading)
+                    // 用中间翻页控件左边的全部空间；放不下时截断，悬停看全文。
+                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).help(note)
+                        .frame(maxWidth: max((width - pagerWidth) / 2 - 12, 0), alignment: .leading)
                 }
                 Spacer()
                 Picker("动态范围", selection: $preview.range) {
@@ -149,10 +164,12 @@ private struct PreviewPageBar: View {
                 .fixedSize()
             }
         }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
-        .padding(.horizontal, 10)
-        .frame(height: 32)
+        .frame(width: width, height: 32)
+    }
+
+    private struct PageSegments: Hashable {
+        var count: Int
+        var strip: Bool
     }
 
     /// 当前页在轮播中的位置；全景长卷时为 -1。

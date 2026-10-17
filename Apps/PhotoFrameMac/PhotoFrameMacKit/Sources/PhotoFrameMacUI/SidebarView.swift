@@ -235,6 +235,7 @@ private struct AssetList: View {
     @Bindable var workbench: Workbench
     @State private var renaming: RenameRequest?
     @State private var importCategory: AssetCategory?
+    @State private var importing = false
     @State private var collapsed: Set<AssetCategory> = []
 
     private func expanded(_ category: AssetCategory) -> Binding<Bool> {
@@ -268,10 +269,8 @@ private struct AssetList: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .renameAlert($renaming)
-        .fileImporter(
-            isPresented: Binding(get: { importCategory != nil }, set: { if !$0 { importCategory = nil } }),
-            allowedContentTypes: FileTypes.assets, allowsMultipleSelection: true
-        ) { result in
+        // 面板关闭时 SwiftUI 先把 isPresented 置为 false 再回调，所以分类单独记住，不能跟着清掉。
+        .fileImporter(isPresented: $importing, allowedContentTypes: FileTypes.assets, allowsMultipleSelection: true) { result in
             guard let category = importCategory, case .success(let urls) = result else { return }
             Task { await workbench.importAssets(urls, category: category) }
         }
@@ -281,7 +280,10 @@ private struct AssetList: View {
         ColumnFooter {
             Menu {
                 ForEach(AssetCategory.allCases, id: \.self) { category in
-                    Button("导入\(category.title)…") { importCategory = category }
+                    Button("导入\(category.title)…") {
+                        importCategory = category
+                        importing = true
+                    }
                 }
             } label: {
                 Image(systemName: "plus")

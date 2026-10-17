@@ -1,7 +1,6 @@
 import AppKit
 import PhotoFrameApplication
 import PhotoFrameMacModel
-import PhotoFrameStorage
 import SwiftUI
 
 /// 应用的全部场景。`.app` 外壳（Xcode 工程）只需要 `@main` 里返回它。
@@ -10,10 +9,9 @@ public struct PhotoFrameScene: Scene {
 
     @MainActor
     public init() {
-        // 本地库放在 App Group 共享容器（D-78），与 CLI / MCP 共用；GUI 先排队、点「开始批处理」才派发。
+        // 本地库与 CLI / MCP 按同一套规则选位置（D-78、D-124）；GUI 先排队、点「开始批处理」才派发。
         do throws(ApplicationError) {
-            let service = try LocalPhotoFrameService.makeDefault(
-                .init(startsPaused: true, libraryRoot: LibraryLocation.groupContainerRoot()))
+            let service = try LocalPhotoFrameService.makeDefault(.init(startsPaused: true))
             _workbench = State(initialValue: .success(Workbench(service: service)))
         } catch {
             _workbench = State(initialValue: .failure(error))

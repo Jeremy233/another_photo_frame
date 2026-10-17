@@ -9,9 +9,12 @@ public struct OutputSettings: Hashable, Sendable, Codable {
     }
 
     public enum DynamicRange: String, Hashable, Sendable, Codable, CaseIterable {
+        /// 强制 SDR。
         case sdr
-        /// 可选 HDR 输出（D-05）；具体编码（如 gain map JPEG）由平台配置决定（D-17）。
+        /// 强制 HDR 输出（D-05）；具体编码（如 gain map JPEG）由平台配置决定（D-17）。源图不是 HDR 时按 SDR 输出并警告。
         case hdr
+        /// 跟随源图（D-125）：源图是 HDR 且输出格式支持 HDR（JPEG gain map）时输出 HDR，否则安静地输出 SDR。
+        case auto
     }
 
     /// 输出元数据开关（D-06：默认全部不写出）。
@@ -66,7 +69,7 @@ public struct OutputSettings: Hashable, Sendable, Codable {
         format: Format = .jpeg,
         quality: Int = 100,
         colorSpace: String = "sRGB",
-        dynamicRange: DynamicRange = .sdr,
+        dynamicRange: DynamicRange = .auto,
         metadata: Metadata = Metadata(),
         extensions: ExtensionFields = [:]
     ) {
@@ -78,6 +81,12 @@ public struct OutputSettings: Hashable, Sendable, Codable {
         self.extensions = extensions
     }
 
+    /// 实际写出的动态范围（只有 `.sdr` 或 `.hdr`）。`sourceHasHDR`：源图是 HDR，且有超过 SDR 白的内容。
+    /// 强制 HDR 也只在源图是 HDR、格式是 JPEG 时写 HDR（PNG + 强制 HDR 是预设错误，渲染前就会拒绝）。
+    public func effectiveDynamicRange(sourceHasHDR: Bool) -> DynamicRange {
+        dynamicRange != .sdr && format == .jpeg && sourceHasHDR ? .hdr : .sdr
+    }
+
     enum CodingKeys: String, CodingKey, CaseIterable {
         case format, quality, colorSpace, dynamicRange, metadata
     }
@@ -87,6 +96,7 @@ public struct OutputSettings: Hashable, Sendable, Codable {
         format = try c.decodeIfPresent(Format.self, forKey: .format) ?? .jpeg
         quality = try c.decodeIfPresent(Int.self, forKey: .quality) ?? 100
         colorSpace = try c.decodeIfPresent(String.self, forKey: .colorSpace) ?? "sRGB"
+        // 缺字段的旧预设保持原来的含义（SDR）；新建预设的默认值是 auto（D-125）。
         dynamicRange = try c.decodeIfPresent(DynamicRange.self, forKey: .dynamicRange) ?? .sdr
         metadata = try c.decodeIfPresent(Metadata.self, forKey: .metadata) ?? Metadata()
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)

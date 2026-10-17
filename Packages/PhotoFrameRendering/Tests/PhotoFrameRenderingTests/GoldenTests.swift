@@ -169,8 +169,10 @@ struct GoldenTests {
 
     @Test("Instagram Standard：PQ HDR 源输出 SDR（tone map）")
     func hdrToneMap() async throws {
-        try await Self.check("instagram-standard-pq", source: Fixtures.url("hdr_pq2020_203nit.png"),
-                             preset: try Self.builtIn("Instagram Standard"))
+        // 内置预设是 auto（D-125），HDR 源会输出 HDR；这里固定为 SDR，检查 tone map。
+        var preset = try Self.builtIn("Instagram Standard")
+        preset.output.dynamicRange = .sdr
+        try await Self.check("instagram-standard-pq", source: Fixtures.url("hdr_pq2020_203nit.png"), preset: preset)
     }
 
     @Test("无 ICC 源 + 水印与文字图层的位置")

@@ -345,19 +345,38 @@ struct PresetLibraryTests {
     }
 }
 
-@Suite("库的位置（D-78）")
+@Suite("库的位置（D-78、D-124）")
 struct LibraryLocationTests {
-    @Test("默认根目录在 App Group 共享容器里，与沙盒无关")
-    func defaultRoot() {
-        let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+    let home = URL(filePath: "/Users/someone", directoryHint: .isDirectory)
+
+    @Test("App Group 容器里的库目录")
+    func groupContainerLayout() {
         let container = LibraryLocation.groupContainerPath(appGroupIdentifier: "group.example", home: home)
         #expect(container.path == "/Users/someone/Library/Group Containers/group.example")
         #expect(LibraryLocation.root(inGroupContainer: container).path
             == "/Users/someone/Library/Group Containers/group.example/Library/Application Support/AnotherPhotoFrame")
-
-        let root = LibraryLocation.defaultRoot()
-        #expect(root.path.hasSuffix("/Library/Group Containers/\(LibraryLocation.appGroupIdentifier)/Library/Application Support/AnotherPhotoFrame"))
-        #expect(root.path.hasPrefix(LibraryLocation.userHomeDirectory().path))
         #expect(LibraryLocation.appGroupIdentifier == "group.org.anotherphotoframe")
+    }
+
+    @Test("选根目录：环境变量 > 带 entitlement 的容器 > 已存在的 Group Containers 目录 > Application Support")
+    func resolveRoot() {
+        let group = "/Users/someone/Library/Group Containers/group.example/Library/Application Support/AnotherPhotoFrame"
+        func resolve(_ env: [String: String] = [:], entitled: URL? = nil, exists: Bool = false) -> String {
+            LibraryLocation.resolveRoot(environment: env, entitledContainer: entitled, home: home,
+                                        appGroupIdentifier: "group.example", fileExists: { _ in exists }).path
+        }
+        #expect(resolve() == "/Users/someone/Library/Application Support/AnotherPhotoFrame")
+        #expect(resolve(exists: true) == group)
+        let sandboxed = URL(filePath: "/Users/someone/Library/Group Containers/group.example", directoryHint: .isDirectory)
+        #expect(resolve(entitled: sandboxed) == group)
+        #expect(resolve(["PHOTOFRAME_LIBRARY": "/tmp/lib"], entitled: sandboxed, exists: true) == "/tmp/lib")
+        #expect(resolve(["PHOTOFRAME_LIBRARY": ""]) == "/Users/someone/Library/Application Support/AnotherPhotoFrame")
+    }
+
+    @Test("测试进程没有 App Group entitlement，默认根目录在真实主目录下")
+    func defaultRootOfThisProcess() {
+        #expect(!LibraryLocation.hasAppGroupEntitlement(LibraryLocation.appGroupIdentifier))
+        #expect(LibraryLocation.defaultRoot().path.hasPrefix(LibraryLocation.userHomeDirectory().path)
+            || ProcessInfo.processInfo.environment["PHOTOFRAME_LIBRARY"] != nil)
     }
 }

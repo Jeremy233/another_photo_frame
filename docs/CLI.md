@@ -24,10 +24,13 @@ swift build -c release
 - **不加 `--overwrite` 就不覆盖**：已存在的作品目录自动加 `_v2`、`_v3`…（D-49）。
 - **Ctrl-C**：取消所有未完成的任务，删除它们的临时目录，以 130 退出；已经发布的作品目录保持完整。
   再按一次 Ctrl-C 立即退出，残留的临时目录在下次导出到同一目录时清理（D-55）。
-- **本地库**：预设库、素材库和绑定在 App Group 共享容器里（D-78），GUI、CLI、MCP 用同一个库：
-  `~/Library/Group Containers/group.org.anotherphotoframe/Library/Application Support/AnotherPhotoFrame/`
-  （App Group ID 是占位值，签名时确定）。环境变量 `PHOTOFRAME_LIBRARY=<目录>` 改用别的库（脚本隔离、测试）。
-  只有环境变量，没有命令行参数（D-96）。
+- **本地库**：预设库、素材库和绑定，GUI、CLI、MCP 按同一套规则选位置，用同一个库（D-78、D-124，`LibraryLocation.defaultRoot()`）：
+  1. 环境变量 `PHOTOFRAME_LIBRARY=<目录>`（脚本隔离、测试；只有环境变量，没有命令行参数，D-96）；
+  2. 已签名、带 App Group 的 GUI：App Group 容器
+     `~/Library/Group Containers/group.org.anotherphotoframe/Library/Application Support/AnotherPhotoFrame/`；
+     这个 `Group Containers/group.org.anotherphotoframe/` 目录已经存在时，CLI / MCP 也用它；
+  3. 否则 `~/Library/Application Support/AnotherPhotoFrame/`（未签名的应用不能在 Group Containers 下建目录）。
+  App Group ID 是占位值，签名时确定。
 
 ## 命令
 
@@ -139,7 +142,8 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 与 GUI 预览区相同的预览：同一条渲染管线，按预览尺寸缩小，默认写成 sRGB PNG。用于脚本或 AI 客户端查看版式；不是成品（不带元数据）。
 
 `--dynamic-range hdr`（D-106）：导出实际写 HDR 的页写成带 gain map 的 JPEG（与 HDR 导出同一种编码，Q90），底图就是 SDR 预览；
-不支持 HDR 的查看器显示底图。其余页（源图不是 HDR、或预设输出 SDR）仍写 PNG；预设输出 SDR 时警告 `preview.output_sdr`。
+不支持 HDR 的查看器显示底图。其余页（源图不是 HDR、或预设输出 SDR）仍写 PNG；没有一页是 HDR 时警告 `preview.output_sdr` 并说明原因
+（预设输出 SDR，或预设跟随源图（`auto`，D-125）而源图不是 HDR、格式是 PNG）。
 
 文件名 `<源文件名>_<Standard|Panorama>_preview_00_Cover.png`（HDR 页 `.jpg`）、`…_01_Slide.png`。任何一个目标文件已存在就什么都不写、退出码 5；`--overwrite` 时替换。
 
@@ -397,7 +401,7 @@ photoframe preset get "My IG" canvas
     {
       "background" : "#FAFAF8",
       "canvas" : { "height" : 1080, "width" : 1080 },
-      "dynamicRange" : "sdr",
+      "dynamicRange" : "auto",
       "format" : "jpeg",
       "layerCount" : 0,
       "minMarginPx" : 60,
@@ -497,6 +501,8 @@ photoframe preset get "My IG" canvas
 | D-98 | MCP 入口是子命令 `photoframe mcp serve`（详见 [MCP.md](MCP.md)，D-97…D-104） |
 | D-99 | 字段路径写法；`preset set` 的值先按 JSON 解析，否则当字符串；先应用设置再应用 `--unset` |
 | D-106 | `preview --dynamic-range hdr`：导出写 HDR 的页写成 gain map JPEG |
+| D-124 | 本地库位置：`PHOTOFRAME_LIBRARY` > 带 App Group 的容器 > 已存在的 Group Containers 目录 > `~/Library/Application Support/AnotherPhotoFrame/` |
+| D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图），内置和新建预设默认 `auto` |
 
 ## 测试
 

@@ -285,7 +285,8 @@ public actor PhotoFrameMCPServer {
         }
         var range = OutputSettings.DynamicRange.sdr
         if let text = try args.string("dynamicRange") {
-            guard let value = OutputSettings.DynamicRange(rawValue: text) else { throw .invalidArguments("dynamicRange 只能是 sdr、hdr") }
+            // 预览的颜色模式只有 sdr / hdr；预设的 auto（D-125）不是预览模式。
+            guard let value = OutputSettings.DynamicRange(rawValue: text), value != .auto else { throw .invalidArguments("dynamicRange 只能是 sdr、hdr") }
             range = value
         }
         let image = try policy.inputFile(args.requiredString("image"), argument: "image")

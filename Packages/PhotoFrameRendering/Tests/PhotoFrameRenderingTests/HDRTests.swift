@@ -116,6 +116,18 @@ struct HDRTests {
         }
     }
 
+    @Test("auto（D-125）：HDR 源图 + JPEG 输出 HDR；SDR 源图或 PNG 安静地输出 SDR")
+    func autoRange() async throws {
+        let hdr = try await render(Fixtures.url("hdr_gainmap.jpg"), Self.chartPreset(.auto, format: .jpeg))
+        #expect(hdr.outputs[0].dynamicRange == .hdr)
+        let sdr = try await render(Fixtures.url("chart_srgb.jpg"), Self.chartPreset(.auto, format: .jpeg))
+        #expect(sdr.outputs[0].dynamicRange == .sdr)
+        #expect(!sdr.warnings.contains { $0.code.hasPrefix("output.hdr") })
+        let png = try await render(Fixtures.url("hdr_gainmap.jpg"), Self.chartPreset(.auto, format: .png))
+        #expect(png.outputs[0].dynamicRange == .sdr)
+        #expect(!png.warnings.contains { $0.code.hasPrefix("output.hdr") })
+    }
+
     // MARK: - 「明确是 HDR」的判定（D-62）
 
     /// PQ 编码值（ST 2084），nits → 0…1。

@@ -56,7 +56,8 @@ public struct ExportPreset: Hashable, Sendable, Codable, Identifiable {
         panorama = try c.decodeIfPresent(PanoramaSettings.self, forKey: .panorama) ?? .disabled
         layers = try c.decodeIfPresent([OverlayLayer].self, forKey: .layers) ?? []
         assetSlots = try c.decodeIfPresent([AssetSlot].self, forKey: .assetSlots) ?? []
-        output = try c.decodeIfPresent(OutputSettings.self, forKey: .output) ?? OutputSettings()
+        // 缺 output 的旧预设：各字段取缺省值，动态范围保持原来的 SDR（D-125）。
+        output = try c.decodeIfPresent(OutputSettings.self, forKey: .output) ?? OutputSettings(dynamicRange: .sdr)
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
 

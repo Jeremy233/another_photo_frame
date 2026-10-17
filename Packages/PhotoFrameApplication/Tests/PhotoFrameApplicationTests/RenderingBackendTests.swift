@@ -199,11 +199,29 @@ struct RenderingBackendTests {
             source: .id(added.sourceId), preset: preset, options: PreviewOptions(maxLongEdge: 360)))
         #expect(sdr.pages[0].format == .png && sdr.pages[0].dynamicRange == .sdr)
 
+        // 内置预设是 auto（D-125）：HDR 源图输出 HDR。
+        let builtIn = Self.preset("Instagram Standard")
+        #expect(builtIn.output.dynamicRange == .auto)
+        let auto = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(added.sourceId), preset: builtIn, options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
+        #expect(auto.pages[0].dynamicRange == .hdr)
+        #expect(!auto.warnings.contains { $0.code == "preview.output_sdr" })
+
         // 预设输出 SDR：HDR 模式也只有 PNG，并说明原因。
+        var sdrPreset = builtIn
+        sdrPreset.output.dynamicRange = .sdr
         let plain = try await service.renderPreview(ExportPreviewRequest(
-            source: .id(added.sourceId), preset: Self.preset("Instagram Standard"), options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
+            source: .id(added.sourceId), preset: sdrPreset, options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
         #expect(plain.pages[0].format == .png && plain.pages[0].hdrHeadroom == nil)
-        #expect(plain.warnings.contains { $0.code == "preview.output_sdr" })
+        #expect(plain.warnings.contains { $0.code == "preview.output_sdr" && $0.message.hasPrefix("预设输出 SDR") })
+
+        // auto + PNG：按 SDR 输出，说明是 PNG 的原因。
+        var png = builtIn
+        png.output.format = .png
+        let pngPreview = try await service.renderPreview(ExportPreviewRequest(
+            source: .id(added.sourceId), preset: png, options: PreviewOptions(maxLongEdge: 360, dynamicRange: .hdr)))
+        #expect(pngPreview.pages[0].dynamicRange == .sdr)
+        #expect(pngPreview.warnings.contains { $0.code == "preview.output_sdr" && $0.message.hasPrefix("PNG") })
     }
 
     @Test("相机图标按 EXIF 自动匹配（D-111）：读源图 Make / Model，渲染用匹配到的槽；没有相机信息时用默认并提示")

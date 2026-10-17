@@ -200,6 +200,7 @@ struct PlatformTests {
             #expect(p.canvas.minMarginPx == 60)
             #expect(p.canvas.mode == .fit)
             #expect(p.output == OutputSettings())
+            #expect(p.output.dynamicRange == .auto, "内置预设跟随源图（D-125）")
             #expect(p.validate().isEmpty, "\(p.name): \(p.validate())")
             let profile = try #require(c.profile(id: p.platform!))
             #expect(p.canvas.size == (p.panorama.enabled ? profile.panoramaTile : profile.standardCanvas))

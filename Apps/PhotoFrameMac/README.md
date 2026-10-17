@@ -82,8 +82,12 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 ## 签名与本地库
 
 - 默认本地签名（Sign to Run Locally），不带 entitlements，不开沙盒，任何人都能直接 build（D-20：Alpha / Beta 不签名）。
-- 本地库按 D-78 放在 App Group 共享容器。没有 App Group entitlement 时，`LibraryLocation.groupContainerRoot()`
-  退回按路径计算的 `~/Library/Group Containers/<App Group ID>/…`，与 CLI / MCP 仍是同一个库。
+- 本地库的位置由 `LibraryLocation.defaultRoot()` 决定（D-78、D-124），与 CLI / MCP 同一套规则、同一个库：
+  `PHOTOFRAME_LIBRARY` > 带 App Group entitlement 时的 App Group 容器 > `~/Library/Group Containers/<App Group ID>/` 已存在时用它 >
+  `~/Library/Application Support/AnotherPhotoFrame/`。未签名的应用没有 entitlement，macOS 不允许它在 Group Containers 下建目录，
+  所以默认用最后一个。
+- 以后签名并带上 App Group 时，新版会改用 App Group 容器，原来 Application Support 里的预设和素材需要迁移（复制到容器里的库目录）。
+  迁移还没有实现，签名时一并处理。
 - 有开发者账号时，把 `Config/Signing.local.xcconfig.example` 复制为 `Config/Signing.local.xcconfig`（不提交）并填入 Team ID，
   就会用 `App/PhotoFrameMac.entitlements` 里的 App Group 签名。App Group ID 现在是占位值 `group.org.anotherphotoframe`。
 
@@ -96,7 +100,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 | `Workbench+Batch.swift` | 源图、任务草稿、拖放、素材绑定、存储为预设、校验、开始批处理与覆盖确认（D-49） |
 | `Workbench+Layers.swift` | 添加 / 删除 / 修改图层 |
 | `Workbench+Jobs.swift` | 任务事件、活跃 / 已完成、暂停、取消、重试、重新导出、底栏进度 |
-| `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview`。HDR 时导出写 HDR 的页是 gain map JPEG，按 HDR 解码、以 EDR 显示（D-106） |
+| `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview`。HDR 时导出写 HDR 的页是 gain map JPEG，按 HDR 解码、以 EDR 显示（D-106）。「输出」标签的动态范围默认「跟随源图」（D-125），下面显示这张源图实际会导出成什么（`autoRangeResult`） |
 | `PreviewPane.swift`、`OriginalImageStore.swift` | 预览画布：超出显示区域时可拖动平移，滚动 / 拖动 / 捏合时右上角显示小地图（点按或拖动小地图跳转），停下 1 秒后隐藏（显示、隐藏都不做动画，小地图是一块不透明的 SDR 层，避免半透明层在 HDR 画面上过渡）。原图先显示 512 px 快图，后台解码 3072 px 清晰版，放大到超过它时才解码全分辨率（100% 为真实像素，缩回后释放）；按 URL、档位、SDR/HDR 做 LRU 缓存（600 MB）。成品预览按内容（任务、源图修改时间、页、动态范围）缓存最近的渲染结果（256 MB），切回看过的任务不再请求后端 |
 | `AppSettings.swift` | ⌘, 设置（D-114）：提交后是否切到「活跃」、并发数、内存预算（D-53，自动 = 队列默认值），存在 UserDefaults，调度参数改了立即交给队列 |
 | `ExportLocation.swift` | 左栏「位置」：名称 + 目录，存在 UserDefaults |
