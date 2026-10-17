@@ -30,7 +30,7 @@ final class Fixture {
     var exports: URL { root.appending(path: "Exports", directoryHint: .isDirectory) }
 
     /// 横向渐变的合成「照片」，嵌入 Display P3。
-    func photo(_ name: String, width: Int = 360, height: Int = 240) throws -> URL {
+    func photo(_ name: String, width: Int = 360, height: Int = 240, properties: [CFString: Any] = [:]) throws -> URL {
         let url = root.appending(path: "Originals/\(name)")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let space = CGColorSpace(name: CGColorSpace.displayP3)!
@@ -39,7 +39,7 @@ final class Fixture {
         let colors = [CGColor(colorSpace: space, components: [0.9, 0.3, 0.2, 1])!, CGColor(colorSpace: space, components: [0.2, 0.4, 0.9, 1])!]
         let gradient = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 1])!
         ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: 0), options: [])
-        try write(ctx.makeImage()!, to: url, type: .jpeg)
+        try write(ctx.makeImage()!, to: url, type: .jpeg, properties: properties)
         return url
     }
 
@@ -76,9 +76,9 @@ final class Fixture {
         return url
     }
 
-    private func write(_ image: CGImage, to url: URL, type: UTType) throws {
+    private func write(_ image: CGImage, to url: URL, type: UTType, properties: [CFString: Any] = [:]) throws {
         let dest = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(dest, image, nil)
+        CGImageDestinationAddImage(dest, image, properties as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
     }
 

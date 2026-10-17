@@ -300,7 +300,7 @@ public actor JobQueue {
         }
 
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            configuration.currentSlotResolver(), preset: spec.preset, bindings: spec.assetBindings)
+            configuration.currentSlotResolver(), preset: spec.preset, bindings: spec.assetBindings, source: spec.source.fileURL)
         warnings += slotWarnings
         if !warnings.isEmpty {
             update(id, attemptId) { $0.warnings += warnings }

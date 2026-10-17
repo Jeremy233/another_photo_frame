@@ -74,6 +74,14 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 
 `AssetBindingTable` 只存在本机，不写入 `.photoframe`。
 
+**相机图标按 EXIF 自动匹配（D-111）**：`resolve(preset, jobBindings:, camera:)` 传入源图的 EXIF Make / Model 时，
+素材图层按 `OverlayLayer.slotCandidates(for:)` 依次尝试候选槽：写了型号的 `cameraMatch` 规则 → 只写品牌的规则 → 图层自己的 `slotId`。
+每个候选槽照常按上面 1–2 解析，用第一个有素材的，结果在 `layerSlots`（layerId → slotId），渲染前用 `applied(to:)` 换掉图层的 `slotId`。
+
+- 匹配到的槽没有可用素材：`slot.camera_match_unbound`，退到下一个候选；它的 `required` 不起作用，从不阻止输出。
+- 全部候选都没有素材：按图层自己的 `slotId` 处理（可选 → 跳过，必需 → `slot.missing_required`）；没有 `slotId` 时跳过并警告 `slot.camera_no_match`。
+- 源图没有相机信息：`slot.camera_unknown`，只用默认素材。`camera` 为 nil（调用方不匹配）时行为与以前完全相同。
+
 ## 已确定（P3 实现细节，2026-10-16）
 
 原来列在「待确认」里的问题已由用户决定，写入规范 §16「P3」（D-23～D-45），并按决定实现：

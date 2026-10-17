@@ -469,7 +469,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 warnings += attempt { () throws(ApplicationError) in try ExportChecks.checkPreset(preset, platform: platform) } ?? []
                 if let destinationError { errors.append(destinationError) }
                 let slots = attempt { () throws(ApplicationError) in
-                    try ExportChecks.resolveSlots(resolver, preset: preset, bindings: request.assetBindings)
+                    try ExportChecks.resolveSlots(resolver, preset: preset, bindings: request.assetBindings, source: source.fileURL)
                 }
                 warnings += slots?.1 ?? []
 
@@ -543,7 +543,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let platform = configuration.platformProfile(for: request.preset)
         let presetWarnings = try ExportChecks.checkPreset(request.preset, platform: platform)
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            configuration.currentSlotResolver(), preset: request.preset, bindings: request.assetBindings)
+            configuration.currentSlotResolver(), preset: request.preset, bindings: request.assetBindings, source: source.fileURL)
         let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: request.preset,
                                    platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride)
         do {

@@ -4,7 +4,7 @@
 /// 与几何计算共用；渲染前用 ``geometry(contentSize:)`` 转成 ``OverlayGeometry``，再交给 ``OverlayPlacement`` 计算位置。
 ///
 /// JSON 字段：`layerId`、`type`、`enabled`、`visibleOn`、`slides`、`anchor`、`reference`、`side`、
-/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）。
+/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）、`cameraMatch`（D-111）。
 public struct OverlayLayer: Hashable, Sendable, Codable {
     public enum LayerType: String, Hashable, Sendable, Codable, CaseIterable {
         case text, asset, metadataText, cameraBadge
@@ -31,8 +31,10 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
     public var maxBoundsPx: PixelSize?
     public var opacity: Double
     public var zIndex: Int
-    /// `asset` / `cameraBadge` 图层绑定的素材槽。
+    /// `asset` / `cameraBadge` 图层绑定的素材槽；有 `cameraMatch` 时是匹配不到时的默认素材。
     public var slotId: String?
+    /// 按 EXIF 相机品牌 / 型号改用别的素材槽（D-111，只用于素材图层）。旧预设没有这个字段时为空。
+    public var cameraMatch: [CameraMatchRule]
     /// `text` / `metadataText` 图层的文字与样式。
     public var text: TextStyle?
     public var extensions: ExtensionFields
@@ -50,6 +52,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         opacity: Double = 1,
         zIndex: Int = 0,
         slotId: String? = nil,
+        cameraMatch: [CameraMatchRule] = [],
         text: TextStyle? = nil,
         extensions: ExtensionFields = [:]
     ) {
@@ -65,6 +68,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         self.opacity = opacity
         self.zIndex = zIndex
         self.slotId = slotId
+        self.cameraMatch = cameraMatch
         self.text = text
         self.extensions = extensions
     }
@@ -89,7 +93,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case layerId, type, enabled, visibleOn, slides, anchor, reference, side
-        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, text
+        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, cameraMatch, text
     }
 
     enum VisibleOn: String, Codable {
@@ -139,6 +143,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
         zIndex = try c.decodeIfPresent(Int.self, forKey: .zIndex) ?? 0
         slotId = try c.decodeIfPresent(String.self, forKey: .slotId)
+        cameraMatch = try c.decodeIfPresent([CameraMatchRule].self, forKey: .cameraMatch) ?? []
         text = try c.decodeIfPresent(TextStyle.self, forKey: .text)
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
@@ -169,6 +174,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         try c.encode(opacity, forKey: .opacity)
         try c.encode(zIndex, forKey: .zIndex)
         try c.encodeIfPresent(slotId, forKey: .slotId)
+        if !cameraMatch.isEmpty { try c.encode(cameraMatch, forKey: .cameraMatch) }
         try c.encodeIfPresent(text, forKey: .text)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
     }

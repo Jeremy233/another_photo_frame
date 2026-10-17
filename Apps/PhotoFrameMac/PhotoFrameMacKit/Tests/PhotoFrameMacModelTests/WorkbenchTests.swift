@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotoFrameApplication
 import PhotoFrameCore
 @testable import PhotoFrameMacModel
@@ -185,6 +186,40 @@ import Testing
 
         await wb.deleteAsset(asset.assetId)
         #expect(wb.alert?.title == "素材已删除")
+    }
+
+    @Test func cameraRulesAndTextStyle() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        let url = try f.photo("Fuji.jpg", properties: [
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "FUJIFILM", kCGImagePropertyTIFFModel: "X100VI"],
+        ])
+        let ids = await wb.addSources([url])
+        let sourceId = try #require(ids.first)
+        await wb.drop(.preset(f.presetId("Instagram Standard")), on: .source(sourceId))
+        await wb.settle()
+        let jobId = try #require(wb.sourceItem(sourceId)?.jobs.first?.id)
+        wb.selection = [.job(jobId)]
+        #expect(wb.previewCamera == CameraIdentity(make: "FUJIFILM", model: "X100VI"))
+
+        // 规则预填当前源图的相机，并有自己的素材槽；删除规则时槽一起删除。
+        wb.addLayer(.cameraBadge)
+        wb.addCameraRule("cameraBadge")
+        let layer = try #require(wb.editedPreset?.layers.first { $0.layerId == "cameraBadge" })
+        #expect(layer.cameraMatch == [CameraMatchRule(make: "FUJIFILM", model: "X100VI", slotId: "cameraBadge.camera-1")])
+        #expect(wb.editedPreset?.assetSlots.map(\.slotId) == ["cameraBadge", "cameraBadge.camera-1"])
+        #expect(wb.editedPreset?.validate().errors.isEmpty == true)
+        wb.addCameraRule("cameraBadge")
+        wb.removeCameraRule("cameraBadge", at: 0)
+        #expect(wb.editedPreset?.assetSlots.map(\.slotId) == ["cameraBadge", "cameraBadge.camera-2"])
+        wb.removeLayer("cameraBadge")
+        #expect(wb.editedPreset?.assetSlots.isEmpty == true)
+
+        // 文字样式改的是任务里的预设副本。
+        wb.addLayer(.exifText)
+        wb.updateLayer("exifText") { $0.text?.fontWeight = .semibold; $0.text?.letterSpacingPx = 1 }
+        #expect(wb.job(jobId)?.preset.layers.first { $0.layerId == "exifText" }?.text?.fontWeight == .semibold)
     }
 
     @Test func startBatchExportsAndClearsCurrent() async throws {

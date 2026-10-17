@@ -144,3 +144,19 @@ enum FileTypes {
     static let preset = UTType(filenameExtension: "photoframe") ?? .zip
     static let assets: [UTType] = [.png, .svg]
 }
+
+extension TextStyle.FontWeight {
+    var title: String {
+        switch self {
+        case .ultraLight: "极细"
+        case .thin: "纤细"
+        case .light: "细"
+        case .regular: "常规"
+        case .medium: "中等"
+        case .semibold: "中粗"
+        case .bold: "粗"
+        case .heavy: "特粗"
+        case .black: "黑"
+        }
+    }
+}

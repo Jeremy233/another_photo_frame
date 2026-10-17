@@ -223,3 +223,85 @@ struct PlatformTests {
         #expect(layout.warnings.isEmpty)
     }
 }
+
+@Suite("相机图标按 EXIF 自动匹配（D-111）")
+struct CameraMatchResolverTests {
+    static let z8 = AssetRecord(assetId: UUID(), format: .svg, displayName: "z8")
+    static let nikon = AssetRecord(assetId: UUID(), format: .svg, displayName: "nikon")
+    static let fallback = AssetRecord(assetId: UUID(), format: .png, displayName: "default")
+    static let library = InMemoryAssetLibrary([z8, nikon, fallback])
+    static let camera = CameraIdentity(make: "NIKON CORPORATION", model: "NIKON Z 8")
+
+    static func preset(defaultSlot: String? = "camera.default", required: Bool = false) -> ExportPreset {
+        ExportPreset(
+            presetId: UUID(uuidString: "7C9E6679-7425-40DE-944B-E07FC1F90AE7")!, name: "p",
+            canvas: CanvasSettings(width: 1080, height: 1080),
+            layers: [OverlayLayer(layerId: "badge", type: .cameraBadge, slotId: defaultSlot, cameraMatch: [
+                CameraMatchRule(make: "Nikon", slotId: "camera.nikon"),
+                CameraMatchRule(make: "Nikon", model: "Z 8", slotId: "camera.z8"),
+            ])],
+            assetSlots: [
+                AssetSlot(slotId: "camera.default", required: required),
+                AssetSlot(slotId: "camera.nikon"),
+                AssetSlot(slotId: "camera.z8"),
+            ])
+    }
+
+    static func bindings(_ slots: [String: AssetRecord]) -> AssetBindingTable {
+        var t = AssetBindingTable()
+        for (slot, asset) in slots { t.bindGlobally(slotId: slot, assetId: asset.assetId) }
+        return t
+    }
+
+    @Test("型号规则优先；渲染用的预设副本把 slotId 换成匹配到的槽")
+    func modelRuleWins() throws {
+        let all = Self.bindings(["camera.default": Self.fallback, "camera.nikon": Self.nikon, "camera.z8": Self.z8])
+        let r = try SlotResolver(library: Self.library, bindings: all).resolve(Self.preset(), camera: Self.camera)
+        #expect(r.layerSlots == ["badge": "camera.z8"])
+        #expect(r.resolved.keys.sorted() == ["camera.z8"], "只保留实际用到的槽")
+        #expect(r.warnings.isEmpty)
+        #expect(r.applied(to: Self.preset()).layers[0].slotId == "camera.z8")
+
+        // 不按相机匹配（camera 为 nil）：和以前一样只用图层自己的 slotId。
+        let plain = try SlotResolver(library: Self.library, bindings: all).resolve(Self.preset())
+        #expect(plain.layerSlots == ["badge": "camera.default"])
+    }
+
+    @Test("匹配到的槽没有素材：警告并依次回退到品牌规则、默认素材")
+    func fallsBack() throws {
+        let brand = Self.bindings(["camera.default": Self.fallback, "camera.nikon": Self.nikon])
+        let r1 = try SlotResolver(library: Self.library, bindings: brand).resolve(Self.preset(), camera: Self.camera)
+        #expect(r1.layerSlots == ["badge": "camera.nikon"])
+        #expect(r1.warnings == [.cameraMatchUnbound(slotId: "camera.z8", layerId: "badge")])
+
+        // 绑定指向已删除的素材：D-28 的失效警告，再回退。
+        var stale = Self.bindings(["camera.default": Self.fallback])
+        stale.bindGlobally(slotId: "camera.z8", assetId: UUID())
+        let r2 = try SlotResolver(library: Self.library, bindings: stale).resolve(Self.preset(), camera: Self.camera)
+        #expect(r2.layerSlots == ["badge": "camera.default"])
+        #expect(r2.warnings.map(\.code) == ["slot.stale_binding", "slot.camera_match_unbound", "slot.camera_match_unbound"])
+    }
+
+    @Test("都没有素材：默认槽可选时跳过图层，必需时阻止输出；没有默认槽时跳过并说明")
+    func nothingBound() throws {
+        let resolver = SlotResolver(library: Self.library, bindings: AssetBindingTable())
+        let r = try resolver.resolve(Self.preset(), camera: Self.camera)
+        #expect(r.skippedLayerIds == ["badge"] && r.layerSlots.isEmpty)
+        #expect(r.warnings.map(\.code) == ["slot.optional_missing", "slot.camera_match_unbound", "slot.camera_match_unbound"])
+
+        #expect(throws: SlotResolutionError.self) { try resolver.resolve(Self.preset(required: true), camera: Self.camera) }
+
+        let sony = CameraIdentity(make: "SONY", model: "ILCE-7RM5")
+        let none = try resolver.resolve(Self.preset(defaultSlot: nil), camera: sony)
+        #expect(none.skippedLayerIds == ["badge"])
+        #expect(none.warnings == [.cameraNoMatch(layerId: "badge")])
+    }
+
+    @Test("源图没有相机信息：用默认素材并提示")
+    func unknownCamera() throws {
+        let all = Self.bindings(["camera.default": Self.fallback, "camera.z8": Self.z8])
+        let r = try SlotResolver(library: Self.library, bindings: all).resolve(Self.preset(), camera: CameraIdentity(make: nil, model: nil))
+        #expect(r.layerSlots == ["badge": "camera.default"])
+        #expect(r.warnings == [.cameraUnknown(layerIds: ["badge"])])
+    }
+}
