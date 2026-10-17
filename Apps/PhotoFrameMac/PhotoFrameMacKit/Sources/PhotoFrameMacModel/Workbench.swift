@@ -18,6 +18,8 @@ public final class Workbench {
     // MARK: 布局
 
     public var mode: WorkbenchMode = .current
+    /// 左栏开关（⌃⌘S）。「活跃」「已完成」时左栏总是收起（与 Compressor 一致）。
+    public var showsSidebar = true
     public var showsInspector = true
     public var sidebarTab: SidebarTab = .presets
     public var assetDisplay: AssetDisplayMode = .text
