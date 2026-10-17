@@ -51,6 +51,29 @@ final class Sandbox: Sendable {
         return url
     }
 
+    /// 32 位浮点 TIFF（extended 线性 sRGB），右半边亮到 4 倍 SDR 白：按 D-62 第 3 条认作 HDR。
+    @discardableResult
+    func hdrPhoto(_ name: String, width: Int, height: Int) throws -> URL {
+        let url = root.appending(path: name)
+        var pixels = [Float](repeating: 1, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let v: Float = x < width / 2 ? 0.5 : 4
+                let i = (y * width + x) * 4
+                (pixels[i], pixels[i + 1], pixels[i + 2]) = (v, v * 0.8, v * 0.6)
+            }
+        }
+        let info = CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order32Little.rawValue
+        let image = CGImage(width: width, height: height, bitsPerComponent: 32, bitsPerPixel: 128, bytesPerRow: width * 16,
+                            space: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, bitmapInfo: CGBitmapInfo(rawValue: info),
+                            provider: CGDataProvider(data: pixels.withUnsafeBytes { Data($0) } as CFData)!, decode: nil,
+                            shouldInterpolate: false, intent: .defaultIntent)!
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.tiff.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, nil)
+        guard CGImageDestinationFinalize(dest) else { throw TestFailure("写出 \(name) 失败") }
+        return url
+    }
+
     /// 去掉 PNG 里所有颜色描述块（iCCP、sRGB、cICP、gAMA、cHRM），得到「无 ICC」的文件。
     static func stripPNGColorChunks(_ url: URL) throws {
         let data = try Data(contentsOf: url)

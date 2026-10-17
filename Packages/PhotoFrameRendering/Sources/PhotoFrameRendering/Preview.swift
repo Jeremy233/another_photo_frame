@@ -22,6 +22,9 @@ public enum PreviewColorMode: String, Hashable, Sendable, Codable, CaseIterable 
     /// 背景与图层在参考白），位图带 content headroom；其余情况与 `.sRGB` 是同一页面，但保留 sRGB 色域外的颜色，
     /// 不能用来软打样 SDR 文件。
     case extendedRange
+    /// 写文件用（D-106）：`image` 与 `.sRGB` 相同；输出实际写 HDR 时另给 `hdrImage`（与 `.extendedRange` 相同），
+    /// 两者合起来用 `PhotoFrameRenderer.gainMapJPEG` 编码成与 HDR 导出同一种格式的 gain map JPEG。
+    case gainMap
 }
 
 /// 一次预览：一张源图 × 一个预设，输入与 `RenderJob` 相同，只是不需要输出目录。
@@ -92,8 +95,10 @@ public struct PreviewResult: Sendable {
 /// 一页预览。矩形都是左上原点；预览矩形由导出矩形按缩放映射、按像素边取整（每条边误差 ≤ 0.5 px）。
 public struct PreviewPage: Sendable {
     public var role: OutputRole
-    /// `.sRGB`：8-bit sRGB；`.extendedRange`：extended sRGB 半浮点。
+    /// `.sRGB`、`.gainMap`：8-bit sRGB；`.extendedRange`：extended sRGB 半浮点。
     public var image: CGImage
+    /// 只有 `.gainMap` 且本页是 HDR 时有：HDR 版本的页面（extended sRGB 半浮点，带 content headroom）。
+    public var hdrImage: CGImage?
     public var pixelSize: PixelSize
     /// 同一页导出时的尺寸。
     public var exportPixelSize: PixelSize
@@ -103,7 +108,7 @@ public struct PreviewPage: Sendable {
     public var exportPhotoRect: PixelRect?
     /// 本页绘制的图层，按绘制顺序。
     public var layers: [PreviewLayer]
-    /// 位图实际的动态范围：只有 `.extendedRange` 且输出写 HDR 时为 `.hdr`。
+    /// 位图实际的动态范围：只有 `.extendedRange` / `.gainMap` 且输出写 HDR 时为 `.hdr`。
     public var dynamicRange: OutputSettings.DynamicRange
     public var hdrHeadroom: Double?
 }

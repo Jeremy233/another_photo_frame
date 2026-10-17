@@ -47,7 +47,8 @@ struct PreviewPane: View {
             } else if preview.page == .strip {
                 PanoramaStrip(pages: preview.strip, showsSeams: preview.showsSeams)
             } else if let page = preview.pageImage {
-                ZoomableImage(image: NSImage(data: page.pngData), pixelSize: page.pixelSize, zoom: preview.zoom)
+                ZoomableImage(image: page.displayImage().map { NSImage(cgImage: $0, size: .zero) }, pixelSize: page.pixelSize,
+                              zoom: preview.zoom, hdr: page.dynamicRange == .hdr)
             } else if let error = preview.error {
                 ContentUnavailableView("无法预览", systemImage: "exclamationmark.triangle", description: Text(error.message))
             }
@@ -57,8 +58,7 @@ struct PreviewPane: View {
     }
 
     private var statusNote: String? {
-        var notes = preview.warnings.map(\.message)
-        if preview.showsHDRFallbackNote { notes.insert("成品 HDR 预览还没有后端接口，暂时显示 SDR。", at: 0) }
+        let notes = preview.warnings.map(\.message)
         return notes.isEmpty ? nil : notes.joined(separator: " · ")
     }
 }
@@ -191,13 +191,16 @@ private struct ZoomableImage: View {
     let image: NSImage?
     let pixelSize: PixelSize
     let zoom: PreviewZoom
+    /// gain map 解码出的 HDR 页：允许 EDR 显示（D-106）。
+    let hdr: Bool
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         if let image {
             switch zoom {
             case .fit:
-                Image(nsImage: image).resizable().interpolation(.high).scaledToFit().padding()
+                Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                    .allowedDynamicRange(hdr ? .high : .standard).padding()
             case .actualSize:
                 scrolled(image, scale: 1)
             case .scale(let s):
@@ -211,6 +214,7 @@ private struct ZoomableImage: View {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(scale >= 1 ? .none : .high)
+                .allowedDynamicRange(hdr ? .high : .standard)
                 .frame(width: Double(pixelSize.width) * scale / displayScale, height: Double(pixelSize.height) * scale / displayScale)
                 .padding()
         }
@@ -246,6 +250,8 @@ private struct OriginalImage: View {
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: 3000,
+                // gain map 源图也按 HDR 解码；SDR 模式下 `allowedDynamicRange(.standard)` 照常压回 SDR。
+                kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
             ]
             guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
             return NSImage(cgImage: cg, size: .zero)
@@ -282,8 +288,9 @@ private struct PanoramaStrip: View {
     private func page(_ image: PreviewImage, height: Double) -> some View {
         let aspect = Double(image.pixelSize.width) / Double(max(image.pixelSize.height, 1))
         return Group {
-            if let ns = NSImage(data: image.pngData) {
-                Image(nsImage: ns).resizable()
+            if let cg = image.displayImage() {
+                Image(nsImage: NSImage(cgImage: cg, size: .zero)).resizable()
+                    .allowedDynamicRange(image.dynamicRange == .hdr ? .high : .standard)
             } else {
                 Color.gray
             }

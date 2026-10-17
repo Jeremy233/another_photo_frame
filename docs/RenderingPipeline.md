@@ -37,7 +37,7 @@ let preview = try await renderer.renderPreview(PreviewRequest(
     size: .maxLongEdge(1200),                // 或 .scale(0.25)；不大于导出尺寸
     assets: assets, skippedLayerIds: skipped,
     pages: [0],                              // 只渲染封面；nil = 全部
-    color: .sRGB                             // 或 .extendedRange（HDR 显示）
+    color: .sRGB                             // 或 .extendedRange（HDR 显示）、.gainMap（HDR 预览文件，D-106）
 ))                                           // 也可 PreviewRequest(job: renderJob, size:)
 
 preview.pages     // [PreviewPage]：角色、CGImage、预览／导出尺寸、照片矩形、图层矩形（预览与导出两套坐标）
@@ -150,7 +150,7 @@ probe（读属性：尺寸、方向）
 - **解码**：按「导出所需尺寸 × 缩放」的 2 倍降采样（D-18 的同一条规则），不按原图分辨率渲染预览。
 - **照片**：同一个 Lanczos 缩放（`PageComposer.scaledPhoto`），目标直接是映射后的预览矩形，不先合成大图再缩小。
 - **图层**：排版仍按导出像素（字号、内边距不变，D-45），绘制时把整个图层框缩放进预览矩形：文字、SVG 按矢量重画，PNG 从原图一次缩放。
-- **颜色**：`.sRGB`（默认，§6.6 的输出预览）与 SDR 导出编码前的像素相同；HDR 输出时是文件里的 SDR 底图。`.extendedRange` 是 extended sRGB 半浮点，输出写 HDR 时为 HDR 页面并带 content headroom，否则是同一 SDR 页面但不截断色域外颜色（不能用来软打样 SDR 文件）。
+- **颜色**：`.sRGB`（默认，§6.6 的输出预览）与 SDR 导出编码前的像素相同；HDR 输出时是文件里的 SDR 底图。`.extendedRange` 是 extended sRGB 半浮点，输出写 HDR 时为 HDR 页面并带 content headroom，否则是同一 SDR 页面但不截断色域外颜色（不能用来软打样 SDR 文件）。`.gainMap`（D-106，服务的 HDR 预览用）：`image` 与 `.sRGB` 相同，输出写 HDR 的页另给 `hdrImage`（同 `.extendedRange`），由 `gainMapJPEG` 编码成与 HDR 导出同一种格式的 gain map JPEG。
 - **一致性**：缩放系数为 1 时，`.sRGB` 预览与 PNG 导出逐像素相同（测试验证）。
 - **取消**：在阶段之间和每一页之前检查，抛出 `CancellationError`；不写任何文件。参数变化时 GUI 取消旧的预览任务即可。
 - 错误：预览尺寸无效（≤ 0、NaN）报 `render.invalid_preview_size`；其余与导出相同。
@@ -171,7 +171,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
 | `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
-| `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
+| `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange 与 gainMap、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 
 更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。
 

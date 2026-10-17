@@ -43,6 +43,27 @@ final class Fixture {
         return url
     }
 
+    /// 32 位浮点 TIFF（extended 线性 sRGB），右半边亮到 4 倍 SDR 白：按 D-62 第 3 条认作 HDR。
+    func hdrPhoto(_ name: String, width: Int = 360, height: Int = 240) throws -> URL {
+        let url = root.appending(path: "Originals/\(name)")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var pixels = [Float](repeating: 1, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let v: Float = x < width / 2 ? 0.5 : 4
+                let i = (y * width + x) * 4
+                (pixels[i], pixels[i + 1], pixels[i + 2]) = (v, v * 0.8, v * 0.6)
+            }
+        }
+        let info = CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order32Little.rawValue
+        let image = CGImage(width: width, height: height, bitsPerComponent: 32, bitsPerPixel: 128, bytesPerRow: width * 16,
+                            space: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!, bitmapInfo: CGBitmapInfo(rawValue: info),
+                            provider: CGDataProvider(data: pixels.withUnsafeBytes { Data($0) } as CFData)!, decode: nil,
+                            shouldInterpolate: false, intent: .defaultIntent)!
+        try write(image, to: url, type: .tiff)
+        return url
+    }
+
     /// 带透明度的合成 PNG 素材。
     func assetPNG(_ name: String) throws -> URL {
         let url = root.appending(path: "Assets/\(name)")
@@ -67,8 +88,8 @@ final class Fixture {
 
     /// 加一张源图并用内置预设创建任务，返回任务 ID。
     @discardableResult
-    func addJob(_ photo: String = "Badlands.jpg", preset: String = "Instagram Standard") async throws -> UUID {
-        let url = try self.photo(photo)
+    func addJob(_ photo: String = "Badlands.jpg", preset: String = "Instagram Standard", hdr: Bool = false) async throws -> UUID {
+        let url = try hdr ? hdrPhoto(photo) : self.photo(photo)
         let ids = await workbench.addSources([url])
         let sourceId = try #require(ids.first ?? workbench.sources.first { $0.source.fileURL == url }?.id)
         await workbench.drop(.preset(presetId(preset)), on: .source(sourceId))

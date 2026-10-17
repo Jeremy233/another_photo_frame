@@ -364,6 +364,9 @@ struct PreviewFileJSON: Encodable {
     var height: Int
     var exportWidth: Int
     var exportHeight: Int
+    /// `sdr` 或 `hdr`（D-106）；HDR 页才有 `hdrHeadroom`。
+    var dynamicRange: String
+    var hdrHeadroom: Double?
 
     init(_ page: PreviewImage, path: String?) {
         role = page.role.kindName
@@ -373,6 +376,8 @@ struct PreviewFileJSON: Encodable {
         height = page.pixelSize.height
         exportWidth = page.exportPixelSize.width
         exportHeight = page.exportPixelSize.height
+        dynamicRange = page.dynamicRange.rawValue
+        hdrHeadroom = page.hdrHeadroom
     }
 }
 

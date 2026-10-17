@@ -104,17 +104,30 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
         let result: PreviewResult
         do {
             result = try await renderer.renderPreview(PreviewRequest(
-                job: job, size: .maxLongEdge(options.maxLongEdge), pages: options.pages, color: .sRGB))
+                job: job, size: .maxLongEdge(options.maxLongEdge), pages: options.pages,
+                color: options.dynamicRange == .hdr ? .gainMap : .sRGB))
+            let pages = try result.pages.map(previewImage)
+            return ExportPreview(pages: pages, roles: result.roles.map(JobOutputRole.init),
+                                 warnings: result.warnings.map(ApplicationWarning.init))
         } catch {
             throw Self.mapped(error)
         }
-        let pages = try result.pages.map { page in
-            PreviewImage(role: JobOutputRole(page.role), pixelSize: page.pixelSize, exportPixelSize: page.exportPixelSize,
-                         pngData: try Self.pngData(page.image))
-        }
-        return ExportPreview(pages: pages, roles: result.roles.map(JobOutputRole.init),
-                             warnings: result.warnings.map(ApplicationWarning.init))
     }
+
+    /// HDR 页编码成 gain map JPEG（D-106），其余是 sRGB PNG。
+    private func previewImage(_ page: PreviewPage) throws -> PreviewImage {
+        let role = JobOutputRole(page.role)
+        guard let hdr = page.hdrImage, let headroom = page.hdrHeadroom else {
+            return PreviewImage(role: role, pixelSize: page.pixelSize, exportPixelSize: page.exportPixelSize,
+                                data: try Self.pngData(page.image))
+        }
+        let data = try renderer.gainMapJPEG(sdr: page.image, hdr: hdr, headroom: headroom, quality: Self.hdrPreviewQuality)
+        return PreviewImage(role: role, pixelSize: page.pixelSize, exportPixelSize: page.exportPixelSize, format: .jpeg,
+                            dynamicRange: .hdr, hdrHeadroom: headroom, data: data)
+    }
+
+    /// HDR 预览 JPEG 的质量：预览不是成品，体积比 Q100 小得多，看不出差别。
+    static let hdrPreviewQuality = 90
 
     /// 预览位图（8-bit sRGB）编码成 PNG，带 sRGB 颜色描述。
     static func pngData(_ image: CGImage) throws(ApplicationError) -> Data {

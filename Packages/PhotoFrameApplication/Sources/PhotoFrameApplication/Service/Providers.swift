@@ -127,26 +127,41 @@ public struct PreviewOptions: Hashable, Sendable, Codable {
     public var maxLongEdge: Int
     /// 只渲染这些轮播页（0 = 封面）；nil 为全部。
     public var pages: Set<Int>?
+    /// 颜色模式（D-106）。`.sdr`：sRGB PNG，与 SDR 导出编码前的像素相同；HDR 导出时是文件里的 SDR 底图。
+    /// `.hdr`：导出实际写 HDR 的页给出带 gain map 的 JPEG（与 HDR 导出同一种编码），其余页仍是 sRGB PNG。
+    public var dynamicRange: OutputSettings.DynamicRange
 
-    public init(maxLongEdge: Int = 1200, pages: Set<Int>? = nil) {
+    public init(maxLongEdge: Int = 1200, pages: Set<Int>? = nil, dynamicRange: OutputSettings.DynamicRange = .sdr) {
         self.maxLongEdge = maxLongEdge
         self.pages = pages
+        self.dynamicRange = dynamicRange
     }
 }
 
-/// 一页预览：sRGB PNG（与 SDR 导出编码前的像素相同，按预览尺寸缩小）。
+/// 一页预览（按预览尺寸缩小）。SDR 页是 sRGB PNG；HDR 页（只在 `PreviewOptions.dynamicRange == .hdr` 时出现）
+/// 是带 gain map 的 JPEG：底图与 SDR 预览相同，支持 HDR 的显示器按 gain map 显示 HDR。
 public struct PreviewImage: Hashable, Sendable, Codable {
     public var role: JobOutputRole
     public var pixelSize: PixelSize
     /// 同一页导出时的尺寸。
     public var exportPixelSize: PixelSize
-    public var pngData: Data
+    /// `.png`（SDR）或 `.jpeg`（HDR，gain map）。
+    public var format: OutputSettings.Format
+    public var dynamicRange: OutputSettings.DynamicRange
+    public var hdrHeadroom: Double?
+    public var data: Data
 
-    public init(role: JobOutputRole, pixelSize: PixelSize, exportPixelSize: PixelSize, pngData: Data) {
+    public init(
+        role: JobOutputRole, pixelSize: PixelSize, exportPixelSize: PixelSize, format: OutputSettings.Format = .png,
+        dynamicRange: OutputSettings.DynamicRange = .sdr, hdrHeadroom: Double? = nil, data: Data
+    ) {
         self.role = role
         self.pixelSize = pixelSize
         self.exportPixelSize = exportPixelSize
-        self.pngData = pngData
+        self.format = format
+        self.dynamicRange = dynamicRange
+        self.hdrHeadroom = hdrHeadroom
+        self.data = data
     }
 }
 

@@ -73,6 +73,31 @@ final class Sandbox: Sendable {
         return url
     }
 
+    /// 32 位浮点 TIFF（extended 线性 sRGB），右半边亮到 4 倍 SDR 白：没有任何 HDR 标记，按 D-62 第 3 条认作 HDR。
+    func hdrPhoto(_ name: String, width: Int, height: Int) throws -> URL {
+        let url = root.appending(path: name)
+        let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+        var pixels = [Float](repeating: 1, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let v: Float = x < width / 2 ? 0.5 : 4
+                let i = (y * width + x) * 4
+                (pixels[i], pixels[i + 1], pixels[i + 2]) = (v, v * 0.8, v * 0.6)
+            }
+        }
+        let data = pixels.withUnsafeBytes { Data($0) }
+        let image = CGImage(width: width, height: height, bitsPerComponent: 32, bitsPerPixel: 128, bytesPerRow: width * 16,
+                            space: space,
+                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue
+                                | CGBitmapInfo.floatComponents.rawValue | CGImageByteOrderInfo.order32Little.rawValue),
+                            provider: CGDataProvider(data: data as CFData)!, decode: nil, shouldInterpolate: false,
+                            intent: .defaultIntent)!
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.tiff.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, nil)
+        guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
+        return url
+    }
+
     var stagingRoot: URL { AtomicExporter.stagingRoot(for: exports) }
 
     var stagingExists: Bool { FileManager.default.fileExists(atPath: stagingRoot.path) }

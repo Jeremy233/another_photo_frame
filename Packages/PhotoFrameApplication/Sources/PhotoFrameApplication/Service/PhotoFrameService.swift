@@ -548,7 +548,11 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                                    platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride)
         do {
             var preview = try await analyzer.preview(job, options: request.options)
-            preview.warnings = presetWarnings + slotWarnings + preview.warnings
+            var modeWarnings: [ApplicationWarning] = []
+            if request.options.dynamicRange == .hdr, request.preset.output.dynamicRange == .sdr {
+                modeWarnings.append(ApplicationWarning(code: "preview.output_sdr", message: "预设输出 SDR，成品没有 HDR 版本，HDR 预览显示 SDR"))
+            }
+            preview.warnings = presetWarnings + slotWarnings + modeWarnings + preview.warnings
             return preview
         } catch {
             throw JobQueue.applicationError(error)

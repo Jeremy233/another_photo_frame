@@ -92,7 +92,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 | `Workbench+Batch.swift` | 源图、任务草稿、拖放、素材绑定、存储为预设、校验、开始批处理与覆盖确认（D-49） |
 | `Workbench+Layers.swift` | 添加 / 删除 / 修改图层 |
 | `Workbench+Jobs.swift` | 任务事件、活跃 / 已完成、暂停、取消、重试、重新导出、底栏进度 |
-| `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview` |
+| `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview`。HDR 时导出写 HDR 的页是 gain map JPEG，按 HDR 解码、以 EDR 显示（D-106） |
 | `ExportLocation.swift` | 左栏「位置」：名称 + 目录，存在 UserDefaults |
 | `DragPayload.swift` | 应用内拖放的内容（预设、位置、素材） |
 

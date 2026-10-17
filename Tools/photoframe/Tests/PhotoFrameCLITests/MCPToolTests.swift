@@ -231,6 +231,15 @@ struct MCPToolTests {
         args["overwrite"] = .bool(true)
         let replaced = try await h.call("preview_export", args)
         #expect(replaced.ok)
+
+        // dynamicRange（D-106）：SDR 输出的预设只有 PNG，并说明原因；取值之外的报参数错误。
+        args["dynamicRange"] = .string("hdr")
+        let hdr = try await h.call("preview_export", args)
+        #expect(hdr.ok, "\(hdr.text)")
+        #expect(hdr["warnings"]?.arrayValue?.contains { $0.objectValue?["code"]?.stringValue == "preview.output_sdr" } == true)
+        #expect(hdr["files"]?.arrayValue?.first?.objectValue?["dynamicRange"]?.stringValue == "sdr")
+        args["dynamicRange"] = .string("edr")
+        #expect(try await h.call("preview_export", args).code == "mcp.invalid_arguments")
     }
 
     @Test("create_export_job → get_job_status → 文件落盘；版本后缀与显式覆盖")

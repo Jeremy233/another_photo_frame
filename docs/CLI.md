@@ -136,15 +136,19 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 
 ### `preview`（D-74）
 
-与 GUI 预览区相同的预览：同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG。用于脚本或 AI 客户端查看版式；不是成品（不带 HDR、不带元数据）。
+与 GUI 预览区相同的预览：同一条渲染管线，按预览尺寸缩小，默认写成 sRGB PNG。用于脚本或 AI 客户端查看版式；不是成品（不带元数据）。
 
-文件名 `<源文件名>_<Standard|Panorama>_preview_00_Cover.png`、`…_01_Slide.png`。任何一个目标文件已存在就什么都不写、退出码 5；`--overwrite` 时替换。
+`--dynamic-range hdr`（D-106）：导出实际写 HDR 的页写成带 gain map 的 JPEG（与 HDR 导出同一种编码，Q90），底图就是 SDR 预览；
+不支持 HDR 的查看器显示底图。其余页（源图不是 HDR、或预设输出 SDR）仍写 PNG；预设输出 SDR 时警告 `preview.output_sdr`。
+
+文件名 `<源文件名>_<Standard|Panorama>_preview_00_Cover.png`（HDR 页 `.jpg`）、`…_01_Slide.png`。任何一个目标文件已存在就什么都不写、退出码 5；`--overwrite` 时替换。
 
 | 选项 | 说明 |
 |---|---|
 | `--assume-profile`、`--bind` | 同 `export` |
 | `--max-edge <px>` | 预览页长边上限，默认 1200，不会大于导出尺寸 |
 | `--page <n>` | 只预览这些轮播页（0 = 封面，切片 k 是 k + 1，D-27）。可重复；默认全部 |
+| `--dynamic-range sdr\|hdr` | 默认 `sdr`；`hdr` 见上（D-106） |
 
 ### 输入色彩空间：`--assume-profile`（D-75）
 
@@ -492,6 +496,7 @@ photoframe preset get "My IG" canvas
 | D-96 | 库目录只用环境变量 `PHOTOFRAME_LIBRARY` 指定，不加命令行参数 |
 | D-98 | MCP 入口是子命令 `photoframe mcp serve`（详见 [MCP.md](MCP.md)，D-97…D-104） |
 | D-99 | 字段路径写法；`preset set` 的值先按 JSON 解析，否则当字符串；先应用设置再应用 `--unset` |
+| D-106 | `preview --dynamic-range hdr`：导出写 HDR 的页写成 gain map JPEG |
 
 ## 测试
 

@@ -172,10 +172,13 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         let scale = try PreviewScale(canvas: canvas, size: request.size)
         var prepared = try prepare(request.inputs, decodeScale: max(scale.x, scale.y), progress: { _ in })
         let (layout, source, photos) = (prepared.layout, prepared.source, prepared.photos)
-        let showsHDR = prepared.writesHDR && request.color == .extendedRange
+        let showsHDR = prepared.writesHDR && request.color != .sRGB
         switch request.color {
         case .sRGB:
             prepared.steps.append("预览：\(scale)，工作空间 → sRGB 8-bit（CI，与 SDR 导出相同），不编码")
+        case .gainMap:
+            prepared.steps.append("预览：\(scale)，工作空间 → sRGB 8-bit（CI，与 SDR 导出相同）"
+                                  + (showsHDR ? "；另给 HDR 页面，headroom \(fmt(source.headroom ?? 1))" : ""))
         case .extendedRange:
             prepared.steps.append("预览：\(scale)，工作空间 → extended sRGB RGBAh，不截断"
                                   + (showsHDR ? "；HDR 页面，headroom \(fmt(source.headroom ?? 1))" : ""))
@@ -199,19 +202,25 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
                 overlays[layer.layerId] = overlayCache[key]
             }
             let background = try WorkingColor.ciColor(plan.background)
-            let photo = showsHDR
-                ? photos.hdr(for: plan.photo, displaySize: source.displaySize)
-                : photos.sdr(for: plan.photo, displaySize: source.displaySize)
-            let page = PageComposer.compose(plan: plan, photo: photo, overlays: overlays, background: background)
+            func compose(hdr: Bool) -> CIImage {
+                let photo = hdr
+                    ? photos.hdr(for: plan.photo, displaySize: source.displaySize)
+                    : photos.sdr(for: plan.photo, displaySize: source.displaySize)
+                return PageComposer.compose(plan: plan, photo: photo, overlays: overlays, background: background)
+            }
             let image: CGImage
+            var hdrImage: CGImage?
             switch request.color {
             case .sRGB:
-                image = try OutputEncoder(context: context).renderSRGB8(page, size: plan.canvas)
+                image = try OutputEncoder(context: context).renderSRGB8(compose(hdr: false), size: plan.canvas)
+            case .gainMap:
+                image = try OutputEncoder(context: context).renderSRGB8(compose(hdr: false), size: plan.canvas)
+                if showsHDR { hdrImage = try renderExtended(compose(hdr: true), size: plan.canvas, headroom: source.headroom) }
             case .extendedRange:
-                image = try renderExtended(page, size: plan.canvas, headroom: showsHDR ? source.headroom : nil)
+                image = try renderExtended(compose(hdr: showsHDR), size: plan.canvas, headroom: showsHDR ? source.headroom : nil)
             }
             pages.append(PreviewPage(
-                role: plan.role, image: image, pixelSize: plan.canvas, exportPixelSize: exportPlan.canvas,
+                role: plan.role, image: image, hdrImage: hdrImage, pixelSize: plan.canvas, exportPixelSize: exportPlan.canvas,
                 photoRect: plan.photo.pageRect(canvas: plan.canvas),
                 exportPhotoRect: exportPlan.photo.pageRect(canvas: exportPlan.canvas),
                 layers: zip(plan.overlays, exportPlan.overlays).map {
@@ -221,6 +230,14 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         }
         return PreviewResult(pages: pages, roles: layout.pages.map(\.role), scaleX: scale.x, scaleY: scale.y,
                              diagnostics: prepared.diagnostics, warnings: prepared.warnings)
+    }
+
+    /// `.gainMap` 预览的 HDR 页面编码成带 gain map 的 JPEG（与 HDR 导出同一种编码：SDR 底图 + RGB gain map，
+    /// 嵌入 sRGB ICC，D-106）。不支持 HDR 的查看器显示的就是 SDR 预览。
+    public func gainMapJPEG(sdr: CGImage, hdr: CGImage, headroom: Double, quality: Int) throws(RenderError) -> Data {
+        let size = PixelSize(width: sdr.width, height: sdr.height)
+        return try OutputEncoder(context: context).hdrJPEGData(
+            sdr: CIImage(cgImage: sdr), hdr: CIImage(cgImage: hdr), headroom: headroom, size: size, quality: quality)
     }
 
     /// 工作空间 → extended sRGB 半浮点（显示用，不截断 > 1 与色域外的值）。HDR 页面写入 content headroom。

@@ -210,13 +210,17 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `preset` | string，必填 | 预设引用 |
 | `maxEdge` | int，默认 1200 | 预览页长边，16…`--max-preview-edge`；不会大于导出尺寸 |
 | `pages` | int[] | 只预览这些轮播页（0 = 封面，切片 k 为 k + 1，D-27），最多 12 页；默认前 12 页 |
-| `outputDirectory` | string | 给了就写成 PNG 文件（在允许写入的目录内）；省略时以图片内容直接返回（D-102） |
+| `dynamicRange` | string，默认 `sdr` | `hdr` 时，导出实际写 HDR 的页是带 gain map 的 JPEG（D-106），见下 |
+| `outputDirectory` | string | 给了就写成文件（在允许写入的目录内）；省略时以图片内容直接返回（D-102） |
 | `overwrite` | bool，默认 false | 替换已存在的同名预览文件；否则 `preview.file_exists`，什么都不写 |
 | `assumeProfile`、`bindings` | | 同导出 |
 
-与导出同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG（不带 HDR 和元数据，D-74）。返回 `{source, preset, files: [...], positions, warnings}`：
-`files[]` 是 `{role, position, width, height, exportWidth, exportHeight, path?}`，写文件时有 `path`；`positions` 是导出会写出的全部轮播位置。
-直接返回时，每页一个 `image/png` 内容块，总量不超过 8 MiB（超过时报 `mcp.limit_exceeded`，减小 `maxEdge`、`pages`，或改写文件，上限见 D-101）。
+与导出同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG（不带元数据，D-74）。`dynamicRange: "hdr"` 时，导出实际写 HDR 的页改为带 gain map 的
+JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看到的是 SDR 版本）；其余页仍是 PNG，预设输出 SDR 时警告 `preview.output_sdr`。
+返回 `{source, preset, files: [...], positions, warnings}`：
+`files[]` 是 `{role, position, width, height, exportWidth, exportHeight, dynamicRange, hdrHeadroom?, path?}`，写文件时有 `path`；
+`positions` 是导出会写出的全部轮播位置。
+直接返回时，每页一个 `image/png`（HDR 页 `image/jpeg`）内容块，总量不超过 8 MiB（超过时报 `mcp.limit_exceeded`，减小 `maxEdge`、`pages`，或改写文件，上限见 D-101）。
 
 ### 字段路径（D-93、D-99）
 
@@ -334,3 +338,4 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 | D-102 | `preview_export` 默认直接返回图片，传 `outputDirectory` 时写文件 |
 | D-103 | MCP 不提供预设导入、素材导入和删除；`update_preset` 只改库里已有的非内置预设 |
 | D-104 | 结果只有 `ok` + `error` 外层，不带 CLI 的 `formatVersion` / `command` / `exitCode`；`validate_export` 用 `valid` 表示能否导出 |
+| D-106 | `preview_export` 的 `dynamicRange: "hdr"`：HDR 页返回 gain map JPEG |
