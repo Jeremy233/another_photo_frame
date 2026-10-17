@@ -17,6 +17,8 @@ struct SidebarView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+                // 与预览标题栏的「成品 | 原图」同为小号。
+                .controlSize(.small)
             }
             Group {
                 switch workbench.sidebarTab {

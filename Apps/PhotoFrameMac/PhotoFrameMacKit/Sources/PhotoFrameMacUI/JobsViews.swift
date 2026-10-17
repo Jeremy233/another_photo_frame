@@ -304,9 +304,8 @@ struct BottomBar: View {
         ColumnFooter {
             Button { workbench.isAddingImages = true } label: { Image(systemName: "plus") }
                 .help("添加图片（⌘O）")
-            // 标签到菜单边框的空隙与预览标题栏里「成品 | 原图」到缩放菜单的一样（看上去 14 pt；弹出菜单自带 2 pt 内缩）。
             // 标签字号保持系统表单标签的 13 pt。
-            HStack(spacing: 12) {
+            HStack(spacing: BarMetrics.gap - BarMetrics.popUpInset) {
                 Text("位置").font(.body)
                 Picker("位置", selection: defaultLocation) {
                     ForEach(workbench.locations.locations) { location in
