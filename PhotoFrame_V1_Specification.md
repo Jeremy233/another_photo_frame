@@ -576,7 +576,7 @@ My Landscape.photoframe   # ZIP container, versioned
     "format": "jpeg",
     "quality": 100,
     "colorSpace": "sRGB",
-    "dynamicRange": "sdr",
+    "dynamicRange": "auto",
     "metadata": {"keepShootingInfo": false, "keepAuthorAndCopyright": false, "keepGps": false}
   }
 }
@@ -592,6 +592,7 @@ My Landscape.photoframe   # ZIP container, versioned
 - 文字样式 `fontWeight`（`ultraLight`…`black`，默认 `regular`）、`italic`（默认 `false`）、`letterSpacingPx`（默认 0）由 D-111 加入，旧预设缺字段时取默认值（D-119）。
 - `assetSlots[]`：只描述需要什么素材（`slotId`、`kind`、`required`、`label`、`acceptedFormats`），不含位置、尺寸和本地路径（D-24）。
 - 颜色只接受 `#RRGGBB`（D-35）；`output.format` 只有 `jpeg`、`png`（D-36）；`output.colorSpace` 是输出文件的色彩空间，与内部工作空间（D-03）无关。
+- `output.dynamicRange`：`auto`（跟随源图：HDR 源图 + JPEG → HDR 增益图，否则 SDR）是新建预设和内置预设的默认值；`sdr` / `hdr` 表示强制；字段缺失时按 `sdr`（D-125）。
 - 所有对象都可以带 `x-` 开头的自定义字段，程序原样保留（D-15）。
 
 `presetId` 不表示资产路径；同一个预设可在不同设备绑定不同的相机线稿。`schemaVersion` 支持升级与兼容检查。品牌和第三方平台名称用于识别目标，不代表品牌方背书。
@@ -1095,7 +1096,7 @@ photoframe mcp serve
 - [x] **D-75** D-04 的源图色彩空间覆盖现在就实现：任务记录加字段，CLI 的 `export` / `preview` 加 `--assume-profile srgb|display-p3|adobe-rgb`，只对缺 ICC 的源图生效。备选：以后再做，先只警告并按 sRGB 处理。【已确定 2026-10-16】
 - [x] **D-76** `--preset` 和库里查找预设用同一套规则：以 `.photoframe` 结尾或含 `/` 的按文件；是 UUID 的按 ID；其余按名称，不区分大小写，空格、下划线、连字符等价（`instagram-panorama` = `Instagram Panorama`）；匹配到多个时报错。只保留一份实现（预设库的 `find`）。备选：只认 ID 和文件。【已确定 2026-10-16】
 - [x] **D-77** CLI `--json` 输出里没有值的字段直接省略，不写 `null`。备选：始终写出字段，值为 `null`。【已确定 2026-10-16】
-- [x] **D-78** 本地库（预设、素材、绑定）的根目录放在 App Group 共享容器 `~/Library/Group Containers/<App Group ID>/Library/Application Support/AnotherPhotoFrame/`，GUI 开不开沙盒，GUI、CLI、MCP 都共用一个库。App Group ID 随签名方式（D-21）一起确定，现在用占位值。备选：`~/Library/Application Support/AnotherPhotoFrame/`（GUI 以后开沙盒时需要迁移）。【已确定 2026-10-16】
+- [x] **D-78** 本地库（预设、素材、绑定）的根目录放在 App Group 共享容器 `~/Library/Group Containers/<App Group ID>/Library/Application Support/AnotherPhotoFrame/`，GUI 开不开沙盒，GUI、CLI、MCP 都共用一个库。App Group ID 随签名方式（D-21）一起确定，现在用占位值。备选：`~/Library/Application Support/AnotherPhotoFrame/`（GUI 以后开沙盒时需要迁移）。【已确定 2026-10-16】（未签名时的回退由 D-124 修改）
 - [x] **D-79** 复制预设时副本叫「原名 Copy」「原名 Copy 2」…；存储层默认英文，GUI 可以传入本地化名称。备选：存储层直接用中文「副本」。【已确定 2026-10-16】
 - [x] **D-80** 导入的预设 ID 冲突、另存为副本时（D-39），放在「导入」分组，同时按 D-79 加 Copy 后缀。备选：保留原名不加后缀。【已确定 2026-10-16】
 - [x] **D-81** 预设所在的分组表示来源，编辑保存后不变；只有用户自己拖拽或移动时才换组（「用户保存」和「导入」之间可以移动，内置预设不能移动）。备选：导入的预设编辑后自动移到「用户保存」。【已确定 2026-10-16】
@@ -1146,6 +1147,13 @@ photoframe mcp serve
 - [x] **D-121** EXIF 文字的字体样式只做字重、斜体、字间距：字重取同一字体家族里最接近的；没有斜体时画正体并警告。不做大小写转换；对齐由锚点决定（D-65）。备选：再加全大写等大小写转换。【已确定 2026-10-16】
 - [x] **D-122** ⌘, 设置窗口（D-114）：「通用」里是「开始批处理后切到活跃」（默认开）；「高级」里是并发数（自动或 1–8）、内存预算（自动或 2 GB 起）和恢复默认，修改立即保存并作用到正在运行的队列。这些设置只对 GUI 生效，存在 GUI 自己的偏好设置里；CLI 和 MCP 仍用 D-53 的自动默认值。备选：存进共用本地库，三者共用。【已确定 2026-10-16】
 - [x] **D-123** 界面上所有分隔线和描边统一为纯黑 `#000000`、1 个物理像素（Retina 上 0.5 pt），与 Compressor 截图量到的一致：顶栏下方、左中右三栏之间、预览与任务列表之间、底栏和各栏操作栏上方、各栏分段控件行下方。可拖动的分隔线把鼠标可拖动范围向两侧各放宽 3 pt。侧栏收起时不留分隔线。备选：1 pt 线宽，或用系统默认的分隔线颜色。【已确定 2026-10-17】
+
+### P7 — 试用反馈（2026-10-17）
+
+> 用户实际试用 GUI 后确定的事项。
+
+- [x] **D-124** 本地库根目录的选择规则（修改 D-78）：①`PHOTOFRAME_LIBRARY` 环境变量；②应用确实以 App Group 签名时用 App Group 容器；③`~/Library/Group Containers/group.org.anotherphotoframe/` 已存在时用它；④否则用 `~/Library/Application Support/AnotherPhotoFrame/`。GUI、CLI、MCP 都调用同一个 `LibraryLocation.defaultRoot()`。原因：未签名的应用不能在 Group Containers 下创建目录（macOS 报 Operation not permitted），而 `containerURL(forSecurityApplicationGroupIdentifier:)` 对未签名程序也会返回路径，不能据此判断已签名。签名（D-21）后从 Application Support 迁移到 App Group 容器的工作以后再做。备选：在签名前一律要求设置 `PHOTOFRAME_LIBRARY`。【已确定 2026-10-17】
+- [x] **D-125** `output.dynamicRange` 增加 `auto`（跟随源图）：源图是 HDR 且输出格式支持 HDR（JPEG 增益图）、平台没有标记为不支持 HDR 时导出 HDR，否则安静地导出 SDR（包括 PNG，不报错）；`sdr` / `hdr` 仍为强制。6 个内置预设和新建预设默认 `auto`；字段缺失时仍按 `sdr`，旧预设行为不变；`schemaVersion` 不变（同 D-63、D-119）。GUI「输出」标签显示「跟随源图」和这张源图的实际输出。预览自身的 SDR / HDR 切换（CLI `--dynamic-range`、MCP `preview_export`）只接受 `sdr` / `hdr`。来源：用户要求 HDR 源图默认导出 HDR。备选：保持内置预设 SDR，由用户手动打开 HDR。【已确定 2026-10-17】
 
 ---
 
