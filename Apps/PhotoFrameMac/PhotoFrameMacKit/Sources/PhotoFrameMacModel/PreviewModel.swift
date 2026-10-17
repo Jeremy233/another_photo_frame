@@ -6,7 +6,7 @@ import PhotoFrameCore
 import PhotoFrameRendering
 
 /// 预览什么：一张源图 × 一份预设（任务的副本或左栏的预设草稿）。
-public struct PreviewSubject: Equatable, Sendable {
+public struct PreviewSubject: Hashable, Sendable {
     public var sourceId: SourceID
     public var sourceURL: URL
     /// nil：只有源图，没有任务可预览（只能看原图）。
@@ -84,6 +84,47 @@ public final class PreviewModel {
         render()
     }
 
+    /// 渲染结果缓存：同一源图、同一份预设、同一页和动态范围再次显示时（切回看过的任务或页）立即显示，不再请求后端。
+    /// 键里带源文件的修改时间，文件改了会重新渲染。按最近使用淘汰，总量不超过 `cacheByteLimit`。
+    struct RenderKey: Hashable {
+        var subject: PreviewSubject
+        var sourceModified: Date?
+        var page: PreviewPage
+        var range: PreviewRange
+    }
+
+    private var cache: [RenderKey: (preview: ExportPreview, bytes: Int)] = [:]
+    private var cacheOrder: [RenderKey] = []
+    private var cacheBytes = 0
+    var cacheByteLimit = 256 << 20
+    /// 实际请求后端渲染的次数（测试用）。
+    private(set) var renderRequests = 0
+
+    private func renderKey(_ subject: PreviewSubject, page: PreviewPage) -> RenderKey {
+        let modified = (try? FileManager.default.attributesOfItem(atPath: subject.sourceURL.path)[.modificationDate]) as? Date
+        return RenderKey(subject: subject, sourceModified: modified, page: page, range: range)
+    }
+
+    private func cached(_ key: RenderKey) -> ExportPreview? {
+        guard let entry = cache[key] else { return nil }
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+        return entry.preview
+    }
+
+    private func store(_ preview: ExportPreview, for key: RenderKey) {
+        let bytes = preview.pages.reduce(0) { $0 + $1.data.count }
+        if let old = cache.removeValue(forKey: key) { cacheBytes -= old.bytes }
+        cacheOrder.removeAll { $0 == key }
+        cache[key] = (preview, bytes)
+        cacheOrder.append(key)
+        cacheBytes += bytes
+        while cacheBytes > cacheByteLimit, let oldest = cacheOrder.first, oldest != key {
+            cacheOrder.removeFirst()
+            if let entry = cache.removeValue(forKey: oldest) { cacheBytes -= entry.bytes }
+        }
+    }
+
     private func render() {
         task?.cancel()
         guard let subject, let preset = subject.preset else {
@@ -95,8 +136,13 @@ public final class PreviewModel {
             isRendering = false
             return
         }
-        isRendering = true
         let page = page
+        let key = renderKey(subject, page: page)
+        if let preview = cached(key) {
+            apply(.success(preview), page: page)
+            return
+        }
+        isRendering = true
         let range: OutputSettings.DynamicRange = self.range == .hdr ? .hdr : .sdr
         task = Task { [service, debounce] in
             try? await Task.sleep(for: debounce)
@@ -105,12 +151,14 @@ public final class PreviewModel {
             case .page(let n): PreviewOptions(maxLongEdge: Self.pageLongEdge, pages: [n], dynamicRange: range)
             case .strip: PreviewOptions(maxLongEdge: Self.stripLongEdge, dynamicRange: range)
             }
+            renderRequests += 1
             let request = ExportPreviewRequest(
                 source: .id(subject.sourceId), preset: preset, options: options,
                 assetBindings: subject.assetBindings, sourceColorOverride: subject.colorOverride)
             let result: Result<ExportPreview, ApplicationError>
             do throws(ApplicationError) { result = .success(try await service.renderPreview(request)) } catch { result = .failure(error) }
             guard !Task.isCancelled else { return }
+            if case .success(let preview) = result { store(preview, for: key) }
             apply(result, page: page)
         }
     }

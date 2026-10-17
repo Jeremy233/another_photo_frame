@@ -97,6 +97,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 | `Workbench+Layers.swift` | 添加 / 删除 / 修改图层 |
 | `Workbench+Jobs.swift` | 任务事件、活跃 / 已完成、暂停、取消、重试、重新导出、底栏进度 |
 | `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview`。HDR 时导出写 HDR 的页是 gain map JPEG，按 HDR 解码、以 EDR 显示（D-106） |
+| `PreviewPane.swift`、`OriginalImageStore.swift` | 预览画布：超出显示区域时可拖动平移，滚动 / 拖动 / 捏合时右上角显示小地图（点按或拖动小地图跳转），停下 1 秒后淡出。原图先显示 512 px 快图，后台解码 3072 px 清晰版，放大到超过它时才解码全分辨率（100% 为真实像素，缩回后释放）；按 URL、档位、SDR/HDR 做 LRU 缓存（600 MB）。成品预览按内容（任务、源图修改时间、页、动态范围）缓存最近的渲染结果（256 MB），切回看过的任务不再请求后端 |
 | `AppSettings.swift` | ⌘, 设置（D-114）：提交后是否切到「活跃」、并发数、内存预算（D-53，自动 = 队列默认值），存在 UserDefaults，调度参数改了立即交给队列 |
 | `ExportLocation.swift` | 左栏「位置」：名称 + 目录，存在 UserDefaults |
 | `DragPayload.swift` | 应用内拖放的内容（预设、位置、素材） |

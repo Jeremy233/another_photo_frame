@@ -134,3 +134,30 @@ import Testing
         #expect(preview.zoom == .scale(PreviewZoom.range.lowerBound))
     }
 }
+
+@MainActor @Suite struct PreviewCacheTests {
+    @Test func switchingBackUsesCachedRender() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let a = try await f.addJob("A.jpg", preset: "Instagram Standard")
+        let b = try await f.addJob("B.jpg", preset: "XHS Standard")
+        let preview = f.workbench.preview
+        f.workbench.selection = [.job(a)]
+        await f.workbench.settle()
+        f.workbench.selection = [.job(b)]
+        await f.workbench.settle()
+        let requests = preview.renderRequests
+        let first = try #require(preview.pageImage)
+
+        // 切回看过的任务：立即显示（不用等后台），也不再请求后端。
+        f.workbench.selection = [.job(a)]
+        #expect(preview.pageImage != nil && preview.pageImage != first && !preview.isRendering)
+        await f.workbench.settle()
+        #expect(preview.renderRequests == requests)
+
+        // 改了参数就是新的内容，要重新渲染。
+        f.workbench.setField(\.canvas.minMarginPx, 120)
+        await f.workbench.settle()
+        #expect(preview.renderRequests == requests + 1)
+    }
+}
