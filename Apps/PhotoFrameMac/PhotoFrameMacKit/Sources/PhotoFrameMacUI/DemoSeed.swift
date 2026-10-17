@@ -12,10 +12,35 @@ import PhotoFrameMacModel
 /// - `PHOTOFRAME_UI_TOGGLE=<n>`：把左栏和 Inspector 各收起、展开 n 次（检查栏宽是否保持不变），
 ///   间隔 `PHOTOFRAME_UI_TOGGLE_MS` 毫秒；`PHOTOFRAME_UI_COLLAPSE=1` 时最后停在收起状态；
 ///   `PHOTOFRAME_UI_TOGGLE_SIDE=leading|trailing` 只切换一侧；`PHOTOFRAME_UI_WINDOW_WIDTH=<pt>` 先把窗口改成这个宽度。
+/// 记录系统鼠标指针的变化（只在 Debug 版、只在设置了环境变量时启用）。
+@MainActor
+enum CursorLogger {
+    private static var timer: Timer?
+    private static var last = ""
+    private static var handle: FileHandle?
+
+    static func start(path: String) {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        handle = FileHandle(forWritingAtPath: path)
+        timer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                // currentSystem 每次返回新对象，按热点和图像尺寸区分指针。
+                let key = NSCursor.currentSystem.map { "\($0.hotSpot) \($0.image.size)" } ?? "nil"
+                guard key != last else { return }
+                last = key
+                handle?.write(Data("\(Date().timeIntervalSince1970) \(key) mouse=\(NSEvent.mouseLocation)\n".utf8))
+            }
+        }
+        RunLoop.main.add(timer!, forMode: .common)
+    }
+}
+
 extension Workbench {
     func loadDemoIfRequested() async {
         // 空值等于没设置（避免把空路径当成当前目录导出）。
         let env = ProcessInfo.processInfo.environment.filter { !$0.value.isEmpty }
+        // `PHOTOFRAME_UI_CURSOR_LOG=<文件>`：每 20 ms 记一次系统鼠标指针，变化时写一行（查指针闪烁用）。
+        if let path = env["PHOTOFRAME_UI_CURSOR_LOG"] { CursorLogger.start(path: path) }
         if let width = env["PHOTOFRAME_UI_WINDOW_WIDTH"].flatMap(Double.init), let window = NSApp.windows.first(where: \.isVisible) {
             window.setContentSize(NSSize(width: width, height: window.contentLayoutRect.height))
         }
