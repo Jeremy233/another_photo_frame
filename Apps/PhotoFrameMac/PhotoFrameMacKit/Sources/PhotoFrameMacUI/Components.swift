@@ -60,6 +60,17 @@ struct ColumnFooter<Content: View>: View {
             .padding(.horizontal, 8)
             .frame(height: 28)
         }
-        .background(.bar)
+        .background(Palette.panel)
     }
+}
+
+/// 固定深色界面的中性灰（不随桌面壁纸染色，便于判断照片颜色）。明度参照 Compressor 的取样，只用灰阶。
+enum Palette {
+    static let toolbar = Color(white: 0.15)
+    static let sidebar = Color(white: 0.118)
+    static let panel = Color(white: 0.122)
+    static let list = Color(white: 0.086)
+    static let preview = Color(white: 0.09)
+    /// 分组框、源图头部。
+    static let group = Color(white: 0.176)
 }

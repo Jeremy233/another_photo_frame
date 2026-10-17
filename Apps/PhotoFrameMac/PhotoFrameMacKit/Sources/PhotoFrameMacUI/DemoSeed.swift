@@ -1,12 +1,11 @@
 #if DEBUG
-import AppKit
+import Foundation
 import PhotoFrameMacModel
 
-/// 只在 Debug 版本里：用环境变量准备演示内容，方便检查界面（截图、浅色 / 深色）。
+/// 只在 Debug 版本里：用环境变量准备演示内容，方便检查界面（截图）。
 ///
 /// - `PHOTOFRAME_UI_DEMO=<目录>`：加入目录里的图片，给第一张加 Instagram Standard 和 XHS Standard，
 ///   给名字含 Panorama 的图加 Instagram Panorama，并选中第一个任务。
-/// - `PHOTOFRAME_UI_APPEARANCE=light|dark`：强制外观。
 /// - `PHOTOFRAME_UI_TAB=canvas|panorama|layers|output`：右栏标签。
 /// - `PHOTOFRAME_UI_MODE=active|completed` 与 `PHOTOFRAME_UI_EXPORTS=<目录>`：导出到这个目录后显示「活跃」或「已完成」。
 ///   只改这些任务的目录，不改位置列表。
@@ -14,9 +13,6 @@ extension Workbench {
     func loadDemoIfRequested() async {
         // 空值等于没设置（避免把空路径当成当前目录导出）。
         let env = ProcessInfo.processInfo.environment.filter { !$0.value.isEmpty }
-        if let appearance = env["PHOTOFRAME_UI_APPEARANCE"] {
-            NSApp.appearance = NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
-        }
         guard let dir = env["PHOTOFRAME_UI_DEMO"] else { return }
         let exports = env["PHOTOFRAME_UI_EXPORTS"].flatMap { $0.hasPrefix("/") ? $0 : nil }.map { URL(filePath: $0, directoryHint: .isDirectory) }
 

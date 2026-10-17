@@ -62,11 +62,16 @@ struct WorkbenchCommands: Commands {
     }
 }
 
-/// 把图片拖到 Dock 图标或用「打开方式」打开时，直接加入当前批次（与 Compressor 一致，不带预设）。
+/// 应用级事件：固定深色外观；把图片拖到 Dock 图标或用「打开方式」打开时，直接加入当前批次（与 Compressor 一致，不带预设）。
 @MainActor
 public final class PhotoFrameAppDelegate: NSObject, NSApplicationDelegate {
     static weak var workbench: Workbench?
     private static var pending: [URL] = []
+
+    /// 界面固定深色（与 Compressor 一样，不跟随系统外观），弹窗和文件面板也一样。
+    public func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+    }
 
     public func application(_ application: NSApplication, open urls: [URL]) {
         if let workbench = Self.workbench {

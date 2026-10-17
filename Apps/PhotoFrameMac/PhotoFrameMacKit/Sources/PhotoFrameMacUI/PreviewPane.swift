@@ -20,7 +20,7 @@ struct PreviewPane: View {
             PreviewTitleBar(preview: preview)
             Divider()
             ZStack {
-                Color(nsColor: .underPageBackgroundColor)
+                Palette.preview
                 canvas
                 if preview.isRendering {
                     ProgressView().controlSize(.small).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -30,6 +30,7 @@ struct PreviewPane: View {
             Divider()
             PreviewPageBar(preview: preview, note: statusNote)
         }
+        .background(Palette.panel)
         .sheet(isPresented: $enlarged) {
             canvas
                 .frame(minWidth: 900, minHeight: 700)

@@ -27,7 +27,9 @@ struct SidebarView: View {
             }
             // 紧凑的行高，接近 Compressor 左栏。
             .environment(\.sidebarRowSize, .small)
+            .scrollContentBackground(.hidden)
         }
+        .background(Palette.sidebar)
     }
 }
 

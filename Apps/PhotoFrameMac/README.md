@@ -5,15 +5,19 @@ macOS GUI（SwiftUI + AppKit），界面参照 Apple Compressor 的三栏布局�
 
 ## 视觉
 
-布局与交互参照 Apple Compressor 5.4 的实际界面（截图只作参考，不进仓库）；颜色、图标、控件全部用 macOS 26 系统样式，
-不复制 Compressor 的图标或配色。Compressor 只有深色界面，浅色外观由系统语义色自动得到。
+布局与交互参照 Apple Compressor 5.4 的实际界面（截图只作参考，不进仓库）；图标、控件全部用 macOS 26 系统样式，
+不复制 Compressor 的图标或配色。
+
+**界面固定深色**（用户决定，2026-10-16）：与 Compressor 一样不跟随系统外观，弹窗和文件面板也是深色
+（`PhotoFrameAppDelegate` 启动时设置 `NSApp.appearance`）。各栏背景用中性灰（`Palette`，明度参照 Compressor 取样），
+不随桌面壁纸染色，避免影响对照片颜色的判断。
 
 | 参照 Compressor | 遵循 macOS 26 系统规范 |
 |---|---|
-| 顶栏没有窗口标题；正中「当前 \| 活跃 \| 已完成」，有任务时显示「活跃 (N)」；左右两端是侧栏开关 | 工具栏、分段控件、侧栏开关都是系统控件；强调色跟随系统设置（不用 Compressor 的紫色） |
+| 顶栏没有窗口标题；正中「当前 \| 活跃 \| 已完成」，有任务时显示「活跃 (N)」；左右两端是侧栏开关 | 工具栏、分段控件、侧栏开关都是系统控件；强调色跟随系统设置（不用 Compressor 的紫色）；背景是中性灰，不用系统随壁纸染色的材质 |
 | 每栏顶部一行小号分段控件（左栏「预设 \| 位置 \| 素材」、右栏「画布 \| 全景 \| 图层 \| 输出」，选中源图 / 位置时改为标题） | 侧栏列表用 `.sidebar` 样式、小号行高；分组标题可折叠 |
 | 左栏一行一项、名称过长截断、悬停显示完整信息；底部 + / 齿轮 | SF Symbols 通用图标（不是 Compressor 的设备图标） |
-| 批处理列表：顶部一行全部源图 + 「添加」；每张源图一组（缩略图头部 + 列标题 + 任务）；选中任务右端红色「移除」；拖放悬停时高亮源图头部；作品目录已存在时带提示图标 | 列表、分组底色、选中高亮都用系统 `List` 与 `.fill` 语义色 |
+| 批处理列表：顶部一行全部源图 + 「添加」；每张源图一组（缩略图头部 + 列标题 + 任务）；选中任务右端红色「移除」；拖放悬停时高亮源图头部；作品目录已存在时带提示图标 | 列表、选中高亮用系统 `List`；分组底色用中性灰 |
 | Inspector：顶部信息卡（图标 + 粗体名称 + 灰色摘要，源图带 SDR / HDR 标记），下面分节标题 + 圆角分组框，表单右对齐标签 + 小号控件 | `Form(.columns)`、系统复选框 / 弹出菜单 / 滑块 |
 | 预览：上方标题「源图 - 预设」+ 右侧缩放 % 与「显示」菜单；下方一行（Compressor 是时间轴）换成翻页 | — |
 | 预览约占中栏 45%；底栏每栏一段，「开始批处理」在中栏右下 | 分隔线是 AppKit `NSSplitView`，位置自动记住，双击恢复默认 |
@@ -28,7 +32,7 @@ macOS GUI（SwiftUI + AppKit），界面参照 Apple Compressor 的三栏布局�
 Debug 版本可以用环境变量准备演示内容（图片自己用代码合成，见 `DemoSeed.swift`）：
 
 ```bash
-PHOTOFRAME_UI_DEMO=/path/to/synthetic-images PHOTOFRAME_UI_APPEARANCE=light PHOTOFRAME_UI_TAB=layers \
+PHOTOFRAME_UI_DEMO=/path/to/synthetic-images PHOTOFRAME_UI_TAB=layers \
   AnotherPhotoFrame.app/Contents/MacOS/AnotherPhotoFrame -ApplePersistenceIgnoreState YES
 ```
 

@@ -18,6 +18,7 @@ struct InspectorView: View {
                     .padding(12)
             }
         }
+        .background(Palette.panel)
         .controlSize(.small)
     }
 
@@ -98,7 +99,7 @@ struct InspectorSection<Content: View>: View {
                 .formStyle(.columns)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(.fill.quaternary, in: .rect(cornerRadius: 8))
+                .background(Palette.group, in: .rect(cornerRadius: 8))
         }
     }
 }
@@ -136,7 +137,7 @@ struct InfoCard<Actions: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.fill.quaternary, in: .rect(cornerRadius: 8))
+        .background(Palette.group, in: .rect(cornerRadius: 8))
     }
 }
 
