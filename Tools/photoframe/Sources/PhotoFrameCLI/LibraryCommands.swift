@@ -27,8 +27,8 @@ extension CommandContext {
 struct PresetCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "preset", abstract: "管理预设库（内置、用户保存、导入）。",
-        subcommands: [ListCommand.self, ImportCommand.self, ExportCommand.self, DuplicateCommand.self,
-                      RenameCommand.self, MoveCommand.self, DeleteCommand.self])
+        subcommands: [ListCommand.self, GetCommand.self, SetCommand.self, ImportCommand.self, ExportCommand.self,
+                      DuplicateCommand.self, RenameCommand.self, MoveCommand.self, DeleteCommand.self])
 
     /// `photoframe preset list [--json]`
     struct ListCommand: AsyncParsableCommand {

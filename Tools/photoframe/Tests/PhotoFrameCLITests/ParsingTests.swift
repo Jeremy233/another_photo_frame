@@ -50,7 +50,8 @@ struct ParsingTests {
         ["asset", "import", "x.png"],                            // 缺 --category
         ["asset", "import", "x.png", "--category", "logo"],
         ["export", "a.png", "--preset", "x", "-o", "o", "--bind", "noequals"],
-        ["mcp", "serve"],
+        ["mcp", "serve", "--max-active-jobs", "0"],
+        ["preset", "set", "x", "canvas.minMarginPx"],            // 路径和值不成对
     ])
     func usageErrors(_ arguments: [String]) async throws {
         let box = try Sandbox()
@@ -60,18 +61,17 @@ struct ParsingTests {
         #expect(!result.stderr.value.isEmpty)
     }
 
-    @Test("帮助写 stdout、退出码 0；不列出这一版没有的命令")
+    @Test("帮助写 stdout、退出码 0")
     func help() async throws {
         let box = try Sandbox()
         let root = await runCLI(["--help"], in: box.root)
         #expect(root.status == 0)
-        for name in ["export", "image", "preset", "preview"] { #expect(root.stdout.value.contains(name)) }
-        #expect(!root.stdout.value.contains("mcp"))
+        for name in ["export", "image", "preset", "preview", "mcp"] { #expect(root.stdout.value.contains(name)) }
         #expect(root.stderr.value.isEmpty)
 
         #expect(root.stdout.value.contains("asset"))
         let preset = await runCLI(["preset", "--help"], in: box.root)
-        for name in ["list", "import", "export", "duplicate", "rename", "move", "delete"] { #expect(preset.stdout.value.contains(name)) }
+        for name in ["list", "get", "set", "import", "export", "duplicate", "rename", "move", "delete"] { #expect(preset.stdout.value.contains(name)) }
         let asset = await runCLI(["asset", "--help"], in: box.root)
         for name in ["list", "import", "rename", "set-category", "delete", "bind", "unbind", "bindings"] { #expect(asset.stdout.value.contains(name)) }
 

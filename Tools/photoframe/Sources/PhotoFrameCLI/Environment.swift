@@ -64,24 +64,29 @@ public struct CLIEnvironment: Sendable {
     /// 本地库（预设库、素材库、绑定）的根目录；nil 用 App Group 共享容器（D-78）。
     /// 可执行文件从环境变量 `PHOTOFRAME_LIBRARY` 取；测试指向临时目录。
     public var libraryRoot: URL?
+    /// 进程环境变量（`mcp serve` 读 `PHOTOFRAME_MCP_ALLOW_READ` / `PHOTOFRAME_MCP_ALLOW_WRITE`）。测试里默认为空。
+    public var variables: [String: String]
     public var makeService: ServiceFactory
 
     public init(
         stdout: TextSink, stderr: TextSink, currentDirectory: URL, interrupts: InterruptMonitor = InterruptMonitor(),
-        libraryRoot: URL? = nil, makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try LocalPhotoFrameService.makeDefault(options) }
+        libraryRoot: URL? = nil, variables: [String: String] = [:],
+        makeService: @escaping ServiceFactory = { options throws(ApplicationError) in try LocalPhotoFrameService.makeDefault(options) }
     ) {
         self.stdout = stdout
         self.stderr = stderr
         self.currentDirectory = currentDirectory
         self.interrupts = interrupts
         self.libraryRoot = libraryRoot
+        self.variables = variables
         self.makeService = makeService
     }
 
     public static let standard = CLIEnvironment(
         stdout: .standardOutput, stderr: .standardError,
         currentDirectory: URL(filePath: FileManager.default.currentDirectoryPath, directoryHint: .isDirectory),
-        libraryRoot: ProcessInfo.processInfo.environment["PHOTOFRAME_LIBRARY"].flatMap { $0.isEmpty ? nil : URL(filePath: ($0 as NSString).expandingTildeInPath, directoryHint: .isDirectory) })
+        libraryRoot: ProcessInfo.processInfo.environment["PHOTOFRAME_LIBRARY"].flatMap { $0.isEmpty ? nil : URL(filePath: ($0 as NSString).expandingTildeInPath, directoryHint: .isDirectory) },
+        variables: ProcessInfo.processInfo.environment)
 
     @TaskLocal public static var current: CLIEnvironment = .standard
 

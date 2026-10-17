@@ -116,6 +116,22 @@ struct ExportJobJSON: Encodable {
     var warnings: [WarningJSON]
     var error: ErrorJSON?
     var durationSeconds: Double?
+    /// 只有 MCP `get_job_status` 有：当前阶段和真实进度（§9.1，不估算百分比）。
+    var progress: ProgressJSON?
+
+    struct ProgressJSON: Encodable {
+        var stage: String
+        var completedOutputs: Int
+        var plannedOutputs: Int?
+        var bytesWritten: Int64
+
+        init(_ p: JobProgress) {
+            stage = p.stage.rawValue
+            completedOutputs = p.completedOutputs
+            plannedOutputs = p.plannedOutputs
+            bytesWritten = p.bytesWritten
+        }
+    }
 
     init(_ record: JobRecord) {
         jobId = record.jobId.description
@@ -342,11 +358,22 @@ struct InspectJSON: Encodable {
 struct PreviewFileJSON: Encodable {
     var role: String
     var position: Int
-    var path: String
+    /// 写出的文件；MCP 内联返回图片时没有。
+    var path: String?
     var width: Int
     var height: Int
     var exportWidth: Int
     var exportHeight: Int
+
+    init(_ page: PreviewImage, path: String?) {
+        role = page.role.kindName
+        position = page.role.carouselPosition
+        self.path = path
+        width = page.pixelSize.width
+        height = page.pixelSize.height
+        exportWidth = page.exportPixelSize.width
+        exportHeight = page.exportPixelSize.height
+    }
 }
 
 struct PreviewJSON: Encodable {
