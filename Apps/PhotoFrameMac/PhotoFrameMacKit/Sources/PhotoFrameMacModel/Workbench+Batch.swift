@@ -249,6 +249,34 @@ extension Workbench {
             return
         }
         guard let items = await validateForSubmit(drafts, policy: .versionSuffix) else { return }
+        let warned = zip(drafts, items).filter { !$0.1.warnings.isEmpty }
+        if !warned.isEmpty, settings.reviewsWarningsBeforeStart {
+            warningPrompt = WarningPrompt(jobIds: warned.map(\.0.id), warningCount: warned.map(\.1.warnings.count).reduce(0, +))
+            return
+        }
+        await confirmOverwritesAndSubmit(drafts, items: items)
+    }
+
+    /// 用户对警告询问的回答。`dontAskAgain`：以后不再询问（设置里可以改回来）。
+    public func resolveWarnings(_ choice: WarningChoice, dontAskAgain: Bool = false) async {
+        guard let prompt = warningPrompt else { return }
+        warningPrompt = nil
+        if dontAskAgain, choice != .cancel { settings.reviewsWarningsBeforeStart = false }
+        switch choice {
+        case .cancel:
+            return
+        case .review:
+            mode = .current
+            if let first = prompt.jobIds.first { selection = [.job(first)] }
+        case .proceed:
+            let drafts = allJobs
+            guard let items = await validateForSubmit(drafts, policy: .versionSuffix) else { return }
+            await confirmOverwritesAndSubmit(drafts, items: items)
+        }
+    }
+
+    /// 作品目录已存在时先确认（D-49），否则直接提交。
+    private func confirmOverwritesAndSubmit(_ drafts: [DraftJob], items: [ValidationItem]) async {
         let conflicts: [OverwritePrompt.Conflict] = zip(drafts, items).compactMap { job, item in
             guard let source = sourceItem(job.sourceId)?.source else { return nil }
             let name = job.naming.workName(source: source, preset: job.preset)

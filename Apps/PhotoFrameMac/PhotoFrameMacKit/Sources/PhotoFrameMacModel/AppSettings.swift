@@ -9,11 +9,17 @@ public struct AppSettings: Hashable, Sendable, Codable {
     public var maxConcurrentJobs: Int?
     /// 内存预算（GiB）；nil 为自动（物理内存的一半，D-53）。
     public var memoryBudgetGiB: Int?
+    /// 开始批处理前，有任务带警告时先询问（参照 Compressor「The batch has warnings」）。
+    public var reviewsWarningsBeforeStart = true
 
-    public init(switchesToActiveAfterStart: Bool = true, maxConcurrentJobs: Int? = nil, memoryBudgetGiB: Int? = nil) {
+    public init(
+        switchesToActiveAfterStart: Bool = true, maxConcurrentJobs: Int? = nil, memoryBudgetGiB: Int? = nil,
+        reviewsWarningsBeforeStart: Bool = true
+    ) {
         self.switchesToActiveAfterStart = switchesToActiveAfterStart
         self.maxConcurrentJobs = maxConcurrentJobs
         self.memoryBudgetGiB = memoryBudgetGiB
+        self.reviewsWarningsBeforeStart = reviewsWarningsBeforeStart
     }
 
     public var effectiveMaxConcurrentJobs: Int { maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs }
@@ -34,6 +40,7 @@ public struct AppSettings: Hashable, Sendable, Codable {
         switchesToActiveAfterStart = try c.decodeIfPresent(Bool.self, forKey: .switchesToActiveAfterStart) ?? true
         maxConcurrentJobs = try c.decodeIfPresent(Int.self, forKey: .maxConcurrentJobs)
         memoryBudgetGiB = try c.decodeIfPresent(Int.self, forKey: .memoryBudgetGiB)
+        reviewsWarningsBeforeStart = try c.decodeIfPresent(Bool.self, forKey: .reviewsWarningsBeforeStart) ?? true
     }
 }
 

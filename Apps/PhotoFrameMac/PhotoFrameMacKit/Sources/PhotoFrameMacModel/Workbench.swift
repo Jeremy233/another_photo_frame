@@ -94,6 +94,7 @@ public final class Workbench {
 
     public var alert: WorkbenchAlert?
     public var overwritePrompt: OverwritePrompt?
+    public var warningPrompt: WarningPrompt?
 
     public let preview: PreviewModel
 

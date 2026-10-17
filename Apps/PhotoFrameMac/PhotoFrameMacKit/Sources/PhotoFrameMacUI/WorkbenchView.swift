@@ -52,6 +52,9 @@ public struct WorkbenchView: View {
             Alert(title: Text(alert.title), message: Text(alert.message))
         }
         .overwriteConfirmation(workbench)
+        .onChange(of: workbench.warningPrompt?.id) { _, id in
+            if id != nil, let prompt = workbench.warningPrompt { WarningReviewAlert.show(prompt, workbench: workbench) }
+        }
         .frame(minWidth: 900, minHeight: 600)
     }
 
@@ -114,6 +117,36 @@ private extension View {
         } message: {
             let names = prompt?.conflicts.map { "· \($0.directory.path)" } ?? []
             Text((names + ["", "覆盖只替换本软件之前导出的目录，替换前会完整校验新作品。"]).joined(separator: "\n"))
+        }
+    }
+}
+
+/// 开始批处理前有警告时的询问，参照 Compressor「The batch has warnings」：继续 / 查看 / 取消 + 不再询问。
+/// 用 NSAlert，因为 SwiftUI 的提示框放不下「不再询问」复选框。
+@MainActor
+enum WarningReviewAlert {
+    static func show(_ prompt: WarningPrompt, workbench: Workbench) {
+        let alert = NSAlert()
+        alert.messageText = prompt.jobIds.count == 1 ? "1 个任务带警告" : "\(prompt.jobIds.count) 个任务带警告"
+        alert.informativeText = "共 \(prompt.warningCount) 条警告。要先查看，还是忽略警告继续？"
+        alert.addButton(withTitle: "继续")
+        alert.addButton(withTitle: "查看")
+        alert.addButton(withTitle: "取消").keyEquivalent = "\u{1b}"
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "不再询问"
+        let finish = { (response: NSApplication.ModalResponse) in
+            let choice: WarningChoice = switch response {
+            case .alertFirstButtonReturn: .proceed
+            case .alertSecondButtonReturn: .review
+            default: .cancel
+            }
+            let dontAsk = alert.suppressionButton?.state == .on
+            Task { await workbench.resolveWarnings(choice, dontAskAgain: dontAsk) }
+        }
+        if let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) {
+            alert.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(alert.runModal())
         }
     }
 }

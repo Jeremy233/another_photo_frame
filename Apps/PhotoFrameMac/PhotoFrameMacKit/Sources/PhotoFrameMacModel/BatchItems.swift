@@ -132,3 +132,19 @@ public enum OverwriteChoice: Sendable {
     case keepBoth
     case cancel
 }
+
+/// 开始批处理前，有任务带警告时的询问（继续 / 查看 / 取消）。
+public struct WarningPrompt: Identifiable, Equatable, Sendable {
+    public var id = UUID()
+    /// 带警告的任务，按列表顺序。
+    public var jobIds: [UUID]
+    public var warningCount: Int
+}
+
+public enum WarningChoice: Sendable {
+    /// 忽略警告，开始批处理。
+    case proceed
+    /// 不开始，选中第一个带警告的任务，在 Inspector 里看警告。
+    case review
+    case cancel
+}

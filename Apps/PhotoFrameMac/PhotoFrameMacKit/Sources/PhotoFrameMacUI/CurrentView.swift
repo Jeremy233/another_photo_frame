@@ -302,11 +302,28 @@ private struct JobRow: View {
             Button("移除") { workbench.removeSelection() }
                 .buttonStyle(.link)
                 .foregroundStyle(.red)
-        } else if let validation = job.validation, job.warningCount > 0 {
-            let lines = validation.errors.map(\.message) + validation.warnings.map(\.message)
-            Image(systemName: validation.errors.isEmpty ? "exclamationmark.triangle.fill" : "xmark.octagon.fill")
-                .foregroundStyle(validation.errors.isEmpty ? Color.yellow : Color.red)
-                .help(lines.joined(separator: "\n"))
+        } else if !job.issues.isEmpty {
+            IssueButton(issues: job.issues)
+        }
+    }
+}
+
+/// 任务行右端的警告图标：悬停显示全文，点按弹出完整列表和修改建议。
+private struct IssueButton: View {
+    let issues: [JobIssue]
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing.toggle() } label: {
+            JobIssueIcon(isError: issues.contains(where: \.isError))
+        }
+        .buttonStyle(.borderless)
+        .help(issues.map(\.message).joined(separator: "\n"))
+        .accessibilityLabel(issues.contains(where: \.isError) ? "错误" : "警告")
+        .popover(isPresented: $showing, arrowEdge: .bottom) {
+            JobIssueList(issues: issues)
+                .padding(12)
+                .frame(width: 340)
         }
     }
 }
