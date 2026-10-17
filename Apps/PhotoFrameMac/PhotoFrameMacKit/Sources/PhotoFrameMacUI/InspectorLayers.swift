@@ -14,7 +14,7 @@ struct LayersTab: View {
             ForEach(preset.layers.sorted { $0.zIndex < $1.zIndex }, id: \.layerId) { layer in
                 LayerSection(workbench: workbench, layer: layer)
             }
-            Section {
+            InspectorSection {
                 Menu("添加图层") {
                     ForEach(LayerTemplate.allCases) { template in
                         Button(template.title) { workbench.addLayer(template) }
@@ -22,7 +22,7 @@ struct LayersTab: View {
                 }
             }
         } else {
-            Section { Text("多个任务的图层不能批量修改，请只选一个任务。").foregroundStyle(.secondary) }
+            InspectorSection { Text("多个任务的图层不能批量修改，请只选一个任务。").foregroundStyle(.secondary) }
         }
     }
 }
@@ -32,7 +32,7 @@ private struct LayerSection: View {
     let layer: OverlayLayer
 
     var body: some View {
-        Section {
+        InspectorSection("\(layer.type.title) · \(layer.layerId)") {
             Toggle("启用", isOn: workbench.layerBinding(layer.layerId, \.enabled, default: true))
             if let slotId = layer.slotId, layer.type.usesAssetSlot {
                 SlotBindingRow(workbench: workbench, slotId: slotId)
@@ -57,8 +57,6 @@ private struct LayerSection: View {
             }
             VisibilityPicker(workbench: workbench, layer: layer)
             Button("删除图层", role: .destructive) { workbench.removeLayer(layer.layerId) }
-        } header: {
-            Text("\(layer.type.title) · \(layer.layerId)")
         }
     }
 
@@ -169,49 +167,57 @@ struct SourceInspector: View {
     let item: SourceItem
 
     var body: some View {
-        Form {
-            Section("文件") {
-                LabeledContent("名称", value: item.source.displayName)
-                LabeledContent("位置", value: item.source.fileURL.deletingLastPathComponent().displayPath)
+        InfoCard(symbol: "photo", title: item.source.displayName, lines: summary, badge: badge) { EmptyView() }
+        if let info = item.inspection {
+            InspectorSection("图像") {
+                LabeledContent("尺寸") { Text(info.displaySize.text) }
+                LabeledContent("位深") { Text("\(info.bitDepth) bit\(info.isFloat ? " 浮点" : "")") }
+                LabeledContent("方向") { Text("\(info.orientation)") }
             }
-            if let info = item.inspection {
-                Section("图像") {
-                    LabeledContent("格式", value: info.format.uppercased())
-                    LabeledContent("尺寸", value: info.displaySize.text)
-                    LabeledContent("位深", value: "\(info.bitDepth) bit\(info.isFloat ? " 浮点" : "")")
-                    LabeledContent("方向", value: "\(info.orientation)")
-                }
-                Section("色彩") {
-                    LabeledContent("ICC", value: info.colorProfile.description)
-                    if !info.colorProfile.embedded {
-                        Picker("没有 ICC，按此解释", selection: override) {
-                            Text("sRGB（默认）").tag(SourceColorOverride?.none)
-                            ForEach(SourceColorOverride.allCases.filter { $0 != .sRGB }, id: \.self) {
-                                Text($0.title).tag(SourceColorOverride?.some($0))
-                            }
+            InspectorSection("色彩") {
+                LabeledContent("ICC") { Text(info.colorProfile.description) }
+                if !info.colorProfile.embedded {
+                    Picker("按此解释", selection: override) {
+                        Text("sRGB（默认）").tag(SourceColorOverride?.none)
+                        ForEach(SourceColorOverride.allCases.filter { $0 != .sRGB }, id: \.self) {
+                            Text($0.title).tag(SourceColorOverride?.some($0))
                         }
                     }
-                    LabeledContent("HDR", value: hdr(info.hdr))
+                    Text("源图没有 ICC，默认按 sRGB 解释").font(.caption).foregroundStyle(.secondary)
                 }
-                if !info.metadata.isEmpty || info.hasGPS || info.hasAuthorOrCopyright {
-                    Section("EXIF") {
-                        ForEach(info.metadata.sorted { $0.key < $1.key }, id: \.key) { LabeledContent($0.key, value: $0.value) }
-                        if info.hasGPS { LabeledContent("GPS", value: "有（默认不写出）") }
-                        if info.hasAuthorOrCopyright { LabeledContent("作者 / 版权", value: "有（默认不写出）") }
-                    }
-                }
-                if !info.warnings.isEmpty {
-                    Section("提示") {
-                        ForEach(info.warnings, id: \.self) { Text($0.message) }
-                    }
-                }
-            } else if let error = item.inspectionError {
-                Section { Text(error.message).foregroundStyle(.red) }
-            } else {
-                ProgressView()
+                LabeledContent("HDR") { Text(hdr(info.hdr)) }
             }
+            if !info.metadata.isEmpty || info.hasGPS || info.hasAuthorOrCopyright {
+                InspectorSection("EXIF") {
+                    ForEach(info.metadata.sorted { $0.key < $1.key }, id: \.key) { entry in LabeledContent(entry.key) { Text(entry.value) } }
+                    if info.hasGPS { LabeledContent("GPS") { Text("有（默认不写出）") } }
+                    if info.hasAuthorOrCopyright { LabeledContent("作者 / 版权") { Text("有（默认不写出）") } }
+                }
+            }
+            if !info.warnings.isEmpty {
+                InspectorSection("提示") {
+                    ForEach(info.warnings, id: \.self) { Text($0.message).foregroundStyle(.orange) }
+                }
+            }
+        } else if let error = item.inspectionError {
+            InspectorSection { Text(error.message).foregroundStyle(.red) }
+        } else {
+            ProgressView().frame(maxWidth: .infinity)
         }
-        .formStyle(.grouped)
+    }
+
+    private var summary: [String] {
+        var lines = [item.source.fileURL.deletingLastPathComponent().displayPath]
+        if let info = item.inspection {
+            let size = info.fileSizeBytes.map { "，" + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
+            lines.append("\(info.format.uppercased())\(size)")
+            lines.append("\(info.displaySize.text)，\(info.colorProfile.description)")
+        }
+        return lines
+    }
+
+    private var badge: String? {
+        item.inspection.map { $0.hdr.kind == "none" ? "SDR" : "HDR" }
     }
 
     private var override: Binding<SourceColorOverride?> {

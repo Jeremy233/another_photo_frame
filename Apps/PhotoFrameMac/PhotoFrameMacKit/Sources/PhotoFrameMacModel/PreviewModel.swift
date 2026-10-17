@@ -167,7 +167,7 @@ extension Workbench {
             guard let draft = presetEditor?.draft,
                   let item = targetSourceIds.first.flatMap(sourceItem) ?? sources.first else { return nil }
             return subject(item, preset: draft, bindings: [:])
-        case .none:
+        case .location, .none:
             return nil
         }
     }

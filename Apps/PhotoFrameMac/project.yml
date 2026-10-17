@@ -27,6 +27,12 @@ targets:
         LSApplicationCategoryType: public.app-category.photography
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: Apache-2.0
+        # 可以把图片拖到 Dock 图标、或用「打开方式」加入当前批次（D-02：JPEG / PNG / TIFF）。
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: 图片
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.jpeg, public.png, public.tiff]
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: org.anotherphotoframe.preset
             UTTypeDescription: AnotherPhotoFrame 预设

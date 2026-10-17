@@ -3,7 +3,39 @@
 macOS GUI（SwiftUI + AppKit），界面参照 Apple Compressor 的三栏布局（规范 §4、UI 设计文档）。
 所有业务操作都通过 `PhotoFrameService`（PhotoFrameApplication）完成，界面里不写业务逻辑（D-13）。
 
-> 视觉细节（配色、图标、控件样式）还没有定稿，等 Compressor 截图后再调；现在只确定了区域划分、信息层级和交互。
+## 视觉
+
+布局与交互参照 Apple Compressor 5.4 的实际界面（截图只作参考，不进仓库）；颜色、图标、控件全部用 macOS 26 系统样式，
+不复制 Compressor 的图标或配色。Compressor 只有深色界面，浅色外观由系统语义色自动得到。
+
+| 参照 Compressor | 遵循 macOS 26 系统规范 |
+|---|---|
+| 顶栏没有窗口标题；正中「当前 \| 活跃 \| 已完成」，有任务时显示「活跃 (N)」；左右两端是侧栏开关 | 工具栏、分段控件、侧栏开关都是系统控件；强调色跟随系统设置（不用 Compressor 的紫色） |
+| 每栏顶部一行小号分段控件（左栏「预设 \| 位置 \| 素材」、右栏「画布 \| 全景 \| 图层 \| 输出」，选中源图 / 位置时改为标题） | 侧栏列表用 `.sidebar` 样式、小号行高；分组标题可折叠 |
+| 左栏一行一项、名称过长截断、悬停显示完整信息；底部 + / 齿轮 | SF Symbols 通用图标（不是 Compressor 的设备图标） |
+| 批处理列表：顶部一行全部源图 + 「添加」；每张源图一组（缩略图头部 + 列标题 + 任务）；选中任务右端红色「移除」；拖放悬停时高亮源图头部；作品目录已存在时带提示图标 | 列表、分组底色、选中高亮都用系统 `List` 与 `.fill` 语义色 |
+| Inspector：顶部信息卡（图标 + 粗体名称 + 灰色摘要，源图带 SDR / HDR 标记），下面分节标题 + 圆角分组框，表单右对齐标签 + 小号控件 | `Form(.columns)`、系统复选框 / 弹出菜单 / 滑块 |
+| 预览：上方标题「源图 - 预设」+ 右侧缩放 % 与「显示」菜单；下方一行（Compressor 是时间轴）换成翻页 | — |
+| 预览约占中栏 45%；底栏每栏一段，「开始批处理」在中栏右下 | 分隔线是 AppKit `NSSplitView`，位置自动记住，双击恢复默认 |
+| 「活跃」「已完成」时左栏自动收起，中栏全宽表格：名称 / 状态（强调色文字）/ 已用时间 / 进度，行尾取消或重新导出按钮；历史按「今天」等日期分组 | 系统 `Table`、`ProgressView` |
+| 提交批处理后切到「活跃」 | — |
+
+与 Compressor 不同、按我们规范做的地方：多选任务时 Compressor 显示「Nothing to Inspect」，我们按 UI 设计文档第 6 节显示可批量修改的共同字段；
+目标目录已存在时 Compressor 只警告，我们按 D-49 询问「保留两者 / 覆盖」。
+
+### 检查界面（Debug）
+
+Debug 版本可以用环境变量准备演示内容（图片自己用代码合成，见 `DemoSeed.swift`）：
+
+```bash
+PHOTOFRAME_UI_DEMO=/path/to/synthetic-images PHOTOFRAME_UI_APPEARANCE=light PHOTOFRAME_UI_TAB=layers \
+  AnotherPhotoFrame.app/Contents/MacOS/AnotherPhotoFrame -ApplePersistenceIgnoreState YES
+```
+
+### 已知限制
+
+- 窗口最小宽度 1120 pt：比三栏最小宽度之和更窄时，SwiftUI 的 NavigationSplitView + inspector 会反复调整约束而崩溃。
+  同理，不要在分栏内容上加 `minWidth`，也不要用 SwiftUI `VSplitView`（改用 `VerticalSplit`）。
 
 ## 结构
 
@@ -59,6 +91,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 | `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview` |
 | `ExportLocation.swift` | 左栏「位置」：名称 + 目录，存在 UserDefaults |
 | `DragPayload.swift` | 应用内拖放的内容（预设、位置、素材） |
+
+把图片拖到 Dock 图标或用「打开方式」打开，会直接加入当前批次（`PhotoFrameAppDelegate`）。
 
 「当前」界面里的任务是草稿（`DraftJob`：源图 + 预设副本 + 位置 + 单任务绑定）。改参数只改副本（§4.2），
 点「开始批处理」才校验并交给服务创建任务；提交后的任务离开「当前」，在「活跃」「已完成」里看。

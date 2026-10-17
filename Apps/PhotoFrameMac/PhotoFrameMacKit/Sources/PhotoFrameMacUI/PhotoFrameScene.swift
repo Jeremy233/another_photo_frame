@@ -1,3 +1,4 @@
+import AppKit
 import PhotoFrameApplication
 import PhotoFrameMacModel
 import PhotoFrameStorage
@@ -58,5 +59,28 @@ struct WorkbenchCommands: Commands {
             }
             Divider()
         }
+    }
+}
+
+/// 把图片拖到 Dock 图标或用「打开方式」打开时，直接加入当前批次（与 Compressor 一致，不带预设）。
+@MainActor
+public final class PhotoFrameAppDelegate: NSObject, NSApplicationDelegate {
+    static weak var workbench: Workbench?
+    private static var pending: [URL] = []
+
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        if let workbench = Self.workbench {
+            Task { await workbench.addSources(urls) }
+        } else {
+            Self.pending += urls
+        }
+    }
+
+    /// 窗口出现后登记，把启动时就收到的文件加进去。
+    static func register(_ workbench: Workbench) async {
+        self.workbench = workbench
+        let urls = pending
+        pending = []
+        if !urls.isEmpty { await workbench.addSources(urls) }
     }
 }

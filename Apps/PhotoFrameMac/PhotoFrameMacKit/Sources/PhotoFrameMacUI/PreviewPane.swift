@@ -7,6 +7,9 @@ import SwiftUI
 
 /// 中间栏上方的预览（UI 设计文档第 9 节）：封面 / 切片 / 全景长卷，缩放，原图 / 成品，SDR / HDR。
 /// 成品图像全部来自后端的 `renderPreview`；这里只负责显示。
+///
+/// 版式参照 Compressor 的预览区：上面一行标题（源图 - 预设）+ 右侧缩放与「显示」菜单，
+/// 下面一行在 Compressor 是时间轴和播放控制，这里换成翻页（封面、切片、全景长卷）。
 struct PreviewPane: View {
     let workbench: Workbench
     @Bindable var preview: PreviewModel
@@ -14,23 +17,18 @@ struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal) { PreviewControls(preview: preview) }
-                .scrollIndicators(.never)
+            PreviewTitleBar(preview: preview)
             Divider()
             ZStack {
                 Color(nsColor: .underPageBackgroundColor)
                 canvas
-                if preview.isRendering { ProgressView().controlSize(.small).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing) }
+                if preview.isRendering {
+                    ProgressView().controlSize(.small).padding(8).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
             }
             .onTapGesture(count: 2) { if preview.subject != nil { enlarged = true } }
-            if let note = statusNote {
-                Text(note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-            }
+            Divider()
+            PreviewPageBar(preview: preview, note: statusNote)
         }
         .sheet(isPresented: $enlarged) {
             canvas
@@ -64,42 +62,102 @@ struct PreviewPane: View {
     }
 }
 
-/// 预览上方的控件。
-private struct PreviewControls: View {
+/// 预览上方一行：标题居中，右侧是原图对比、缩放、「显示」菜单。
+private struct PreviewTitleBar: View {
     @Bindable var preview: PreviewModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            Picker("页面", selection: $preview.page) {
-                ForEach(preview.roles, id: \.self) { role in
-                    Text(role.shortTitle).tag(PreviewPage.page(role.carouselPosition))
+        HStack(spacing: 10) {
+            Text(title).font(.callout).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: .infinity)
+                .help(title)
+            HStack(spacing: 10) {
+                Toggle(isOn: $preview.showsOriginal) {
+                    Image(systemName: "rectangle.split.2x1")
                 }
-                if preview.hasStrip { Text("全景长卷").tag(PreviewPage.strip) }
+                .toggleStyle(.button)
+                .help("原图 / 成品对比")
+                ZoomMenu(zoom: $preview.zoom)
+                Menu("显示") {
+                    Picker("对比", selection: $preview.showsOriginal) {
+                        Text("成品").tag(false)
+                        Text("原图").tag(true)
+                    }
+                    Picker("动态范围", selection: $preview.range) {
+                        Text("SDR").tag(PreviewRange.sdr)
+                        Text("HDR").tag(PreviewRange.hdr)
+                    }
+                    Toggle("显示接缝位置", isOn: $preview.showsSeams)
+                }
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .disabled(preview.roles.count < 2)
-            Spacer()
-            Picker("对比", selection: $preview.showsOriginal) {
-                Text("成品").tag(false)
-                Text("原图").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            Picker("动态范围", selection: $preview.range) {
-                Text("SDR").tag(PreviewRange.sdr)
-                Text("HDR").tag(PreviewRange.hdr)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            ZoomMenu(zoom: $preview.zoom)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .buttonStyle(.borderless)
+        .menuStyle(.borderlessButton)
         .controlSize(.small)
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+    }
+
+    private var title: String {
+        guard let subject = preview.subject else { return "" }
+        let name = subject.sourceURL.lastPathComponent
+        return subject.preset.map { "\(name) - \($0.name)" } ?? name
+    }
+}
+
+/// 预览下方一行：翻页（封面、切片 1…N、全景长卷），左侧是预览提示，右侧是 SDR / HDR。
+private struct PreviewPageBar: View {
+    @Bindable var preview: PreviewModel
+    let note: String?
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 8) {
+                Button { step(-1) } label: { Image(systemName: "chevron.backward") }
+                    .disabled(index <= 0)
+                Picker("页面", selection: $preview.page) {
+                    ForEach(preview.roles, id: \.self) { role in
+                        Text(role.shortTitle).tag(PreviewPage.page(role.carouselPosition))
+                    }
+                    if preview.hasStrip { Text("全景长卷").tag(PreviewPage.strip) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                Button { step(1) } label: { Image(systemName: "chevron.forward") }
+                    .disabled(index < 0 || index >= preview.roles.count - 1)
+            }
+            .disabled(preview.roles.count < 2)
+            HStack {
+                if let note {
+                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(note)
+                        .frame(maxWidth: 260, alignment: .leading)
+                }
+                Spacer()
+                Picker("动态范围", selection: $preview.range) {
+                    Text("SDR").tag(PreviewRange.sdr)
+                    Text("HDR").tag(PreviewRange.hdr)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+    }
+
+    /// 当前页在轮播中的位置；全景长卷时为 -1。
+    private var index: Int {
+        if case .page(let n) = preview.page { n } else { -1 }
+    }
+
+    private func step(_ delta: Int) {
+        let next = index + delta
+        if next >= 0, next < preview.roles.count { preview.page = .page(next) }
     }
 }
 

@@ -196,6 +196,8 @@ import Testing
         #expect(wb.overwritePrompt == nil && wb.alert == nil)
         #expect(wb.job(jobId) == nil && wb.sources.isEmpty)
         #expect(!wb.isQueuePaused)
+        // 与 Compressor 一致：提交后切到「活跃」。
+        #expect(wb.mode == .active)
         await f.waitForRun()
         #expect(wb.batchProgress?.fraction == 1)
         let finished = try #require(wb.finishedJobs.first)
@@ -298,5 +300,29 @@ import Testing
         wb.selection = [.source(try #require(wb.sources.first?.id))]
         wb.removeSelection()
         #expect(wb.sources.isEmpty)
+    }
+
+    @Test func selectingLocationShowsLocationInspector() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let jobId = try await f.addJob()
+        let wb = f.workbench
+        let location = try #require(wb.locations.locations.first)
+        wb.selectedLocationId = location.id
+        #expect(wb.inspectorSubject == .location(location.id))
+        #expect(!wb.isInspectorEditable && wb.editedPresets.isEmpty)
+        wb.selection = [.job(jobId), .source(try #require(wb.job(jobId)?.sourceId))]
+        #expect(wb.inspectorSubject == .jobs([jobId]))
+    }
+
+    @Test func activeCountTracksUnfinishedJobs() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let source = try await f.service.addSource(try f.photo("C.jpg"))
+        let preset = try await f.service.resolvePreset(.library("XHS Standard")).preset
+        _ = try await f.service.submit(ExportRequest(
+            sourceIds: [source.sourceId], presets: [preset], destination: ExportDestination(rootDirectory: f.exports)))
+        await f.workbench.refreshJobs()
+        #expect(f.workbench.activeCount == 1)
     }
 }

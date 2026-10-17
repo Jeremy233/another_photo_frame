@@ -43,6 +43,9 @@ extension Workbench {
     /// 正在执行和排队中的任务。
     public var activeJobs: [JobRecord] { jobs.filter { !$0.status.isTerminal } }
 
+    /// 顶栏「活跃 (N)」里的 N。
+    public var activeCount: Int { jobs.count { !$0.status.isTerminal } }
+
     /// 导出历史，最近结束的在前。
     public var finishedJobs: [JobRecord] {
         jobs.filter(\.status.isTerminal).sorted {

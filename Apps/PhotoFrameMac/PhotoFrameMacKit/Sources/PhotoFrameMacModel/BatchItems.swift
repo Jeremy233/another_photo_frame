@@ -83,6 +83,8 @@ public enum InspectorSubject: Equatable, Sendable {
     /// 一个或多个任务。多个时只显示可以批量修改的共同字段。
     case jobs([UUID])
     case preset(UUID)
+    /// 左栏「位置」里的一项。
+    case location(UUID)
 }
 
 /// 多选时字段的值：全部相同时是这个值，否则显示「多个值」。

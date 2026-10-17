@@ -10,17 +10,23 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("左栏", selection: $workbench.sidebarTab) {
-                ForEach(SidebarTab.allCases) { Text($0.title).tag($0) }
+            ColumnHeader {
+                Picker("左栏", selection: $workbench.sidebarTab) {
+                    ForEach(SidebarTab.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(8)
-            switch workbench.sidebarTab {
-            case .presets: PresetList(workbench: workbench)
-            case .locations: LocationList(workbench: workbench)
-            case .assets: AssetList(workbench: workbench)
+            Group {
+                switch workbench.sidebarTab {
+                case .presets: PresetList(workbench: workbench)
+                case .locations: LocationList(workbench: workbench)
+                case .assets: AssetList(workbench: workbench)
+                }
             }
+            // 紧凑的行高，接近 Compressor 左栏。
+            .environment(\.sidebarRowSize, .small)
         }
     }
 }
@@ -34,10 +40,12 @@ private struct PresetList: View {
 
     private let groups: [CatalogPresetOrigin] = [.builtIn, .user, .imported]
 
+    @State private var collapsed: Set<String> = []
+
     var body: some View {
         List(selection: $workbench.selectedPresetId) {
             ForEach(groups, id: \.kind) { group in
-                Section(group.groupTitle) {
+                Section(group.groupTitle, isExpanded: expanded(group.kind)) {
                     ForEach(workbench.presets(in: group), id: \.presetId) { preset in
                         PresetRow(preset: preset)
                             .tag(preset.presetId)
@@ -48,26 +56,36 @@ private struct PresetList: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) { footer }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .renameAlert($renaming)
         .fileImporter(isPresented: $importing, allowedContentTypes: [FileTypes.preset], allowsMultipleSelection: true) {
             if case .success(let urls) = $0 { Task { await workbench.importPresets(urls) } }
         }
     }
 
+    private func expanded(_ kind: String) -> Binding<Bool> {
+        Binding(get: { !collapsed.contains(kind) }, set: { if $0 { collapsed.remove(kind) } else { collapsed.insert(kind) } })
+    }
+
     private var footer: some View {
-        HStack {
+        ColumnFooter {
             Menu {
                 Button("新建预设") { Task { await workbench.newPreset() } }
                 Button("导入…") { importing = true }
             } label: {
                 Image(systemName: "plus")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            Spacer()
+            .help("新建或导入预设")
+            if let id = workbench.selectedPresetId, let preset = workbench.preset(id) {
+                Menu {
+                    menu(for: preset)
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("选中预设的操作")
+            }
         }
-        .padding(8)
     }
 
     @ViewBuilder private func menu(for preset: CatalogPresetSummary) -> some View {
@@ -109,16 +127,18 @@ private struct PresetList: View {
     }
 }
 
+/// 一行一个预设：小图标 + 名称；尺寸等信息放在悬停提示里，行高与 Compressor 一样紧凑。
 private struct PresetRow: View {
     let preset: CatalogPresetSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(preset.name)
-            Text(detail)
-                .font(.caption)
+        Label {
+            Text(preset.name).lineLimit(1).truncationMode(.tail)
+        } icon: {
+            Image(systemName: preset.panorama == nil ? "rectangle.portrait" : "rectangle.split.3x1")
                 .foregroundStyle(.secondary)
         }
+        .help("\(preset.name)\n\(detail)")
     }
 
     private var detail: String {
@@ -137,22 +157,17 @@ private struct LocationList: View {
     @State private var adding = false
 
     var body: some View {
-        List {
+        List(selection: $workbench.selectedLocationId) {
             ForEach(workbench.locations.locations) { location in
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(location.name)
-                        Text(location.url.path(percentEncoded: false))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                    Label(location.name, systemImage: "folder")
+                        .help(location.url.displayPath)
                     Spacer()
                     if location.id == workbench.locations.defaultLocation?.id {
                         Text("默认").font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                .tag(location.id)
                 .draggable(DragPayload.location(location.id).string)
                 .contextMenu {
                     Button("设为默认位置") { workbench.setDefaultLocation(location.id) }
@@ -165,13 +180,12 @@ private struct LocationList: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            HStack {
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ColumnFooter {
                 Button { adding = true } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless)
-                Spacer()
+                    .help("添加位置")
             }
-            .padding(8)
         }
         .renameAlert($renaming)
         .fileImporter(isPresented: $adding, allowedContentTypes: [.folder]) {
@@ -201,7 +215,7 @@ private struct AssetList: View {
                         }
                     } else {
                         ForEach(assets) { asset in
-                            Text(asset.displayName)
+                            Label(asset.displayName, systemImage: asset.format == .svg ? "scribble" : "photo")
                                 .draggable(DragPayload.asset(asset.assetId).string)
                                 .contextMenu { menu(for: asset) }
                         }
@@ -209,7 +223,8 @@ private struct AssetList: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) { footer }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .renameAlert($renaming)
         .fileImporter(
             isPresented: Binding(get: { importCategory != nil }, set: { if !$0 { importCategory = nil } }),
@@ -221,7 +236,7 @@ private struct AssetList: View {
     }
 
     private var footer: some View {
-        HStack {
+        ColumnFooter {
             Menu {
                 ForEach(AssetCategory.allCases, id: \.self) { category in
                     Button("导入\(category.title)…") { importCategory = category }
@@ -229,8 +244,7 @@ private struct AssetList: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
+            .help("导入素材（PNG 或受限 SVG）")
             Spacer()
             Picker("显示方式", selection: $workbench.assetDisplay) {
                 Image(systemName: "list.bullet").tag(AssetDisplayMode.text)
@@ -240,7 +254,6 @@ private struct AssetList: View {
             .labelsHidden()
             .fixedSize()
         }
-        .padding(8)
     }
 
     @ViewBuilder private func menu(for asset: AssetInfo) -> some View {

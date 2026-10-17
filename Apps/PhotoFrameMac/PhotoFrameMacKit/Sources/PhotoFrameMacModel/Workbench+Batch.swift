@@ -167,7 +167,7 @@ extension Workbench {
             return persistedBinding(slotId, presetId: job.basePreset.presetId)
         case .preset(let id):
             return persistedBinding(slotId, presetId: id)
-        case .source, .none:
+        case .source, .location, .none:
             return nil
         }
     }
@@ -189,7 +189,7 @@ extension Workbench {
                 bindings = await service.listBindings().bindings
                 refreshPreview()
             }
-        case .source, .none:
+        case .source, .location, .none:
             break
         }
     }
@@ -327,5 +327,7 @@ extension Workbench {
         }
         await refreshJobs()
         await resumeQueue()
+        // 与 Compressor 一致：提交后切到「活跃」看进度。
+        if !submitted.isEmpty { mode = .active }
     }
 }
