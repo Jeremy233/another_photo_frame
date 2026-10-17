@@ -48,7 +48,7 @@ struct ColumnFooter<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Divider()
+            Hairline()
             HStack(spacing: 6) {
                 content
                 Spacer(minLength: 0)
@@ -64,6 +64,20 @@ struct ColumnFooter<Content: View>: View {
     }
 }
 
+/// 界面上所有分隔线：纯黑、1 个物理像素（Retina 上 0.5 pt），与 Compressor 一致。
+/// 用物理像素而不是 1 pt：Compressor 截图（@2x）里量到的是 1 px；1 pt 在 Retina 上是 2 px，明显更粗。
+struct Hairline: View {
+    var axis: Axis = .horizontal
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        let thickness = 1 / max(displayScale, 1)
+        Rectangle()
+            .fill(Palette.line)
+            .frame(width: axis == .vertical ? thickness : nil, height: axis == .horizontal ? thickness : nil)
+    }
+}
+
 /// 固定深色界面的中性灰（不随桌面壁纸染色，便于判断照片颜色）。明度参照 Compressor 的取样，只用灰阶。
 enum Palette {
     static let toolbar = Color(white: 0.15)
@@ -73,4 +87,31 @@ enum Palette {
     static let preview = Color(white: 0.09)
     /// 分组框、源图头部。
     static let group = Color(white: 0.176)
+    /// 分隔线、描边。
+    static let line = Color.black
+}
+
+/// 拿到所在窗口做 AppKit 层面的设置（SwiftUI 没有对应修饰符的部分）。
+struct WindowConfigurator: NSViewRepresentable {
+    var configure: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView { ConfiguringView(configure: configure) }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class ConfiguringView: NSView {
+        let configure: (NSWindow) -> Void
+
+        init(configure: @escaping (NSWindow) -> Void) {
+            self.configure = configure
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { configure(window) }
+        }
+    }
 }

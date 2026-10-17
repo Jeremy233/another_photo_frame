@@ -28,6 +28,9 @@ public struct WorkbenchView: View {
         } trailing: {
             InspectorView(workbench: workbench)
         }
+        // 工具栏下面一条贯穿整个窗口的黑线（系统自己的分隔线不是纯黑，由各栏决定画不画，所以关掉自己画）。
+        .safeAreaInset(edge: .top, spacing: 0) { Hairline() }
+        .background(WindowConfigurator { $0.titlebarSeparatorStyle = .none })
         .toolbar { toolbar }
         .toolbar(removing: .title)
         .toolbarBackground(Palette.toolbar, for: .windowToolbar)
