@@ -41,6 +41,7 @@ struct InspectorView: View {
         switch workbench.inspectorSubject {
         case .none:
             Text("没有可检查的内容")
+                .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):

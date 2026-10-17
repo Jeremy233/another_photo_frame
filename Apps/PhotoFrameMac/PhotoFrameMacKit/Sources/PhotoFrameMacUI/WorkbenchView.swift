@@ -1,34 +1,34 @@
 import PhotoFrameMacModel
 import SwiftUI
 
-/// 主窗口：左栏（预设 | 位置 | 素材）、中间（当前 / 活跃 / 已完成）、右栏 Inspector、底栏（UI 设计文档顶部示意）。
+/// 主窗口：左栏（预设 | 位置 | 素材）、中间（当前 / 活跃 / 已完成）、右栏 Inspector（UI 设计文档顶部示意）。
 ///
-/// 三栏用系统的 NavigationSplitView + inspector（AppKit 分割视图，分隔线可拖动、宽度自动记住）。
-/// 布局参照 Compressor：顶栏没有窗口标题，正中是三个界面的切换，左右两端是侧栏开关；每栏顶部一行小号控件，
-/// 底部各有一段操作栏。与 Compressor 一样固定深色，背景用中性灰；控件都用 macOS 26 系统样式。
+/// 布局参照 Compressor：整个窗口一条顶栏（左侧左栏开关，正中三个界面的切换，右侧 Inspector 开关），没有窗口标题；
+/// 下面三栏是自己封装的 AppKit 分栏（`ColumnSplit`），每栏顶部一行小号控件、底部各有一段操作栏。
+/// 与 Compressor 一样固定深色，背景用中性灰；控件都用 macOS 26 系统样式。
 public struct WorkbenchView: View {
     @Bindable var workbench: Workbench
-    @SceneStorage("sidebarVisibility") private var sidebarVisible = true
 
     public init(workbench: Workbench) {
         self.workbench = workbench
     }
 
     public var body: some View {
-        NavigationSplitView(columnVisibility: columnVisibility) {
+        ColumnSplit(
+            autosaveName: "MainColumns",
+            showsLeading: workbench.showsSidebar && workbench.mode == .current,
+            showsTrailing: workbench.showsInspector
+        ) {
             SidebarView(workbench: workbench)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
-        } detail: {
+        } center: {
             content
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if workbench.mode == .current { BottomBar(workbench: workbench) }
                 }
-                .toolbar { toolbar }
-                .inspector(isPresented: $workbench.showsInspector) {
-                    InspectorView(workbench: workbench)
-                        .inspectorColumnWidth(min: 260, ideal: 300, max: 480)
-                }
+        } trailing: {
+            InspectorView(workbench: workbench)
         }
+        .toolbar { toolbar }
         .toolbar(removing: .title)
         .toolbarBackground(Palette.toolbar, for: .windowToolbar)
         .task {
@@ -46,15 +46,7 @@ public struct WorkbenchView: View {
             Alert(title: Text(alert.title), message: Text(alert.message))
         }
         .overwriteConfirmation(workbench)
-        // 窗口最小宽度要容得下三栏的最小宽度，否则 AppKit 分栏会反复调整约束而崩溃（实测 1080 会崩、1120 稳定）。
-        .frame(minWidth: 1120, minHeight: 640)
-    }
-
-    /// 「活跃」「已完成」时左栏自动收起，中栏变成全宽列表（与 Compressor 一致）；回到「当前」恢复。
-    private var columnVisibility: Binding<NavigationSplitViewVisibility> {
-        Binding(
-            get: { sidebarVisible && workbench.mode == .current ? .all : .detailOnly },
-            set: { if workbench.mode == .current { sidebarVisible = $0 != .detailOnly } })
+        .frame(minWidth: 900, minHeight: 600)
     }
 
     @ViewBuilder private var content: some View {
@@ -66,6 +58,15 @@ public struct WorkbenchView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                workbench.showsSidebar.toggle()
+            } label: {
+                Label("左栏", systemImage: "sidebar.leading")
+            }
+            .disabled(workbench.mode != .current)
+            .help("显示或隐藏左栏（⌃⌘S）")
+        }
         ToolbarItem(placement: .principal) {
             Picker("界面", selection: $workbench.mode) {
                 ForEach(WorkbenchMode.allCases) { mode in

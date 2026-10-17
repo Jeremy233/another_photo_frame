@@ -25,8 +25,7 @@ struct SidebarView: View {
                 case .assets: AssetList(workbench: workbench)
                 }
             }
-            // 紧凑的行高，接近 Compressor 左栏。
-            .environment(\.sidebarRowSize, .small)
+            .environment(\.sidebarRowSize, .medium)
             .scrollContentBackground(.hidden)
         }
         .background(Palette.sidebar)
@@ -44,17 +43,28 @@ private struct PresetList: View {
 
     @State private var collapsed: Set<String> = []
 
+    /// 树形列表，三角常驻（参照 Compressor 左栏）：内置 ▸ 平台 ▸ 预设；用户保存、导入各一组。
     var body: some View {
         List(selection: $workbench.selectedPresetId) {
             ForEach(groups, id: \.kind) { group in
-                Section(group.groupTitle, isExpanded: expanded(group.kind)) {
-                    ForEach(workbench.presets(in: group), id: \.presetId) { preset in
-                        PresetRow(preset: preset)
-                            .tag(preset.presetId)
-                            .draggable(DragPayload.preset(preset.presetId).string)
-                            .contextMenu { menu(for: preset) }
+                DisclosureGroup(isExpanded: expanded(group.kind)) {
+                    if group == .builtIn {
+                        ForEach(platforms, id: \.name) { platform in
+                            DisclosureGroup(isExpanded: expanded("platform-\(platform.name)")) {
+                                rows(platform.presets, group: group)
+                            } label: {
+                                Label(platform.name, systemImage: "rectangle.stack").fontWeight(.medium)
+                            }
+                        }
+                    } else {
+                        rows(workbench.presets(in: group), group: group)
                     }
-                    .dropDestination(for: String.self) { items, _ in move(items, to: group) }
+                } label: {
+                    Text(group.groupTitle).fontWeight(.semibold)
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    move(items, to: group)
+                    return group != .builtIn
                 }
             }
         }
@@ -64,6 +74,29 @@ private struct PresetList: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [FileTypes.preset], allowsMultipleSelection: true) {
             if case .success(let urls) = $0 { Task { await workbench.importPresets(urls) } }
         }
+    }
+
+    @ViewBuilder private func rows(_ presets: [CatalogPresetSummary], group: CatalogPresetOrigin) -> some View {
+        ForEach(presets, id: \.presetId) { preset in
+            PresetRow(preset: preset)
+                .tag(preset.presetId)
+                .draggable(DragPayload.preset(preset.presetId).string)
+                .contextMenu { menu(for: preset) }
+        }
+    }
+
+    /// 内置预设按平台分组，保持原来的顺序。
+    private var platforms: [(name: String, presets: [CatalogPresetSummary])] {
+        var result: [(name: String, presets: [CatalogPresetSummary])] = []
+        for preset in workbench.presets(in: .builtIn) {
+            let name = preset.platformName ?? preset.platform ?? "其他"
+            if let i = result.firstIndex(where: { $0.name == name }) {
+                result[i].presets.append(preset)
+            } else {
+                result.append((name, [preset]))
+            }
+        }
+        return result
     }
 
     private func expanded(_ kind: String) -> Binding<Bool> {
@@ -202,11 +235,16 @@ private struct AssetList: View {
     @Bindable var workbench: Workbench
     @State private var renaming: RenameRequest?
     @State private var importCategory: AssetCategory?
+    @State private var collapsed: Set<AssetCategory> = []
+
+    private func expanded(_ category: AssetCategory) -> Binding<Bool> {
+        Binding(get: { !collapsed.contains(category) }, set: { if $0 { collapsed.remove(category) } else { collapsed.insert(category) } })
+    }
 
     var body: some View {
         List {
             ForEach(AssetCategory.allCases, id: \.self) { category in
-                Section(category.title) {
+                DisclosureGroup(isExpanded: expanded(category)) {
                     let assets = workbench.assets(in: category)
                     if workbench.assetDisplay == .icons {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 8) {
@@ -222,6 +260,8 @@ private struct AssetList: View {
                                 .contextMenu { menu(for: asset) }
                         }
                     }
+                } label: {
+                    Text(category.title).fontWeight(.semibold)
                 }
             }
         }
