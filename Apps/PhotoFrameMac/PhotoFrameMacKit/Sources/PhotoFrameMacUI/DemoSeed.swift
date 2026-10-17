@@ -7,7 +7,7 @@ import PhotoFrameMacModel
 /// - `PHOTOFRAME_UI_DEMO=<目录>`：加入目录里的图片，给第一张加 Instagram Standard 和 XHS Standard，
 ///   给名字含 Panorama 的图加 Instagram Panorama，并选中第一个任务。
 /// - `PHOTOFRAME_UI_TAB=canvas|panorama|layers|output`：右栏标签。
-/// - `PHOTOFRAME_UI_MODE=active|completed` 与 `PHOTOFRAME_UI_EXPORTS=<目录>`：导出到这个目录后显示「活跃」或「已完成」。
+/// - `PHOTOFRAME_UI_MODE=active|paused|completed` 与 `PHOTOFRAME_UI_EXPORTS=<目录>`：导出到这个目录后显示「活跃」或「已完成」。
 ///   只改这些任务的目录，不改位置列表。
 /// - `PHOTOFRAME_UI_TOGGLE=<n>`：把左栏和 Inspector 各收起、展开 n 次（检查栏宽是否保持不变），
 ///   间隔 `PHOTOFRAME_UI_TOGGLE_MS` 毫秒；`PHOTOFRAME_UI_COLLAPSE=1` 时最后停在收起状态；
@@ -31,6 +31,9 @@ extension Workbench {
                 if side != "leading" { showsInspector = false }
             }
         }
+        // `PHOTOFRAME_UI_SHOW=current|active|completed` 切到某个界面；`PHOTOFRAME_UI_NO_INSPECTOR=1` 收起 Inspector。
+        if env["PHOTOFRAME_UI_NO_INSPECTOR"] != nil { showsInspector = false }
+        if let show = env["PHOTOFRAME_UI_SHOW"].flatMap(WorkbenchMode.init(rawValue:)) { mode = show }
         guard let dir = env["PHOTOFRAME_UI_DEMO"] else { return }
         let exports = env["PHOTOFRAME_UI_EXPORTS"].flatMap { $0.hasPrefix("/") ? $0 : nil }.map { URL(filePath: $0, directoryHint: .isDirectory) }
 
@@ -39,7 +42,9 @@ extension Workbench {
         func preset(_ name: String) -> UUID? { presets.first { $0.name == name }?.presetId }
         for (index, id) in ids.enumerated() {
             let panorama = sourceItem(id)?.source.displayName.contains("Panorama") == true
-            let names = panorama ? ["Instagram Panorama"] : index == 0 ? ["Instagram Standard", "XHS Standard"] : ["Douyin Standard"]
+            // `PHOTOFRAME_UI_MANY=1`：每张图都加全部内置预设（任务多，便于看「活跃」里排队的样子）。
+            let names = env["PHOTOFRAME_UI_MANY"] != nil ? presets.filter { $0.origin == .builtIn }.map(\.name)
+                : panorama ? ["Instagram Panorama"] : index == 0 ? ["Instagram Standard", "XHS Standard"] : ["Douyin Standard"]
             for name in names {
                 if let p = preset(name) { await addJobs(preset: p, to: [id]) }
             }
@@ -64,6 +69,7 @@ extension Workbench {
         }
         if exports != nil, let mode = env["PHOTOFRAME_UI_MODE"] {
             await startBatch()
+            if mode == "paused" { await pauseQueue() }
             if mode == "completed" {
                 while !activeJobs.isEmpty { try? await Task.sleep(for: .milliseconds(200)) }
                 self.mode = .completed

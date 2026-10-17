@@ -115,3 +115,10 @@ struct WindowConfigurator: NSViewRepresentable {
         }
     }
 }
+
+extension View {
+    /// 撑满所在的栏并铺上中性灰：内容（例如空状态）比栏矮时，也不会露出被壁纸染色的窗口底色（D-105）。
+    func filling(_ color: Color) -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).background(color)
+    }
+}

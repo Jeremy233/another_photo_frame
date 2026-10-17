@@ -166,7 +166,8 @@ private struct ZoomMenu: View {
     let preview: PreviewModel
 
     var body: some View {
-        Menu(preview.zoomTitle) {
+        // 没有画面时比例没有意义，只显示「适合窗口」。
+        Menu(preview.subject == nil && preview.zoom == .fit ? "适合窗口" : preview.zoomTitle) {
             Button("适合窗口") { preview.zoom = .fit }
             Button("实际大小（100%）") { preview.zoom = .actualSize }
             Divider()
