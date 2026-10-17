@@ -33,6 +33,11 @@ struct VerticalSplit<Top: View, Bottom: View>: NSViewRepresentable {
         (split.arrangedSubviews[1] as? NSHostingView<Bottom>)?.rootView = bottom
     }
 
+    /// 完全随父视图伸缩，不把子视图的固有尺寸报给外层（否则外层分栏的最小宽度会反复变化，窗口约束死循环）。
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSplitView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 400, height: proposal.height ?? 300)
+    }
+
     private func host<Content: View>(_ content: Content) -> NSHostingView<Content> {
         let view = NSHostingView(rootView: content)
         // 不让 SwiftUI 内容的固有尺寸变成约束，分割比例只由分隔线决定。

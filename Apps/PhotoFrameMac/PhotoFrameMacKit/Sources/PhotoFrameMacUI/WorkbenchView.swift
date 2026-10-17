@@ -3,8 +3,9 @@ import SwiftUI
 
 /// 主窗口：左栏（预设 | 位置 | 素材）、中间（当前 / 活跃 / 已完成）、右栏 Inspector、底栏（UI 设计文档顶部示意）。
 ///
-/// 三栏用系统的 NavigationSplitView + inspector（AppKit 分割视图，分隔线可拖动、宽度自动记住）；
-/// 视觉细节等 Compressor 截图后再调。
+/// 三栏用系统的 NavigationSplitView + inspector（AppKit 分割视图，分隔线可拖动、宽度自动记住）。
+/// 布局参照 Compressor：顶栏没有窗口标题，正中是三个界面的切换，左右两端是侧栏开关；每栏顶部一行小号控件，
+/// 底部各有一段操作栏。颜色、控件都用 macOS 26 系统样式，浅色和深色外观都支持。
 public struct WorkbenchView: View {
     @Bindable var workbench: Workbench
     @SceneStorage("sidebarVisibility") private var sidebarVisible = true
@@ -14,22 +15,28 @@ public struct WorkbenchView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            NavigationSplitView(columnVisibility: columnVisibility) {
-                SidebarView(workbench: workbench)
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 400)
-            } detail: {
-                content
-                    .toolbar { toolbar }
-                    .inspector(isPresented: $workbench.showsInspector) {
-                        InspectorView(workbench: workbench)
-                            .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
-                    }
-            }
-            Divider()
-            BottomBar(workbench: workbench)
+        NavigationSplitView(columnVisibility: columnVisibility) {
+            SidebarView(workbench: workbench)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
+        } detail: {
+            content
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if workbench.mode == .current { BottomBar(workbench: workbench) }
+                }
+                .toolbar { toolbar }
+                .inspector(isPresented: $workbench.showsInspector) {
+                    InspectorView(workbench: workbench)
+                        .inspectorColumnWidth(min: 260, ideal: 300, max: 480)
+                }
         }
-        .task { await workbench.load() }
+        .toolbar(removing: .title)
+        .task {
+            await workbench.load()
+            await PhotoFrameAppDelegate.register(workbench)
+            #if DEBUG
+            await workbench.loadDemoIfRequested()
+            #endif
+        }
         .task { await workbench.observeJobs() }
         .fileImporter(isPresented: $workbench.isAddingImages, allowedContentTypes: FileTypes.images, allowsMultipleSelection: true) {
             if case .success(let urls) = $0 { Task { await workbench.addSources(urls) } }
@@ -38,13 +45,15 @@ public struct WorkbenchView: View {
             Alert(title: Text(alert.title), message: Text(alert.message))
         }
         .overwriteConfirmation(workbench)
-        .frame(minWidth: 960, minHeight: 600)
+        // 窗口最小宽度要容得下三栏的最小宽度，否则 AppKit 分栏会反复调整约束而崩溃（实测 1080 会崩、1120 稳定）。
+        .frame(minWidth: 1120, minHeight: 640)
     }
 
+    /// 「活跃」「已完成」时左栏自动收起，中栏变成全宽列表（与 Compressor 一致）；回到「当前」恢复。
     private var columnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { sidebarVisible ? .all : .detailOnly },
-            set: { sidebarVisible = $0 != .detailOnly })
+            get: { sidebarVisible && workbench.mode == .current ? .all : .detailOnly },
+            set: { if workbench.mode == .current { sidebarVisible = $0 != .detailOnly } })
     }
 
     @ViewBuilder private var content: some View {
@@ -58,7 +67,9 @@ public struct WorkbenchView: View {
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             Picker("界面", selection: $workbench.mode) {
-                ForEach(WorkbenchMode.allCases) { Text($0.title).tag($0) }
+                ForEach(WorkbenchMode.allCases) { mode in
+                    Text(title(mode)).tag(mode)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -72,6 +83,12 @@ public struct WorkbenchView: View {
             }
             .help("显示或隐藏 Inspector（⌥⌘I）")
         }
+    }
+
+    /// 有任务在跑时显示「活跃 (N)」。
+    private func title(_ mode: WorkbenchMode) -> String {
+        let count = workbench.activeCount
+        return mode == .active && count > 0 ? "\(mode.title) (\(count))" : mode.title
     }
 }
 

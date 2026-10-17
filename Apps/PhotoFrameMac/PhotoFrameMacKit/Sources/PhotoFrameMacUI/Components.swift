@@ -41,3 +41,25 @@ extension URL {
         (path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
     }
 }
+
+/// 每栏底部的操作栏（约 28 pt）：小号按钮靠左排列。
+struct ColumnFooter<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 6) {
+                content
+                Spacer(minLength: 0)
+            }
+            .buttonStyle(.bordered)
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .controlSize(.small)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+        }
+        .background(.bar)
+    }
+}

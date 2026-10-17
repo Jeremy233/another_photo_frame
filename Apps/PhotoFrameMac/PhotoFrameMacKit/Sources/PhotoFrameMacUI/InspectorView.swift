@@ -1,33 +1,55 @@
+import AppKit
 import PhotoFrameApplication
 import PhotoFrameCore
 import PhotoFrameMacModel
 import SwiftUI
 
-/// 右栏（UI 设计文档第 6、8 节）：选中源图显示原图信息；选中任务或预设显示「画布 | 全景 | 图层 | 输出」。
+/// 右栏（UI 设计文档第 6、8 节）。布局参照 Compressor 的 Inspector：顶部一行标签或标题，
+/// 下面是信息卡和分节的圆角分组框，表单是右对齐标签 + 左对齐小号控件的两列。
+/// 颜色全部用系统语义色，浅色和深色外观都适用（Compressor 只有深色）。
 struct InspectorView: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
+        VStack(spacing: 0) {
+            ColumnHeader { header }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) { content }
+                    .padding(12)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    @ViewBuilder private var header: some View {
+        switch workbench.inspectorSubject {
+        case .jobs, .preset:
+            Picker("标签", selection: $workbench.inspectorTab) {
+                ForEach(InspectorTab.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+        case .source: Text("源图").font(.callout)
+        case .location: Text("位置").font(.callout)
+        case .none: EmptyView()
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         switch workbench.inspectorSubject {
         case .none:
-            ContentUnavailableView("没有选择", systemImage: "sidebar.trailing", description: Text("选中源图、任务或左栏的预设"))
+            Text("没有可检查的内容")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):
             if let item = workbench.sourceItem(id) { SourceInspector(workbench: workbench, item: item) }
+        case .location(let id):
+            if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
         case .jobs, .preset:
-            VStack(spacing: 0) {
-                InspectorHeader(workbench: workbench)
-                Picker("标签", selection: $workbench.inspectorTab) {
-                    ForEach(InspectorTab.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                Divider()
-                Form { tab }
-                    .formStyle(.grouped)
-                    .disabled(!workbench.isInspectorEditable)
-            }
+            PresetInfoCard(workbench: workbench)
+            Group { tab }
+                .disabled(!workbench.isInspectorEditable)
         }
     }
 
@@ -41,24 +63,99 @@ struct InspectorView: View {
     }
 }
 
-// MARK: - 标题与「存储为预设」
+// MARK: - 共用的版式
 
-private struct InspectorHeader: View {
+/// 每栏顶部一行（约 28 pt）：放小号分段控件或标题，居中。
+struct ColumnHeader<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
+            Divider()
+        }
+    }
+}
+
+/// 分节：小号粗体标题 + 圆角分组框，框里是两列表单。
+struct InspectorSection<Content: View>: View {
+    var title: String?
+    @ViewBuilder var content: Content
+
+    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title {
+                Text(title).font(.subheadline.weight(.semibold)).padding(.leading, 4)
+            }
+            Form { content }
+                .formStyle(.columns)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(.fill.quaternary, in: .rect(cornerRadius: 8))
+        }
+    }
+}
+
+/// 顶部信息卡：图标 + 粗体名称 + 灰色摘要，右上角可放标记（SDR / HDR）。
+struct InfoCard<Actions: View>: View {
+    var symbol: String
+    var title: String
+    var lines: [String]
+    var badge: String?
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
+                Text(title).font(.headline).lineLimit(2)
+                Spacer()
+                if let badge {
+                    Text(badge)
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.fill.secondary, in: .rect(cornerRadius: 4))
+                }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(lines, id: \.self) { Text($0) }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 26)
+            .textSelection(.enabled)
+            actions.padding(.leading, 26)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.fill.quaternary, in: .rect(cornerRadius: 8))
+    }
+}
+
+// MARK: - 预设 / 任务的信息卡与「存储为预设」
+
+private struct PresetInfoCard: View {
     let workbench: Workbench
     @State private var saving: RenameRequest?
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline).lineLimit(1)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            actions
+        InfoCard(symbol: symbol, title: title, lines: lines) {
+            HStack { actions }
         }
-        .controlSize(.small)
-        .padding(12)
         .renameAlert($saving)
+    }
+
+    private var symbol: String {
+        if case .jobs(let ids) = workbench.inspectorSubject, ids.count > 1 { return "square.stack" }
+        return workbench.field(\.panorama.enabled) == .single(true) ? "rectangle.split.3x1" : "rectangle.portrait"
     }
 
     private var title: String {
@@ -69,16 +166,26 @@ private struct InspectorHeader: View {
         }
     }
 
-    private var subtitle: String {
+    private var lines: [String] {
+        var lines: [String] = []
         switch workbench.inspectorSubject {
         case .preset:
-            guard let editor = workbench.presetEditor else { return "" }
-            return editor.isReadOnly ? "内置预设（只读）" : "编辑预设 · \(editor.entry.origin.groupTitle)"
+            guard let editor = workbench.presetEditor else { return [] }
+            lines.append(editor.isReadOnly ? "内置预设（只读）" : "预设 · \(editor.entry.origin.groupTitle)")
         case .jobs(let ids) where ids.count > 1:
-            return "只显示可以批量修改的共同字段"
+            return ["只显示可以批量修改的共同字段", "不同的值显示为「多个值」"]
         default:
-            return "修改只影响这个任务，不写回预设"
+            lines.append("修改只影响这个任务，不写回预设")
         }
+        if let preset = workbench.editedPreset {
+            lines.append("画布：\(preset.canvas.width) × \(preset.canvas.height)，\(preset.canvas.mode == .fit ? "完整嵌入" : "比例裁切")")
+            let range = preset.output.dynamicRange == .hdr ? "HDR" : "SDR"
+            lines.append("输出：\(preset.output.format.rawValue.uppercased())，\(range)，\(preset.output.colorSpace)")
+            if case .jobs(let ids) = workbench.inspectorSubject, let outputs = workbench.job(ids[0])?.validation?.outputs, !outputs.isEmpty {
+                lines.append(outputs.count == 1 ? "1 张图" : "封面 + \(outputs.count - 1) 张切片")
+            }
+        }
+        return lines
     }
 
     @ViewBuilder private var actions: some View {
@@ -100,6 +207,28 @@ private struct InspectorHeader: View {
             }
         default:
             EmptyView()
+        }
+    }
+}
+
+// MARK: - 位置
+
+private struct LocationInspector: View {
+    let workbench: Workbench
+    let location: ExportLocation
+    @State private var choosing = false
+
+    var body: some View {
+        InfoCard(symbol: "folder", title: location.name, lines: [location.url.displayPath],
+                 badge: location.id == workbench.locations.defaultLocation?.id ? "默认" : nil) { EmptyView() }
+        InspectorSection("位置属性") {
+            TextField("名称", text: Binding(get: { location.name }, set: { workbench.renameLocation(location.id, to: $0) }))
+            LabeledContent("路径") {
+                Text(location.url.displayPath).lineLimit(3).truncationMode(.middle)
+            }
+            Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([location.url]) }
+            Button("设为默认位置") { workbench.setDefaultLocation(location.id) }
+                .disabled(location.id == workbench.locations.defaultLocation?.id)
         }
     }
 }
@@ -193,14 +322,14 @@ private struct CanvasTab: View {
     let workbench: Workbench
 
     var body: some View {
-        Section("尺寸") {
+        InspectorSection("尺寸") {
             IntField(title: "宽", value: workbench.binding(\.canvas.width))
             IntField(title: "高", value: workbench.binding(\.canvas.height))
             if let preset = workbench.editedPreset {
-                LabeledContent("比例", value: ratio(preset.canvas.width, preset.canvas.height))
+                LabeledContent("比例") { Text(ratio(preset.canvas.width, preset.canvas.height)) }
             }
         }
-        Section("适配") {
+        InspectorSection("适配") {
             Picker("方式", selection: workbench.binding(\.canvas.mode)) {
                 Text("完整嵌入").tag(CanvasSettings.Mode?.some(.fit))
                 Text("比例裁切").tag(CanvasSettings.Mode?.some(.crop))
@@ -247,12 +376,12 @@ private struct PanoramaTab: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
-        Section {
+        InspectorSection {
             Toggle("全景分割", isOn: workbench.binding(\.panorama.enabled, default: false))
             Toggle("封面", isOn: workbench.binding(\.panorama.cover, default: true))
         }
         if workbench.field(\.panorama.enabled) == .single(true) {
-            Section("切片") {
+            InspectorSection("切片") {
                 Picker("张数", selection: manual) {
                     Text("自动").tag(false)
                     Text("手动").tag(true)
@@ -262,7 +391,7 @@ private struct PanoramaTab: View {
                 }
                 IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
             }
-            Section("预览") {
+            InspectorSection("预览") {
                 Toggle("显示接缝位置", isOn: Bindable(workbench.preview).showsSeams)
             }
         }
@@ -289,7 +418,7 @@ private struct OutputTab: View {
     let workbench: Workbench
 
     var body: some View {
-        Section("文件") {
+        InspectorSection("文件") {
             Picker("格式", selection: workbench.binding(\.output.format)) {
                 Text("JPEG").tag(OutputSettings.Format?.some(.jpeg))
                 Text("PNG").tag(OutputSettings.Format?.some(.png))
@@ -307,7 +436,7 @@ private struct OutputTab: View {
                 if workbench.field(\.output.dynamicRange) == .mixed { Text("多个值").tag(OutputSettings.DynamicRange?.none) }
             }
         }
-        Section("元数据") {
+        InspectorSection("元数据") {
             Toggle("保留拍摄参数", isOn: workbench.binding(\.output.metadata.keepShootingInfo, default: false))
             Toggle("保留作者和版权", isOn: workbench.binding(\.output.metadata.keepAuthorAndCopyright, default: false))
             Toggle(isOn: workbench.binding(\.output.metadata.keepGps, default: false)) {
@@ -331,7 +460,7 @@ private struct JobOutputSection: View {
     @State private var choosingFolder = false
 
     var body: some View {
-        Section("位置与命名") {
+        InspectorSection("位置与命名") {
             Picker("输出位置", selection: destination) {
                 ForEach(workbench.locations.locations) { Text($0.name).tag(URL?.some($0.url)) }
                 if let url = workbench.jobField(\.destination).value, workbench.locationName(for: url) == nil {

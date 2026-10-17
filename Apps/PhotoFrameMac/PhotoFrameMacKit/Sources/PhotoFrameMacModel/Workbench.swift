@@ -53,10 +53,17 @@ public final class Workbench {
             loadPresetEditor()
         }
     }
+    /// 左栏选中的位置。选中时右栏显示位置属性。
+    public var selectedLocationId: UUID? {
+        didSet {
+            guard selectedLocationId != oldValue, selectedLocationId != nil else { return }
+            focus = .location
+        }
+    }
     public internal(set) var presetEditor: PresetEditor?
     var focus: Focus = .batch
 
-    enum Focus { case batch, preset }
+    enum Focus { case batch, preset, location }
 
     // MARK: 任务队列
 
@@ -102,6 +109,7 @@ public final class Workbench {
     /// 右栏显示什么：最近一次点的是左栏预设还是任务列表（第 6 节）。
     public var inspectorSubject: InspectorSubject {
         if focus == .preset, let id = selectedPresetId { return .preset(id) }
+        if focus == .location, let id = selectedLocationId, location(id) != nil { return .location(id) }
         let jobIds = selectedJobIds
         if !jobIds.isEmpty { return .jobs(jobIds) }
         if selection.count == 1, case .source(let id) = selection.first { return .source(id) }
@@ -118,7 +126,7 @@ public final class Workbench {
         switch inspectorSubject {
         case .jobs(let ids): ids.compactMap { job($0)?.preset }
         case .preset: presetEditor.map { [$0.draft] } ?? []
-        case .source, .none: []
+        case .source, .location, .none: []
         }
     }
 
@@ -132,7 +140,7 @@ public final class Workbench {
         switch inspectorSubject {
         case .jobs: true
         case .preset: presetEditor?.isReadOnly == false
-        case .source, .none: false
+        case .source, .location, .none: false
         }
     }
 
@@ -159,7 +167,7 @@ public final class Workbench {
                 presetEditor?.draft = draft
                 refreshPreview()
             }
-        case .source, .none:
+        case .source, .location, .none:
             break
         }
     }
