@@ -25,9 +25,10 @@ struct ActiveJobsView: View {
             if workbench.activeJobs.isEmpty {
                 ContentUnavailableView("没有活跃的任务", systemImage: "checkmark.circle")
             } else {
-                table
+                table.scrollContentBackground(.hidden)
             }
         }
+        .background(Palette.list)
     }
 
     private var table: some View {
@@ -142,12 +143,13 @@ struct CompletedJobsView: View {
                 ContentUnavailableView("还没有导出记录", systemImage: "tray")
             } else {
                 VerticalSplit(autosaveName: "HistoryAndDetail", topFraction: 0.65) {
-                    table
+                    table.scrollContentBackground(.hidden).background(Palette.list)
                 } bottom: {
-                    JobDetail(record: selectedRecord)
+                    JobDetail(record: selectedRecord).scrollContentBackground(.hidden).background(Palette.panel)
                 }
             }
         }
+        .background(Palette.list)
     }
 
     private var table: some View {

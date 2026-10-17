@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// 三栏用系统的 NavigationSplitView + inspector（AppKit 分割视图，分隔线可拖动、宽度自动记住）。
 /// 布局参照 Compressor：顶栏没有窗口标题，正中是三个界面的切换，左右两端是侧栏开关；每栏顶部一行小号控件，
-/// 底部各有一段操作栏。颜色、控件都用 macOS 26 系统样式，浅色和深色外观都支持。
+/// 底部各有一段操作栏。与 Compressor 一样固定深色，背景用中性灰；控件都用 macOS 26 系统样式。
 public struct WorkbenchView: View {
     @Bindable var workbench: Workbench
     @SceneStorage("sidebarVisibility") private var sidebarVisible = true
@@ -30,6 +30,7 @@ public struct WorkbenchView: View {
                 }
         }
         .toolbar(removing: .title)
+        .toolbarBackground(Palette.toolbar, for: .windowToolbar)
         .task {
             await workbench.load()
             await PhotoFrameAppDelegate.register(workbench)

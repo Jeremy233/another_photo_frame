@@ -38,6 +38,8 @@ struct BatchList: View {
                 list
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.list)
         .dropDestination(for: URL.self) { urls, _ in
             Task { await workbench.dropFiles(urls) }
             return urls.contains { $0.isFileURL }
@@ -69,6 +71,8 @@ struct BatchList: View {
             }
         }
         .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Palette.list)
         .environment(\.defaultMinListRowHeight, 22)
         .contextMenu(forSelectionType: BatchItemID.self) { items in
             if items.contains(where: { if case .job = $0 { true } else { false } }) {
@@ -90,7 +94,7 @@ struct BatchList: View {
     private func sourceBackground(_ id: SourceID) -> some View {
         let isTargeted = targeted == id
         return RoundedRectangle(cornerRadius: 6)
-            .fill(isTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(.fill.tertiary))
+            .fill(isTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(Palette.group))
             .overlay {
                 if isTargeted { RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: 2) }
             }
