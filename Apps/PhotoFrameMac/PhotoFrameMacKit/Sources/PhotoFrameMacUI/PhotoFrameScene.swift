@@ -36,6 +36,11 @@ public struct PhotoFrameScene: Scene {
                 WorkbenchCommands(workbench: workbench)
             }
         }
+        Settings {
+            if case .success(let workbench) = workbench {
+                SettingsView(workbench: workbench)
+            }
+        }
     }
 }
 

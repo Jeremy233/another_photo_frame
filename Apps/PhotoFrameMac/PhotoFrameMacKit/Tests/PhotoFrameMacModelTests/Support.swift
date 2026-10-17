@@ -13,6 +13,7 @@ final class Fixture {
     let service: LocalPhotoFrameService
     let workbench: Workbench
     let store: MemoryLocationStore
+    let settingsStore = MemorySettingsStore()
 
     init() throws {
         root = FileManager.default.temporaryDirectory
@@ -22,7 +23,7 @@ final class Fixture {
         service = try LocalPhotoFrameService.makeDefault(.init(startsPaused: true, libraryRoot: root.appending(path: "Library")))
         let exports = ExportLocation(name: "Exports", url: root.appending(path: "Exports", directoryHint: .isDirectory))
         store = MemoryLocationStore(LocationList(locations: [exports], defaultId: exports.id))
-        workbench = Workbench(service: service, locationStore: store, debounce: .zero)
+        workbench = Workbench(service: service, locationStore: store, settingsStore: settingsStore, debounce: .zero)
     }
 
     deinit { try? FileManager.default.removeItem(at: root) }

@@ -327,7 +327,7 @@ extension Workbench {
         }
         await refreshJobs()
         await resumeQueue()
-        // 与 Compressor 一致：提交后切到「活跃」看进度。
-        if !submitted.isEmpty { mode = .active }
+        // 与 Compressor 一致：提交后切到「活跃」看进度（D-108，设置里可关，D-114）。
+        if !submitted.isEmpty, settings.switchesToActiveAfterStart { mode = .active }
     }
 }
