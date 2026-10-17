@@ -136,7 +136,7 @@ struct JobIssueList: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(issue.message)
                         if let hint = issue.hint {
-                            Text("建议：\(hint)").font(.caption).foregroundStyle(.secondary)
+                            Text("建议：\(hint)").font(.callout).foregroundStyle(.secondary)
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)

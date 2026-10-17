@@ -148,7 +148,7 @@ private struct CameraMatchSection: View {
             InspectorRow { Button("添加相机规则") { workbench.addCameraRule(layer.layerId) } }
             InspectorRow {
                 Text("写了型号的规则优先，其次是只写品牌的；都匹配不到或没有素材时用默认素材。")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
     }
@@ -262,7 +262,7 @@ struct SourceInspector: View {
                 LabeledContent("方向") { Text("\(info.orientation)") }
             }
             InspectorSection("色彩") {
-                LabeledContent("ICC") { Text(info.colorProfile.description) }
+                LabeledContent("ICC") { Text(ColorProfileName.display(info.colorProfile.description)).help(info.colorProfile.description) }
                 if !info.colorProfile.embedded {
                     InspectorPicker("按此解释", selection: override) {
                         Text("sRGB（默认）").tag(SourceColorOverride?.none)
@@ -270,7 +270,7 @@ struct SourceInspector: View {
                             Text($0.title).tag(SourceColorOverride?.some($0))
                         }
                     }
-                    InspectorRow { Text("源图没有 ICC，默认按 sRGB 解释").font(.caption).foregroundStyle(.secondary) }
+                    InspectorRow { Text("源图没有 ICC，默认按 sRGB 解释").font(.callout).foregroundStyle(.secondary) }
                 }
                 LabeledContent("HDR") { Text(hdr(info.hdr)) }
             }
@@ -298,7 +298,7 @@ struct SourceInspector: View {
         if let info = item.inspection {
             let size = info.fileSizeBytes.map { "，" + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
             lines.append("\(info.format.uppercased())\(size)")
-            lines.append("\(info.displaySize.text)，\(info.colorProfile.description)")
+            lines.append("\(info.displaySize.text)，\(ColorProfileName.display(info.colorProfile.description))")
         }
         return lines
     }
