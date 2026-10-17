@@ -65,7 +65,8 @@ private struct PreviewTitleBar: View {
         TitleBarLayout(spacing: 10) {
             title(preview.subject?.sourceURL.lastPathComponent ?? "")
             title(preview.subject?.preset?.name ?? "")
-            HStack(spacing: 10) {
+            // 控件之间看得见的空隙都是 BarMetrics.gap；无边框菜单自带内缩，间距要减掉。
+            HStack(spacing: 0) {
                 // 带文字的分段控件：一眼看出是在两种画面间切换、现在显示的是哪一种（分屏图标会让人以为是左右对比）。
                 Picker("对比", selection: $preview.showsOriginal) {
                     Text("成品").tag(false)
@@ -77,6 +78,7 @@ private struct PreviewTitleBar: View {
                 .disabled(preview.subject?.preset == nil)
                 .help("在导出效果和原图之间切换")
                 ZoomMenu(preview: preview)
+                    .padding(.leading, BarMetrics.gap - BarMetrics.borderlessMenuLeading)
                 Menu("显示") {
                     Picker("对比", selection: $preview.showsOriginal) {
                         Text("成品").tag(false)
@@ -89,6 +91,7 @@ private struct PreviewTitleBar: View {
                     Toggle("显示接缝位置", isOn: $preview.showsSeams)
                 }
                 .fixedSize()
+                .padding(.leading, BarMetrics.gap - BarMetrics.borderlessMenuTrailing - BarMetrics.borderlessMenuLeading)
             }
         }
         .buttonStyle(.borderless)

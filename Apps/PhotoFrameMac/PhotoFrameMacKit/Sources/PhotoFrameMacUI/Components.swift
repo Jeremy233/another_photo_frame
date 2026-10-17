@@ -51,7 +51,7 @@ struct ColumnFooter<Content: View>: View {
         VStack(spacing: 0) {
             Hairline()
             // 不用末尾的 Spacer：它和最后一个控件之间还会多出 6 pt 间距，右边距就比左边宽。
-            HStack(spacing: 6) { content }
+            HStack(spacing: BarMetrics.gap) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
             .buttonStyle(.bordered)
             .menuStyle(.button)
@@ -62,6 +62,17 @@ struct ColumnFooter<Content: View>: View {
         }
         .background(Palette.panel)
     }
+}
+
+/// 各栏标题栏、底栏里相邻控件之间看得见的空隙（13 pt，以中栏底栏「位置」标签到菜单边框为准）。
+/// 带边框的小号按钮边框就是它的边界；其他控件自带内缩，在用到的地方减掉（数值是实测的）。
+enum BarMetrics {
+    static let gap: CGFloat = 13
+    /// 弹出菜单（带边框）边框外的内缩。
+    static let popUpInset: CGFloat = 1
+    /// 无边框菜单文字左边、右边（含 ⌄）的内缩。
+    static let borderlessMenuLeading: CGFloat = 3
+    static let borderlessMenuTrailing: CGFloat = 6.5
 }
 
 /// 界面上所有分隔线：纯黑、1 个物理像素（Retina 上 0.5 pt），与 Compressor 一致。

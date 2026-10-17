@@ -31,6 +31,8 @@ struct InspectorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
+            // 与预览标题栏的「成品 | 原图」同为小号。
+            .controlSize(.small)
         case .source: Text("源图")
         case .location: Text("位置")
         case .none: EmptyView()
@@ -92,7 +94,7 @@ struct InspectorView: View {
 
 // MARK: - 共用的版式
 
-/// 每栏顶部一行（28 pt）：放常规尺寸的分段控件或标题，居中。
+/// 每栏顶部一行（28 pt）：放分段控件（小号，与预览标题栏一致）、按钮或标题，居中。
 struct ColumnHeader<Content: View>: View {
     @ViewBuilder var content: Content
 
