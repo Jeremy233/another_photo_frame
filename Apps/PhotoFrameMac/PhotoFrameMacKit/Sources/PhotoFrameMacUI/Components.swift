@@ -201,3 +201,18 @@ extension EmptyState where Actions == EmptyView {
         self.init(title: title, symbol: symbol, description: description, alignment: alignment) { EmptyView() }
     }
 }
+
+/// 折叠三角（参照左栏常驻的三角）：展开时朝下。Inspector 分节和批处理列表的源图头部共用。
+struct DisclosureChevron: View {
+    var isExpanded: Bool
+
+    static let width: CGFloat = 12
+
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            .frame(width: Self.width)
+    }
+}

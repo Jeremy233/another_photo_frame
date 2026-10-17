@@ -249,12 +249,15 @@ private struct SlotBindingRow: View {
 
 // MARK: - 源图信息（第 6 节：选中源图时不显示四个标签）
 
-struct SourceInspector: View {
+struct SourceInspector<AfterCard: View>: View {
     let workbench: Workbench
     let item: SourceItem
+    /// 放在信息卡和分节之间（「警告」、提示条）。
+    @ViewBuilder var afterCard: AfterCard
 
     var body: some View {
         InfoCard(symbol: "photo", title: item.source.displayName, lines: summary, badge: badge) { EmptyView() }
+        afterCard
         if let info = item.inspection {
             InspectorSection("图像") {
                 LabeledContent("尺寸") { Text(info.displaySize.text) }
