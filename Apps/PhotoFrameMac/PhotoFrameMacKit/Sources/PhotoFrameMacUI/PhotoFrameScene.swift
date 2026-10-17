@@ -31,7 +31,6 @@ public struct PhotoFrameScene: Scene {
         }
         .defaultSize(width: 1440, height: 900)
         .commands {
-            SidebarCommands()
             if case .success(let workbench) = workbench {
                 WorkbenchCommands(workbench: workbench)
             }
@@ -39,7 +38,7 @@ public struct PhotoFrameScene: Scene {
     }
 }
 
-/// 菜单与快捷键：添加图片 ⌘O、开始批处理 ⌘↩、三个界面 ⌘1…3。侧栏 ⌃⌘S（系统命令）、Inspector ⌥⌘I。
+/// 菜单与快捷键：添加图片 ⌘O、开始批处理 ⌘↩、三个界面 ⌘1…3。左栏 ⌃⌘S、Inspector ⌥⌘I。
 struct WorkbenchCommands: Commands {
     let workbench: Workbench
 
@@ -51,6 +50,8 @@ struct WorkbenchCommands: Commands {
                 .keyboardShortcut(.return)
         }
         CommandGroup(before: .sidebar) {
+            Button(workbench.showsSidebar ? "隐藏左栏" : "显示左栏") { workbench.showsSidebar.toggle() }
+                .keyboardShortcut("s", modifiers: [.command, .control])
             Button(workbench.showsInspector ? "隐藏 Inspector" : "显示 Inspector") { workbench.showsInspector.toggle() }
                 .keyboardShortcut("i", modifiers: [.command, .option])
             ForEach(Array(WorkbenchMode.allCases.enumerated()), id: \.element) { index, mode in
