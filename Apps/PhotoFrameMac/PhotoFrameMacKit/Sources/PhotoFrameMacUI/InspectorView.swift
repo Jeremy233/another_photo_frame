@@ -48,12 +48,18 @@ struct InspectorView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 200)
         case .source(let id):
-            NoticeBar(symbol: "hand.point.up.left", text: Self.startHint)
-            issues
-            if let item = workbench.sourceItem(id) { SourceInspector(workbench: workbench, item: item) }
+            // 顺序都是：信息卡、「警告」、提示条、分节。
+            if let item = workbench.sourceItem(id) {
+                SourceInspector(workbench: workbench, item: item) {
+                    issues
+                    NoticeBar(symbol: "hand.point.up.left", text: Self.startHint)
+                }
+            }
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
         case .jobs, .preset(_):
+            PresetInfoCard(workbench: workbench)
+            issues
             if case .preset(let id) = workbench.inspectorSubject, workbench.presetEditor?.isReadOnly == true {
                 NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改。") {
                     Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
@@ -61,8 +67,6 @@ struct InspectorView: View {
                         .controlSize(.regular)
                 }
             }
-            issues
-            PresetInfoCard(workbench: workbench)
             // 只读时不用 `.disabled`：系统的禁用样式在深色界面上暗到像是功能没做。这里只拦截操作、略微变淡，
             // 内容仍看得清；view model 也会拒绝对只读内容的修改。
             let editable = workbench.isInspectorEditable
@@ -176,11 +180,7 @@ struct InspectorSection<Content: View>: View {
     private func header(_ title: String) -> some View {
         Button { toggle() } label: {
             HStack(spacing: 4) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .frame(width: 12)
+                DisclosureChevron(isExpanded: isExpanded)
                 Text(title).font(.body.weight(.semibold))
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -23,6 +23,8 @@ struct BatchList: View {
     @Bindable var workbench: Workbench
     @State private var savingPreset: RenameRequest?
     @State private var targeted: SourceID?
+    /// 折起来的源图：只显示头部，不显示它的任务。
+    @State private var collapsed: Set<SourceID> = []
 
     var body: some View {
         Group {
@@ -52,20 +54,24 @@ struct BatchList: View {
             BatchTitleRow(workbench: workbench)
             ForEach(workbench.sources) { item in
                 Section {
-                    SourceRow(workbench: workbench, item: item)
+                    SourceRow(workbench: workbench, item: item, isExpanded: !collapsed.contains(item.id)) {
+                        if collapsed.contains(item.id) { collapsed.remove(item.id) } else { collapsed.insert(item.id) }
+                    }
                         .tag(BatchItemID.source(item.id))
                         .listRowBackground(sourceBackground(item.id))
                         .dropTarget(workbench, item: .source(item.id)) { on in
                             if on { targeted = item.id } else if targeted == item.id { targeted = nil }
                         }
-                    if !item.jobs.isEmpty {
-                        JobColumns.header
-                            .selectionDisabled()
-                    }
-                    ForEach(item.jobs) { job in
-                        JobRow(workbench: workbench, job: job, source: item.source, isSelected: workbench.selection.contains(.job(job.id)))
-                            .tag(BatchItemID.job(job.id))
-                            .dropTarget(workbench, item: .job(job.id)) { _ in }
+                    if !collapsed.contains(item.id) {
+                        if !item.jobs.isEmpty {
+                            JobColumns.header
+                                .selectionDisabled()
+                        }
+                        ForEach(item.jobs) { job in
+                            JobRow(workbench: workbench, job: job, source: item.source, isSelected: workbench.selection.contains(.job(job.id)))
+                                .tag(BatchItemID.job(job.id))
+                                .dropTarget(workbench, item: .job(job.id)) { _ in }
+                        }
                     }
                 }
             }
@@ -193,12 +199,27 @@ private struct JobCell<Content: View>: View {
 private struct SourceRow: View {
     let workbench: Workbench
     let item: SourceItem
+    let isExpanded: Bool
+    let toggle: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            Thumbnail(url: item.source.fileURL)
+            HStack(spacing: Self.chevronGap) {
+                // 三角放在缩略图左边的留白里（负的左边距），缩略图仍与下面任务行的图标对齐。
+                Button(action: toggle) { DisclosureChevron(isExpanded: isExpanded).frame(maxHeight: .infinity).contentShape(.rect) }
+                    .buttonStyle(.plain)
+                    .opacity(item.jobs.isEmpty ? 0 : 1)
+                    .disabled(item.jobs.isEmpty)
+                    .help(isExpanded ? "折叠任务" : "展开任务")
+                    .accessibilityLabel(isExpanded ? "折叠" : "展开")
+                Thumbnail(url: item.source.fileURL)
+            }
+            .padding(.leading, -(DisclosureChevron.width + Self.chevronGap))
             Text(item.source.displayName).fontWeight(.medium)
             Spacer()
+            if !isExpanded {
+                Text("\(item.jobs.count) 个任务").font(.caption).foregroundStyle(.secondary)
+            }
             info
             // 拖放之外的等价操作（§4.2）：从菜单选预设创建任务。
             Menu("添加") {
@@ -214,6 +235,8 @@ private struct SourceRow: View {
         }
         .padding(.vertical, 4)
     }
+
+    private static let chevronGap: CGFloat = 2
 
     @ViewBuilder private var info: some View {
         if let inspection = item.inspection {
