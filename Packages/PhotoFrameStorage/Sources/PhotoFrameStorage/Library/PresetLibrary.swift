@@ -11,6 +11,13 @@ public enum PresetOrigin: String, Hashable, Sendable, Codable, CaseIterable {
     case imported
 }
 
+/// ``PresetLibrary/edit(_:_:)`` 的结果。
+public struct PresetEditResult: Hashable, Sendable {
+    public var entry: PresetEntry
+    /// 不阻止保存的问题（例如 HDR 待实测）。
+    public var warnings: [PresetIssue]
+}
+
 /// 库中的一个预设。
 public struct PresetEntry: Hashable, Sendable, Identifiable {
     public var preset: ExportPreset
@@ -220,6 +227,40 @@ public struct PresetLibrary: Sendable {
     public func update(_ preset: ExportPreset) throws(LibraryError) -> PresetEntry {
         let e = try mutableEntry(preset.presetId)
         return try write(preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
+    }
+
+    /// 逐项修改（D-93）：在 manifest 上按字段路径应用 `edits`，改完的整份预设走一遍与导入相同的检查
+    /// （schema、不认识的字段、取值与引用、平台能力、大小上限），通过后原子写入。任何一项失败都不改动文件。
+    /// 内置预设只读（先复制）；presetId、schemaVersion 不能改；分组和创建时间不变（D-81）。
+    @discardableResult
+    public func edit(_ id: UUID, _ edits: [PresetEdit]) throws(LibraryError) -> PresetEditResult {
+        let e = try mutableEntry(id)
+        let manifest: JSONValue
+        do {
+            manifest = try LibraryFiles.jsonDecoder.decode(JSONValue.self, from: PresetSchema.encode(e.preset))
+        } catch {
+            throw .io("编码预设失败：\(error)")
+        }
+        let edited: JSONValue
+        do {
+            edited = try PresetEditor.apply(edits, to: manifest)
+        } catch {
+            throw .edit(error)
+        }
+        let data: Data
+        do {
+            data = try LibraryFiles.jsonEncoder.encode(edited)
+        } catch {
+            throw .io("编码预设失败：\(error)")
+        }
+        let checked: ImportedPreset
+        do {
+            checked = try PresetPackage.validateManifest(data, options: PresetImportOptions(platforms: platforms))
+        } catch {
+            throw .package(error)
+        }
+        let entry = try update(checked.preset)
+        return PresetEditResult(entry: entry, warnings: checked.warnings)
     }
 
     /// 在「用户保存」和「导入」两组之间移动（GUI 拖放用，D-81）。内容、创建与修改时间都不变；

@@ -16,14 +16,14 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 
 | 文件 | 内容 |
 |---|---|
-| `PresetPackage.swift` | `export(_:)` / `export(_:to:)`、`preview(_:options:)`、`importPreset(_:options:)`、`readFile(at:)` |
+| `PresetPackage.swift` | `export(_:)` / `export(_:to:)`、`preview(_:options:)`、`importPreset(_:options:)`、`readFile(at:)`、`validateManifest(_:options:)`（对不打包的 manifest 做与导入相同的检查） |
 | `PresetImportPreview.swift` | 导入前预览（§8.3）：尺寸、图层、slots、输出格式、schema 版本、所有问题；可直接 JSON 编码给 CLI / MCP |
 | `Zip/` | 最小 ZIP 实现：stored + raw deflate（Compression 框架），无加密、无 ZIP64、单卷。写出的包是确定性的（固定时间戳） |
 | `SlotResolver.swift` | `AssetBinding`、`AssetBindingTable`、`SlotResolver`（D-14） |
 | `PlatformCatalogStore.swift` + `Resources/platforms.json` | 可更新的平台配置；用户目录中 `revision` 更大的覆盖文件优先 |
 | `BuiltInPresets.swift` | 6 个内置预设，presetId 固定 |
 | `Library/LocalLibrary.swift` | 入口：`presets` + `assets` + `bindings`，以及跨两部分的操作和素材槽解析 |
-| `Library/PresetLibrary.swift` | 用户预设库：列出（内置 / 用户保存 / 导入）、新建、复制、重命名、保存、删除、导入（D-39）、导出（D-37） |
+| `Library/PresetLibrary.swift` | 用户预设库：列出（内置 / 用户保存 / 导入）、新建、复制、重命名、保存、逐项修改（`edit`，D-93：改完走导入检查再原子写入）、删除、导入（D-39）、导出（D-37） |
 | `Library/AssetLibrary.swift` + `AssetValidator.swift` | 本地素材库：PNG / 受限 SVG 导入校验、分组、重命名、删除、元信息列表 |
 | `Library/AssetBindingStore.swift` | 预设本地绑定与用户默认绑定的持久化（D-14 的后两级） |
 | `Library/LibraryFiles.swift`、`LibraryError.swift` | 目录布局、原子写、文件锁；错误码与警告 |

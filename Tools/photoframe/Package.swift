@@ -1,8 +1,8 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-/// 命令行工具 `photoframe`（规范 §11.3）。命令实现在 `PhotoFrameCLI` 库里，可执行文件只负责进程级的事
-/// （信号、标准输出、退出码），测试可以在进程内直接调用命令。
+/// 命令行工具 `photoframe`（规范 §11.3）和本地 stdio MCP 服务器 `photoframe mcp serve`（§11.4）。
+/// 命令实现在 `PhotoFrameCLI` 库里，可执行文件只负责进程级的事（信号、标准输出、退出码），测试可以在进程内直接调用命令。
 let package = Package(
     name: "photoframe",
     platforms: [.macOS(.v26)],
@@ -11,6 +11,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
+        // 官方 Swift MCP SDK，固定版本（§11.4「以实施时官方稳定版本为准」）；支持协议 2025-11-25 及更早版本。
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
         .package(path: "../../Packages/PhotoFrameCore"),
         .package(path: "../../Packages/PhotoFrameStorage"),
         .package(path: "../../Packages/PhotoFrameApplication"),
@@ -21,7 +23,9 @@ let package = Package(
             name: "PhotoFrameCLI",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
+                .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),
                 .product(name: "PhotoFrameRendering", package: "PhotoFrameRendering"),
             ]),
@@ -30,6 +34,7 @@ let package = Package(
             name: "PhotoFrameCLITests",
             dependencies: [
                 "PhotoFrameCLI",
+                .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
                 .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),
