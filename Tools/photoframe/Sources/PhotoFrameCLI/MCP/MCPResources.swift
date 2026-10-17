@@ -41,7 +41,10 @@ enum MCPResources {
           `visibleOn`（`coverOnly` / `allSlides` / `selectedSlides`，后者配 `slides: [0, 2]`，0 = 封面）、
           `anchor`（`topLeft`、`top`、`topRight`、`left`、`center`、`right`、`bottomLeft`、`bottom`、`bottomRight`）、`reference`（`photo` / `canvas`）、`side`（`inside` / `outside`，
           只用于 `photo`）、`offsetPx: [x, y]`、`sizePx`、`maxBoundsPx`、`opacity`（0…1）、`zIndex`、`slotId`（素材图层）、
-          `text`（`content` 或 `template`，`fontFamily`、`fontSizePx`、`lineHeight`、`color`、`paddingPx`）
+          `cameraMatch`（素材图层，按 EXIF 相机选槽：`[{"make": "FUJIFILM", "model": "X100VI", "slotId": "camera.x100"}]`，
+          品牌按包含、型号按相等匹配，型号规则优先，匹配不到或没有素材时用 `slotId`）、
+          `text`（`content` 或 `template`，`fontFamily`、`fontWeight`（`ultraLight` … `regular` … `black`）、`italic`、
+          `fontSizePx`、`letterSpacingPx`、`lineHeight`、`color`、`paddingPx`）
         - `assetSlots[]`：`slotId`、`kind`、`required`、`label`、`acceptedFormats`（`png` / `svg`）；不含位置和本地路径
         - `output`：`format`（`jpeg` / `png`）、`quality`（1…100）、`colorSpace`、`dynamicRange`（`sdr` / `hdr`）、
           `metadata`（`keepShootingInfo`、`keepAuthorAndCopyright`、`keepGps`，默认都是 false）
