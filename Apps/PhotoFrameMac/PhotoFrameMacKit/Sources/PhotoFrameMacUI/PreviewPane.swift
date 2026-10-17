@@ -18,7 +18,7 @@ struct PreviewPane: View {
     var body: some View {
         VStack(spacing: 0) {
             PreviewTitleBar(preview: preview)
-            Divider()
+            Hairline()
             ZStack {
                 Palette.preview
                 canvas
@@ -27,7 +27,7 @@ struct PreviewPane: View {
                 }
             }
             .onTapGesture(count: 2) { if preview.subject != nil { enlarged = true } }
-            Divider()
+            Hairline()
             PreviewPageBar(preview: preview, note: statusNote)
         }
         .background(Palette.panel)

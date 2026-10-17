@@ -55,11 +55,15 @@ struct VerticalSplit<Top: View, Bottom: View>: NSViewRepresentable {
         func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposed: CGFloat, ofSubviewAt index: Int) -> CGFloat {
             min(proposed, splitView.bounds.height - minHeight)
         }
+
+        func splitView(_ splitView: NSSplitView, effectiveRect proposed: NSRect, forDrawnRect drawn: NSRect, ofDividerAt index: Int) -> NSRect {
+            HairlineSplitView.dragArea(for: drawn, vertical: false)
+        }
     }
 }
 
 /// 第一次显示（没有记住的位置）和双击分隔线时，按默认比例放分隔线。
-private final class ResettableSplitView: NSSplitView {
+private final class ResettableSplitView: HairlineSplitView {
     var topFraction = 0.6
     private var placed = false
 
@@ -244,14 +248,28 @@ final class ColumnSplitController: NSSplitViewController {
         }
     }
 
+    override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect, forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+        HairlineSplitView.dragArea(for: drawnRect, vertical: true)
+    }
+
     /// 只显示、可拖动的分隔线：收起的栏旁边的分隔线隐藏。
     override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
         dividerIndex == 0 ? leadingItem.isCollapsed : trailingItem.isCollapsed
     }
 }
 
+/// 纯黑、1 个物理像素的分隔线（见 `Hairline`）。线很细，可拖动的范围向两侧各放宽 3 pt。
+class HairlineSplitView: NSSplitView {
+    override var dividerColor: NSColor { .black }
+    override var dividerThickness: CGFloat { 1 / max(window?.backingScaleFactor ?? 2, 1) }
+
+    static func dragArea(for drawn: NSRect, vertical: Bool) -> NSRect {
+        vertical ? drawn.insetBy(dx: -3, dy: 0) : drawn.insetBy(dx: 0, dy: -3)
+    }
+}
+
 /// 鼠标在分隔线上拖动结束时回调（`mouseDown` 在拖动结束后才返回）。
-final class DragTrackingSplitView: NSSplitView {
+final class DragTrackingSplitView: HairlineSplitView {
     var didEndDrag: (() -> Void)?
 
     override func mouseDown(with event: NSEvent) {

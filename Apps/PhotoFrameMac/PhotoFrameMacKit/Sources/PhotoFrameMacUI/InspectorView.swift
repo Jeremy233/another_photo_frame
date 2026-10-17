@@ -77,7 +77,7 @@ struct ColumnHeader<Content: View>: View {
             Color.clear
                 .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
                 .overlay { content.controlSize(.small) }
-            Divider()
+            Hairline()
         }
     }
 }

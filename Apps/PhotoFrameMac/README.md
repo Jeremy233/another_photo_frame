@@ -10,7 +10,8 @@ macOS GUI（SwiftUI + AppKit），界面参照 Apple Compressor 的三栏布局�
 
 **界面固定深色**（用户决定，2026-10-16）：与 Compressor 一样不跟随系统外观，弹窗和文件面板也是深色
 （`PhotoFrameAppDelegate` 启动时设置 `NSApp.appearance`）。各栏背景用中性灰（`Palette`，明度参照 Compressor 取样），
-不随桌面壁纸染色，避免影响对照片颜色的判断。
+不随桌面壁纸染色，避免影响对照片颜色的判断。所有分隔线（工具栏下、栏间、预览与任务列表之间、每栏顶部标题行下和底部操作栏上）
+都是纯黑、1 个物理像素（`Hairline`、`HairlineSplitView`），与 Compressor 一样；可拖动的分隔线拖动范围向两侧各放宽 3 pt。
 
 | 参照 Compressor | 遵循 macOS 26 系统规范 |
 |---|---|
