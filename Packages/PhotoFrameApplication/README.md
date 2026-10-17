@@ -39,6 +39,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Service/Providers.swift` | 素材来源协议 `AssetProvider`（`LocalLibrary` 实现；`NoAssetLibrary` 表示没有素材）、`ImageAnalyzer` 与 `SourceInspection`、`ExportPlan`、`ExportPreview` 等 |
 | `Service/Validation.swift` | `ValidationResult`；队列 `validating` 与服务 `validate` 共用的检查 |
 | `Queue/JobEvent.swift` | 事件（Codable） |
+| `Service/PresetContentService.swift` | GUI 用的新增接口（单独协议，不改 `PhotoFrameService`）：`savePreset`（存储为预设）、`replacePreset`（保存对预设本身的编辑）、`assetContentURL`（素材缩略图） |
 | `Service/PhotoFrameService.swift` | `PhotoFrameService` 协议（任务相关部分）、`ExportRequest`、进程内实现 `LocalPhotoFrameService` |
 
 ## 任务模型
