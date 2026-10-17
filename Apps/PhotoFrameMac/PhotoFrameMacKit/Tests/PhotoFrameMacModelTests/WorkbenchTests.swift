@@ -222,6 +222,33 @@ import Testing
         #expect(wb.job(jobId)?.preset.layers.first { $0.layerId == "exifText" }?.text?.fontWeight == .semibold)
     }
 
+    @Test func settingsPersistAndControlSwitchToActive() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        #expect(wb.settings == AppSettings())
+        #expect(wb.settings.effectiveMaxConcurrentJobs == QueueConfiguration.defaultMaxConcurrentJobs)
+
+        wb.settings.maxConcurrentJobs = 2
+        wb.settings.memoryBudgetGiB = 4
+        wb.settings.switchesToActiveAfterStart = false
+        await wb.settle()
+        #expect(f.settingsStore.load() == AppSettings(switchesToActiveAfterStart: false, maxConcurrentJobs: 2, memoryBudgetGiB: 4))
+        #expect(wb.settings.effectiveMemoryBudgetBytes == 4 << 30)
+
+        // 不切到「活跃」：提交的任务照样离开「当前」，界面留在「当前」。
+        try await f.addJob()
+        await wb.startBatch()
+        await f.waitForRun()
+        #expect(wb.mode == .current)
+        #expect(wb.sources.isEmpty)
+        #expect(wb.jobs.allSatisfy { $0.status == .completed })
+
+        // 设置在下次启动时读回。
+        let again = Workbench(service: f.service, locationStore: f.store, settingsStore: f.settingsStore, debounce: .zero)
+        #expect(again.settings.maxConcurrentJobs == 2)
+    }
+
     @Test func startBatchExportsAndClearsCurrent() async throws {
         let f = try Fixture()
         await f.workbench.load()

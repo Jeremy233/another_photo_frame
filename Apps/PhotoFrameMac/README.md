@@ -22,7 +22,8 @@ macOS GUI（SwiftUI + AppKit），界面参照 Apple Compressor 的三栏布局�
 | 预览：上方标题「源图 - 预设」+ 右侧缩放 % 与「显示」菜单；下方一行（Compressor 是时间轴）换成翻页 | — |
 | 预览约占中栏 45%；底栏每栏一段，「开始批处理」在中栏右下 | 分隔线是 AppKit `NSSplitView`，位置自动记住，双击恢复默认 |
 | 「活跃」「已完成」时左栏自动收起，中栏全宽表格：名称 / 状态（强调色文字）/ 已用时间 / 进度，行尾取消或重新导出按钮；历史按「今天」等日期分组 | 系统 `Table`、`ProgressView` |
-| 提交批处理后切到「活跃」 | — |
+| 提交批处理后切到「活跃」（设置里可关，D-114） | — |
+| ⌘, 设置：顶部「通用 \| 高级」工具栏标签，右对齐标签的表单 | 系统 `Settings` 场景、`TabView`、`Form(.columns)` |
 
 与 Compressor 不同、按我们规范做的地方：多选任务时 Compressor 显示「Nothing to Inspect」，我们按 UI 设计文档第 6 节显示可批量修改的共同字段；
 目标目录已存在时 Compressor 只警告，我们按 D-49 询问「保留两者 / 覆盖」。
@@ -93,6 +94,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameMacKit-build"
 | `Workbench+Layers.swift` | 添加 / 删除 / 修改图层 |
 | `Workbench+Jobs.swift` | 任务事件、活跃 / 已完成、暂停、取消、重试、重新导出、底栏进度 |
 | `PreviewModel.swift` | 预览：封面 / 切片 / 全景长卷、缩放、原图 / 成品、SDR / HDR；图像全部来自 `renderPreview`。HDR 时导出写 HDR 的页是 gain map JPEG，按 HDR 解码、以 EDR 显示（D-106） |
+| `AppSettings.swift` | ⌘, 设置（D-114）：提交后是否切到「活跃」、并发数、内存预算（D-53，自动 = 队列默认值），存在 UserDefaults，调度参数改了立即交给队列 |
 | `ExportLocation.swift` | 左栏「位置」：名称 + 目录，存在 UserDefaults |
 | `DragPayload.swift` | 应用内拖放的内容（预设、位置、素材） |
 

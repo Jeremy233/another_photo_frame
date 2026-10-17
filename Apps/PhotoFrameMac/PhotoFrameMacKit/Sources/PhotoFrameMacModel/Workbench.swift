@@ -14,6 +14,21 @@ public final class Workbench {
 
     let service: any Service
     let locationStore: any LocationStore
+    let settingsStore: any SettingsStore
+
+    /// ⌘, 设置（D-114）。修改即保存；调度参数立即交给任务队列。
+    public var settings: AppSettings {
+        didSet {
+            guard settings != oldValue else { return }
+            settingsStore.save(settings)
+            if settings.effectiveMaxConcurrentJobs != oldValue.effectiveMaxConcurrentJobs
+                || settings.effectiveMemoryBudgetBytes != oldValue.effectiveMemoryBudgetBytes {
+                let previous = settingsTask
+                settingsTask = Task { await previous?.value; await applySchedulingSettings() }
+            }
+        }
+    }
+    var settingsTask: Task<Void, Never>?
 
     // MARK: 布局
 
@@ -88,10 +103,13 @@ public final class Workbench {
     ///   - debounce: 改参数后多久重新校验和预览；测试传 `.zero`。
     public init(
         service: any Service, locationStore: any LocationStore = UserDefaultsLocationStore(),
+        settingsStore: any SettingsStore = UserDefaultsSettingsStore(),
         queueStartsPaused: Bool = true, debounce: Duration = .milliseconds(150)
     ) {
         self.service = service
         self.locationStore = locationStore
+        self.settingsStore = settingsStore
+        settings = settingsStore.load() ?? AppSettings()
         isQueuePaused = queueStartsPaused
         validationDelay = debounce
         preview = PreviewModel(service: service, debounce: debounce)
@@ -100,6 +118,7 @@ public final class Workbench {
 
     /// 窗口出现时调用：读库和已有任务。
     public func load() async {
+        await applySchedulingSettings()
         await refreshLibrary()
         await refreshJobs()
     }
@@ -209,6 +228,7 @@ public final class Workbench {
             await task.value
             if work[key] == task { work[key] = nil }
         }
+        await settingsTask?.value
         await preview.settle()
     }
 
