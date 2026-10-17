@@ -1,12 +1,12 @@
 # 本地 MCP 服务器 `photoframe mcp serve`
 
-> 对应规范 §10.3、§11.4、§12、AC-07。代码在 `Tools/photoframe/Sources/PhotoFrameCLI/MCP/`，是 CLI 的子命令（§11.3 写法），
-> 后端与 GUI、CLI 是同一个 `PhotoFrameService`（D-13、D-70）。预设逐项修改的字段路径与 CLI `preset get` / `preset set` 相同（D-93）。
+> 对应规范 §10.3、§11.4、§12、AC-07。代码在 `Tools/photoframe/Sources/PhotoFrameCLI/MCP/`，是 CLI 的子命令（§11.3 写法，D-98），
+> 后端与 GUI、CLI 是同一个 `PhotoFrameService`（D-13、D-70）。预设逐项修改的字段路径与 CLI `preset get` / `preset set` 相同（D-93、D-99）。
 
 让支持 MCP 的 AI 客户端（Claude Desktop、Claude Code 等）在本机调用 AnotherPhotoFrame：查看预设、检查照片、校验、预览、导出。
 不需要打开 GUI，不联网，不读取任何 token。
 
-- **SDK**：官方 Swift SDK [`modelcontextprotocol/swift-sdk`](https://github.com/modelcontextprotocol/swift-sdk) **0.12.1**（`Package.swift` 里 `exact:` 固定），
+- **SDK**：官方 Swift SDK [`modelcontextprotocol/swift-sdk`](https://github.com/modelcontextprotocol/swift-sdk) **0.12.1**（`Package.swift` 里 `exact:` 固定，D-97），
   支持 MCP 协议 `2025-11-25`（最新），向下兼容 `2025-06-18`、`2025-03-26`、`2024-11-05`，按客户端请求的版本协商。
 - **传输**：stdio，每行一条 JSON-RPC 消息。stdout 只写协议消息（启动时把 fd 1 改指向 stderr，库里任何意外的输出都进 stderr）；日志写 stderr。
 
@@ -20,7 +20,7 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 可执行文件在 `$TMPDIR/photoframe-build/release/photoframe`。建议复制到固定位置（例如 `~/bin/photoframe` 或 `/usr/local/bin/photoframe`），
 客户端配置里写**绝对路径**。
 
-## 配置目录白名单
+## 配置目录白名单（D-100）
 
 服务器只能读取「允许读取的目录」里的源图，只能把导出和预览写进「允许写入的目录」（含子目录）。**两者都没有配置时拒绝所有文件访问**
 （`list_presets`、`get_preset`、`list_assets` 等不碰文件的工具照常可用）。
@@ -33,7 +33,7 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 两种方式的目录合在一起生效。目录必须是已存在的目录（可以用 `~`），不能是 `/`；有一个不合法就拒绝启动（退出码 2，`mcp.invalid_root`）。
 允许写入的目录不自动可读，反之亦然。只给 AI 需要的最小范围，例如「修好的成片」目录只读、「社交平台导出」目录可写。
 
-其他启动参数：
+其他启动参数（上限，D-101）：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -100,7 +100,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 ## 工具
 
 所有工具的结果都同时放在 `structuredContent` 和一个 `text` 内容里（同一份 JSON），外层有 `ok`；失败时 `isError: true`，并有
-`error: {code, message, hint?}`。其余字段名与 CLI `--json`（[docs/CLI.md](CLI.md)）一致，值为空的可选字段省略（D-77）。
+`error: {code, message, hint?}`。其余字段名与 CLI `--json`（[docs/CLI.md](CLI.md)）一致，值为空的可选字段省略（D-77）。结果格式见 D-104。
 所有路径参数都必须是**绝对路径**。
 
 | 工具 | 类型 | 作用 |
@@ -160,7 +160,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `category` | `signature` / `watermark` / `camera-badge` | 只列这一组 |
 
 返回 `{assets: [...], warnings}`，与 `photoframe asset list --json` 相同：名称、分组、格式、尺寸、字节数、sha256、导入时间。
-**不含文件路径和文件内容**（§11.4）。MCP 不提供导入素材（那需要读任意文件），请在 GUI 或 CLI 里导入。
+**不含文件路径和文件内容**（§11.4）。MCP 不提供导入素材（那需要读任意文件），请在 GUI 或 CLI 里导入（D-103）。
 
 ### `validate_export` / `create_export_job`
 
@@ -178,7 +178,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 输出位置与 CLI 相同：`<outputDirectory>/<平台>/<源文件名>_<Standard|Panorama>[_vN]/00_Cover.jpg、01_Slide.jpg…`。
 
 - `validate_export` 不渲染、不写任何文件（连目录都不建）。返回 `{valid, jobs: [...]}`，`jobs[]` 与 CLI `export --dry-run --json` 相同
-  （`source`、`preset`、`directory`、`outputs[]`、`warnings[]`、`errors[]`）。工具本身成功时 `ok` 为 true，能否导出看 `valid`。
+  （`source`、`preset`、`directory`、`outputs[]`、`warnings[]`、`errors[]`）。工具本身成功时 `ok` 为 true，能否导出看 `valid`（D-104）。
 - `create_export_job` 先做同样的校验，**有任何问题就什么都不写**（D-72），返回 `isError`、`valid: false` 和每个任务的 `errors`；
   通过后提交任务并立即返回 `{valid: true, jobs: [{jobId, status: "queued", …}]}`。
 
@@ -210,15 +210,15 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `preset` | string，必填 | 预设引用 |
 | `maxEdge` | int，默认 1200 | 预览页长边，16…`--max-preview-edge`；不会大于导出尺寸 |
 | `pages` | int[] | 只预览这些轮播页（0 = 封面，切片 k 为 k + 1，D-27），最多 12 页；默认前 12 页 |
-| `outputDirectory` | string | 给了就写成 PNG 文件（在允许写入的目录内）；省略时以图片内容直接返回 |
+| `outputDirectory` | string | 给了就写成 PNG 文件（在允许写入的目录内）；省略时以图片内容直接返回（D-102） |
 | `overwrite` | bool，默认 false | 替换已存在的同名预览文件；否则 `preview.file_exists`，什么都不写 |
 | `assumeProfile`、`bindings` | | 同导出 |
 
 与导出同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG（不带 HDR 和元数据，D-74）。返回 `{source, preset, files: [...], positions, warnings}`：
 `files[]` 是 `{role, position, width, height, exportWidth, exportHeight, path?}`，写文件时有 `path`；`positions` 是导出会写出的全部轮播位置。
-直接返回时，每页一个 `image/png` 内容块，总量不超过 8 MiB（超过时报 `mcp.limit_exceeded`，减小 `maxEdge`、`pages`，或改写文件）。
+直接返回时，每页一个 `image/png` 内容块，总量不超过 8 MiB（超过时报 `mcp.limit_exceeded`，减小 `maxEdge`、`pages`，或改写文件，上限见 D-101）。
 
-### 字段路径（D-93）
+### 字段路径（D-93、D-99）
 
 `get_preset`、`update_preset` 与 CLI `photoframe preset get` / `preset set` 用同一种写法，直接用 `manifest.json` 的字段名：
 
@@ -258,7 +258,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 
 资源不暴露任何本地文件内容；`file://` 等其他 URI 一律报错。
 
-## 安全边界
+## 安全边界（D-100、D-103）
 
 | 规则 | 做法 | 错误码 |
 |---|---|---|
@@ -287,7 +287,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 
 PhotoFrame 自己**不上传任何照片或数据**，MCP 服务器也只在本机运行。但工具的结果（例如 `inspect_image` 的 EXIF 摘要、
 `preview_export` 直接返回的预览图、文件路径）会交给 AI 客户端；客户端是否把这些内容发给云端模型，由客户端和它所用模型服务的策略决定，
-不在 PhotoFrame 的控制范围内。不想让预览图离开本机时，给 `preview_export` 传 `outputDirectory` 写成文件，而不是直接返回图片。
+不在 PhotoFrame 的控制范围内。不想让预览图离开本机时，给 `preview_export` 传 `outputDirectory` 写成文件，而不是直接返回图片（D-102）。
 
 ## 错误码
 
@@ -326,3 +326,11 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 | D-74 | 预览写成 sRGB PNG（MCP 也可以直接返回图片） |
 | D-77 | 值为空的字段省略 |
 | D-93 | 逐项修改预设：CLI 与 MCP 共用字段路径 |
+| D-97 | 官方 Swift MCP SDK 0.12.1，精确固定版本 |
+| D-98 | 入口是 CLI 子命令 `photoframe mcp serve`，不单独做 `photoframe-mcp` |
+| D-99 | 字段路径写法（manifest 字段名、`[n]` / `[id]` / `[+]`）；CLI 值先按 JSON 解析，否则当字符串；先应用设置再应用 `--unset` |
+| D-100 | 安全规则：目录白名单、未配置时拒绝、只收绝对路径、拒绝 `.` / `..`、按真实路径防符号链接逃逸、拒绝多硬链接输入、显式覆盖、路径过滤 |
+| D-101 | 默认上限：单文件 2 GiB、预览长边 2048、每次 12 页、内联 8 MiB、未结束任务 16 个、会话输出 20 GiB（软上限） |
+| D-102 | `preview_export` 默认直接返回图片，传 `outputDirectory` 时写文件 |
+| D-103 | MCP 不提供预设导入、素材导入和删除；`update_preset` 只改库里已有的非内置预设 |
+| D-104 | 结果只有 `ok` + `error` 外层，不带 CLI 的 `formatVersion` / `command` / `exitCode`；`validate_export` 用 `valid` 表示能否导出 |
