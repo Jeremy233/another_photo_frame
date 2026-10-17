@@ -174,7 +174,7 @@ A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布�
 - 界面细节见《Another Photo Frame UI Design.md》。
 - 【建议】双击分隔线恢复默认大小；允许隐藏侧栏，记住每个窗口最后布局；设置最小可用宽高。
 - 【建议】双击照片预览打开大图；支持 Fit、100% 与手动缩放。
-- 【建议】主控件可键盘操作，支持 VoiceOver、浅色和深色外观。
+- 【建议】主控件可键盘操作，支持 VoiceOver。【已确定：D-105】界面固定深色，不做浅色模式。
 - 【建议】界面可以先用 SwiftUI，复杂分割视图优先封装 AppKit `NSSplitView`。
 
 ### 4.2 右侧 Inspector 结构
@@ -876,7 +876,7 @@ photoframe mcp serve
 ### 12.4 平台与兼容
 
 - 【已确定：D-01】最低系统 macOS 26，仅支持 Apple Silicon；UI 采用 macOS 26 的系统设计语言。
-- 深色/浅色、不同显示器 DPI、不同 locale、中文与英文 UI、键盘操作、VoiceOver。
+- 固定深色外观（D-105）、不同显示器 DPI、不同 locale、中文与英文 UI、键盘操作、VoiceOver。
 - CI 在受支持 macOS / Swift 工具链上运行；签名与 Apple 公证可能需要付费开发者账号，**免费开源 ≠ 一定能免费完成 Apple 公证**。
 
 ---
@@ -1095,10 +1095,34 @@ photoframe mcp serve
 - [x] **D-90** 用户默认绑定按槽名（slotId）全局生效：不同预设里同名的槽共用一个默认素材。备选：按槽的类型（kind）匹配。【已确定 2026-10-16】
 - [x] **D-91** 库里已存的预设内容校验不通过时照常列出并警告，用户可以在 GUI 里修好；用它导出时在校验阶段报错。文件损坏或版本过新的预设跳过并警告，不改、不删。备选：校验不通过的也不列出。【已确定 2026-10-16】
 - [x] **D-92** 预设在库里存成 JSON（存储格式版本、来源、时间 + 与 `manifest.json` 完全相同的内容），每个预设一个文件；导出时再打包成 `.photoframe`。备选：库里直接存 `.photoframe` ZIP。【已确定 2026-10-16】
-- [x] **D-93** 逐项修改预设内容（画布、图层、输出）的 CLI 命令和 MCP 工具一起设计，两边用同一种字段路径写法（如 `preset set <预设> canvas.marginPx 80`）。在此之前，CLI 用 `preset export` → 修改 `manifest.json` → `preset import --replace`。备选：现在就加 `preset set`。【已确定 2026-10-16】
+- [x] **D-93** 逐项修改预设内容（画布、图层、输出）的 CLI 命令和 MCP 工具一起设计，两边用同一种字段路径写法（如 `preset set <预设> canvas.minMarginPx 80`，路径规则见 D-99）。在此之前，CLI 用 `preset export` → 修改 `manifest.json` → `preset import --replace`。备选：现在就加 `preset set`。【已确定 2026-10-16】
 - [x] **D-94** CLI 提供 `preset move <预设> --to user|imported`，在「用户保存」和「导入」两组之间移动（D-81、D-08）；内置预设不能移动。备选：只在 GUI 里拖放。【已确定 2026-10-16】
 - [x] **D-95** CLI 提供 `asset set-category <素材> signature|watermark|camera-badge`，修改素材分组（D-89、D-08）。备选：只在 GUI 里修改。【已确定 2026-10-16】
 - [x] **D-96** CLI 只用环境变量 `PHOTOFRAME_LIBRARY` 指定本地库目录，不加命令行参数；不设置时用 D-78 的默认目录。备选：再加全局参数 `--library`。【已确定 2026-10-16】
+
+### P6 — MCP 与 GUI（2026-10-16 审阅）
+
+> 实现本地 MCP 服务器（D-97–D-104）、整理 Compressor 参考截图（D-105）和实现 GUI（D-106–D-115）时确定的事项。每条写明决策和当时考虑过的备选做法，以后可按编号单独修改。
+
+- [x] **D-97** MCP 使用官方 `modelcontextprotocol/swift-sdk`，固定到确切版本 0.12.1（协议 2025-11-25，向下兼容到 2024-11-05；许可证 Apache-2.0 / MIT，符合 D-20）。升级 SDK 时单独评估。备选：自己实现协议的最小子集。【已确定 2026-10-16】
+- [x] **D-98** MCP 服务器是 CLI 的子命令 `photoframe mcp serve`，不另做 `photoframe-mcp` 程序；stdout 只写协议消息，其他输出都转到 stderr。备选：单独的可执行文件。【已确定 2026-10-16】
+- [x] **D-99** 按字段修改预设（D-93）的路径直接用 `manifest.json` 的真实字段名，如 `canvas.minMarginPx`、`layers[0].opacity`；方括号里可以写 `layerId` / `slotId`（如 `layers[exif].text.fontSizePx`），`layers[+]` 表示追加。CLI `preset set` 的值先按 JSON 解析，解析不了当字符串；同一条命令先执行所有赋值，再执行 `--unset`。改完的预设走与导入完全相同的校验，原子写入；内置预设只读。MCP 对应工具为 `get_preset` / `update_preset`。备选：另起简短别名；值一律要求 JSON。【已确定 2026-10-16】
+- [x] **D-100** MCP 安全规则：读写目录白名单由 `--allow-read` / `--allow-write`（或 `PHOTOFRAME_MCP_ALLOW_READ/WRITE`）显式指定，未配置时拒绝一切文件访问；只接受绝对路径，拒绝 `.`、`..`；先解析符号链接再检查；硬链接数大于 1 的输入一律拒绝；覆盖必须显式传 `overwrite: true`；返回内容里白名单以外的路径一律隐藏。检查与读写之间的极短竞争窗口（另一程序恰好换成符号链接）不处理，写入 docs/MCP.md。备选：允许硬链接，只检查路径。【已确定 2026-10-16】
+- [x] **D-101** MCP 默认上限：单个输入文件 2 GiB、预览长边 2048 px、每次预览最多 12 页、直接返回的预览最多 8 MiB、同时进行的任务 16 个、每次会话输出总量 20 GiB（写入前检查的软上限），都可用启动参数调整。D-18 只取消像素尺寸限制，这些字节上限用于防止 AI 失控写满磁盘。备选：不设输出总量上限。【已确定 2026-10-16】
+- [x] **D-102** `preview_export` 默认把预览图直接返回给 AI 客户端（可能被发送到云端模型，§11.4 隐私说明已写明）；传入输出目录时只写文件、不返回图片。备选：默认只写文件，需要时显式打开返回。【已确定 2026-10-16】
+- [x] **D-103** MCP 能修改预设（`update_preset`），但不提供导入预设、导入素材和删除操作，因为它们需要读取任意文件或会删除内容；这些操作用 GUI 或 CLI 完成。备选：在读写白名单约束下开放，删除需显式确认。【已确定 2026-10-16】
+- [x] **D-104** MCP 工具结果只带 `ok` 和 `error`，不带 CLI `--json` 的 `formatVersion` / `command` / `exitCode` 外壳；`validate_export` 返回 `ok: true` 并用 `valid` 表示是否通过。备选：与 CLI 完全相同的外壳。【已确定 2026-10-16】
+- [x] **D-105** GUI 界面固定深色，不跟随系统外观，也不做浅色模式，与 Compressor、Final Cut Pro 一致；看照片时界面亮度不随系统变化。配色参照 Compressor 截图取样（背景约 `#161616` / `#1e1e1e`，面板约 `#2d2d2d`）。备选：跟随系统外观，浅色模式用系统语义色。【已确定 2026-10-16】
+- [x] **D-106** 成品的 HDR 预览：在服务的预览参数里加颜色模式（SDR / HDR），GUI、CLI、MCP 共用；MCP 分支合并后马上补。在此之前，GUI 切到 HDR 时成品仍显示 SDR 并附说明。备选：V1 成品预览只给 SDR。【已确定 2026-10-16】
+- [x] **D-107** 左栏「位置」列表（常用导出目录）只存在 GUI 自己的偏好设置里，不放进共用本地库；CLI 用 `--output`，MCP 用写入白名单。备选：放进共用库，CLI 加 `--location <名称>`。【已确定 2026-10-16】
+- [x] **D-108** 点「开始批处理」后，已提交的源图和任务从「当前」移走，并自动切到「活跃」，与 Compressor 一致。备选：留在「当前」，方便改参数再导一次。【已确定 2026-10-16】
+- [x] **D-109** 底栏的「默认导出位置」只对之后新建的任务生效，不改已经在列表里的任务。备选：没单独改过位置的已有任务也跟着变。【已确定 2026-10-16】
+- [x] **D-110** App Sandbox 暂不开启，与签名方式（D-21）一起决定：只在 GitHub 发布可以不开，上 Mac App Store 必须开（届时导出位置用 security-scoped bookmark 保存权限）。备选：现在就按开沙盒实现。【已确定 2026-10-16】
+- [x] **D-111** V1 实现「相机图标按 EXIF 自动匹配」和「EXIF 文字字体样式」：预设加字段，渲染支持，界面接上。备选：放到 V2，V1 手动绑定相机图标、EXIF 文字只用默认字体。【已确定 2026-10-16】
+- [x] **D-112** 强调色（选中、按钮）跟随系统设置，不用 Compressor 的紫色，也避免复制 Compressor 的视觉品牌。备选：固定一个强调色。【已确定 2026-10-16】
+- [x] **D-113** 主窗口最小宽度 1120 pt（更窄时三栏最小宽度之和放不下，会导致崩溃）。备选：更窄的窗口自动收起侧栏。【已确定 2026-10-16】
+- [x] **D-114** V1 提供 ⌘, 设置窗口，放并发数和内存预算（D-53）、「提交后是否切到活跃」等少量选项。备选：先只用默认值。【已确定 2026-10-16】
+- [x] **D-115** GUI 工程结构：`Apps/PhotoFrameMac/project.yml` 用 XcodeGen 生成 `.xcodeproj`，生成结果一起提交（CI 和其他人不用另装 XcodeGen）；工程只负责打包 `.app`（Info.plist、entitlements、签名）；界面和状态代码放在本地包 `PhotoFrameMacKit`（`PhotoFrameMacModel` 不依赖 SwiftUI，可直接 `swift test`；`PhotoFrameMacUI` 是界面）。没有 Team ID 时不带 App Group entitlement，本地库退回同一个 Group Containers 路径（D-78）。备选：手写 Xcode 工程，界面代码直接放在 App target 里。【已确定 2026-10-16】
 
 ---
 
