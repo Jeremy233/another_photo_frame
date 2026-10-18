@@ -125,6 +125,14 @@ public final class Workbench {
 
     public let preview: PreviewModel
 
+    /// 撤销用窗口的 UndoManager（界面出现时设置）；没有时操作照常执行、不记撤销。
+    @ObservationIgnored public weak var undoManager: UndoManager?
+    @ObservationIgnored var undoNesting = 0
+    /// 正在拖动滑块：拖动开始时的状态。
+    @ObservationIgnored var continuousEditStart: UndoState?
+    /// 上一步撤销记录的合并键和时间（连续修改同一个字段时合成一步）。
+    @ObservationIgnored var lastUndo: (key: AnyHashable, time: ContinuousClock.Instant)?
+
     @ObservationIgnored var work: [String: BackgroundWork] = [:]
     @ObservationIgnored private var workCount = 0
     @ObservationIgnored var validationDelay: Duration
@@ -217,12 +225,17 @@ public final class Workbench {
     }
 
     public func setField<Value>(_ path: WritableKeyPath<ExportPreset, Value>, _ value: Value) {
-        edit { $0[keyPath: path] = value }
+        edit(coalescing: path) { $0[keyPath: path] = value }
     }
 
     /// 修改右栏正在编辑的全部预设（任务的副本，或左栏预设的草稿）。不自动写回库里的预设（§4.2）。
-    public func edit(_ body: (inout ExportPreset) -> Void) {
+    /// 可以撤销，Edit 菜单里显示为「撤销 + `name`」；`key` 见 ``undoable(_:coalescing:_:)``。
+    public func edit(_ name: String = "修改参数", coalescing key: AnyHashable? = nil, _ body: (inout ExportPreset) -> Void) {
         guard isInspectorEditable else { return }
+        undoable(name, coalescing: key) { editInspected(body) }
+    }
+
+    private func editInspected(_ body: (inout ExportPreset) -> Void) {
         switch inspectorSubject {
         case .jobs(let ids):
             updateJobs(ids) { job in

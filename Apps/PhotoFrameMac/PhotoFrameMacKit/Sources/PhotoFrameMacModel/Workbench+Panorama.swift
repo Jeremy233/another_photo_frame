@@ -15,6 +15,10 @@ extension Workbench {
     /// 切到手动时从自动算出的切片张数开始（只允许手动改多，D-11），每个任务按它自己的源图算；切回自动。
     public func setSlideCountManual(_ manual: Bool) {
         guard isInspectorEditable else { return }
+        undoable("修改切片张数") { setSlideCountManualNow(manual) }
+    }
+
+    private func setSlideCountManualNow(_ manual: Bool) {
         let (subject, jobs) = inspected()
         switch subject {
         case .jobs:
