@@ -94,6 +94,41 @@ struct PresetEditCommandTests {
         #expect(badPath.status == 4 && badPath.stderr.value.contains("preset.invalid_path"))
     }
 
+    @Test("set：负数（-1、-0.5）是值，不是选项；--unset、--json 照常可以写在任何位置")
+    func negativeValues() async throws {
+        let box = try Sandbox()
+        _ = await runCLI(["preset", "duplicate", "instagram-standard", "--name", "Mine"], in: box.root)
+        let layer = """
+            {"layerId": "note", "type": "text", "enabled": true, "visibleOn": "coverOnly", "anchor": "bottomLeft", "reference": "photo",
+             "side": "outside", "offsetPx": [0, 16], "maxBoundsPx": [600, 48], "opacity": 1, "zIndex": 0,
+             "text": {"content": "Hi", "fontSizePx": 18, "lineHeight": 1.2, "color": {"colorSpace": "sRGB", "hex": "#000000"}, "paddingPx": 0}}
+            """
+        #expect(await runCLI(["preset", "set", "mine", "layers[+]", layer], in: box.root).status == 0)
+
+        let set = await runCLI(["preset", "set", "mine", "--json", "layers[note].zIndex", "-1", "layers[note].text.letterSpacingPx", "-0.5"],
+                               in: box.root)
+        #expect(set.status == 0, "\(set.stderr.value)")
+        #expect((try set.stdout.json()["changed"] as? [String])?.count == 2)
+        func value(_ path: String) async -> String {
+            await runCLI(["preset", "get", "mine", path], in: box.root).stdout.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        #expect(await value("layers[note].zIndex") == "-1")
+        #expect(await value("layers[note].text.letterSpacingPx") == "-0.5")
+
+        let mixed = await runCLI(["preset", "set", "mine", "layers[note].zIndex", "-2", "--unset", "layers[note].text.letterSpacingPx",
+                                  "layers[note].opacity", "0.5", "--json"], in: box.root)
+        #expect(mixed.status == 0, "\(mixed.stderr.value)")
+        #expect((try mixed.stdout.json()["changed"] as? [String])?.count == 3)
+        #expect(await value("layers[note].zIndex") == "-2")
+        #expect(await value("layers[note].opacity") == "0.5")
+        // 删除后回到默认值
+        #expect(await value("layers[note].text.letterSpacingPx") == "0")
+        // 路径和值仍要成对；路径位置上的未知选项仍是用法错误
+        #expect(await runCLI(["preset", "set", "mine", "layers[note].zIndex", "-1", "-2"], in: box.root).status == 2)
+        let bogus = await runCLI(["preset", "set", "mine", "--bogus", "1"], in: box.root)
+        #expect(bogus.status == 2 && bogus.stderr.value.contains("--bogus"))
+    }
+
     @Test("set：值先按 JSON 解析，解析不了就是字符串")
     func valueParsing() {
         #expect(PresetCommand.SetCommand.parseValue("80") == .number(80))

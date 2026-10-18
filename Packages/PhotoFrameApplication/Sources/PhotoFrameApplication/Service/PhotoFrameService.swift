@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotoFrameCore
 import PhotoFrameRendering
 import PhotoFrameStorage
@@ -118,6 +119,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
     private let configuration: QueueConfiguration
     private var sourcesById: [SourceID: PhotoSource] = [:]
     private var sourceOrder: [SourceID] = []
+    /// 规范化后的文件 URL → 源图，登记时查重用（拖进上千张图时不必逐个比较）。
+    private var sourceIdsByURL: [URL: SourceID] = [:]
     /// 通过文件路径读过的预设，之后也出现在 `listPresets` 里。
     private var filePresets: [CatalogPreset] = []
 
@@ -382,7 +385,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
 
     public func addSource(_ fileURL: URL) throws(ApplicationError) -> PhotoSource {
         let url = fileURL.standardizedFileURL
-        if let existing = sourcesById.values.first(where: { $0.fileURL.standardizedFileURL == url }) {
+        if let id = sourceIdsByURL[url], let existing = sourcesById[id] {
             return existing
         }
         try Self.checkSourceFile(url)
@@ -390,7 +393,19 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let source = PhotoSource(fileURL: url, fileSizeBytes: size)
         sourcesById[source.sourceId] = source
         sourceOrder.append(source.sourceId)
+        sourceIdsByURL[url] = source.sourceId
         return source
+    }
+
+    /// 源图的存储尺寸与 EXIF 方向（只读文件头，不解码像素）。读不到时为 nil，队列按默认值估算。
+    static func sourceImage(at url: URL) -> SourceImage? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let width = props[kCGImagePropertyPixelWidth] as? Int, let height = props[kCGImagePropertyPixelHeight] as? Int,
+              width > 0, height > 0
+        else { return nil }
+        let orientation = ExifOrientation(rawValue: props[kCGImagePropertyOrientation] as? Int ?? 1) ?? .up
+        return SourceImage(storedSize: PixelSize(width: width, height: height), orientation: orientation)
     }
 
     private static func checkSourceFile(_ url: URL) throws(ApplicationError) {
@@ -450,9 +465,11 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         } catch {
             destinationError = error
         }
-        // 覆盖检查要保护的源文件：本请求的全部源图，以及队列中已有任务的源图。
-        let protectedSources = sources.map(\.fileURL) + (await queue.allRecords()).map(\.spec.source.fileURL)
-        let resolver = configuration.currentSlotResolver()
+        // 覆盖检查要保护的源文件：本请求的全部源图，以及队列中已有任务的源图。只有覆盖策略用得到。
+        let protectedSources = destination.conflictPolicy == .overwrite
+            ? sources.map(\.fileURL) + (await queue.allRecords()).map(\.spec.source.fileURL) : []
+        var resolver = LazySlotResolver(configuration)
+        let caseSensitive = OutputNaming.volumeIsCaseSensitive(destination.rootDirectory)
         var claimed: Set<String> = []
         var items: [ValidationItem] = []
 
@@ -468,7 +485,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 warnings += attempt { () throws(ApplicationError) in try ExportChecks.checkPreset(preset, platform: platform) } ?? []
                 if let destinationError { errors.append(destinationError) }
                 let slots = attempt { () throws(ApplicationError) in
-                    try ExportChecks.resolveSlots(resolver, preset: preset, bindings: request.assetBindings, source: source.fileURL)
+                    try ExportChecks.resolveSlots(&resolver, preset: preset, bindings: request.assetBindings, source: source.fileURL)
                 }
                 warnings += slots?.1 ?? []
 
@@ -483,7 +500,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                         outputs = plan.outputs.map {
                             ValidationItem.PlannedFile(
                                 role: $0.role,
-                                fileName: OutputNaming.fileName(for: $0.role, format: preset.output.format, outputCount: plan.outputs.count),
+                                fileName: OutputNaming.fileName(for: $0.role, format: preset.output.format,
+                                                                outputCount: OutputNaming.positionCount(of: plan.outputs.map(\.role))),
                                 pixelSize: $0.pixelSize)
                         }
                     } catch {
@@ -492,7 +510,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 }
 
                 let directory = predictDirectory(
-                    source: source, preset: preset, destination: destination, claimed: &claimed,
+                    source: source, preset: preset, destination: destination, caseSensitive: caseSensitive, claimed: &claimed,
                     protectedSources: protectedSources, errors: &errors)
                 items.append(ValidationItem(
                     sourceId: source.sourceId, sourceURL: source.fileURL, presetId: preset.presetId, presetName: preset.name,
@@ -504,25 +522,29 @@ public actor LocalPhotoFrameService: PhotoFrameService {
 
     /// 推算作品目录（§9.2、D-46…D-49）。默认策略按磁盘现状和本请求里排在前面的任务推算版本后缀；
     /// 覆盖策略检查旧目录能否被替换，以及本请求里是否有两个任务指向同一目录。
+    /// - Parameter caseSensitive: 目标卷是否区分大小写。不区分时只差大小写的作品名是同一个目录（D-73）。
     private func predictDirectory(
-        source: PhotoSource, preset: ExportPreset, destination: ExportDestination, claimed: inout Set<String>,
-        protectedSources: [URL], errors: inout [ApplicationError]
+        source: PhotoSource, preset: ExportPreset, destination: ExportDestination, caseSensitive: Bool,
+        claimed: inout Set<String>, protectedSources: [URL], errors: inout [ApplicationError]
     ) -> URL {
         let workName = destination.naming.workName(source: source, preset: preset)
         let platformDir = destination.rootDirectory.standardizedFileURL.appending(
             path: OutputNaming.platformFolderName(for: preset.platform), directoryHint: .isDirectory)
         let fm = FileManager.default
+        func key(_ url: URL) -> String { OutputNaming.collisionKey(for: url, caseSensitive: caseSensitive) }
         switch destination.conflictPolicy {
         case .versionSuffix:
             for version in 1...OutputNaming.maxVersion {
                 let target = platformDir.appending(path: OutputNaming.versioned(workName, version: version), directoryHint: .isDirectory)
-                if !fm.fileExists(atPath: target.path), claimed.insert(target.path).inserted { return target }
+                // 与发布时的 RENAME_EXCL 一致：悬空的符号链接也算已存在（attributesOfItem 不跟随链接）。
+                let exists = (try? fm.attributesOfItem(atPath: target.path)) != nil
+                if !exists, claimed.insert(key(target)).inserted { return target }
             }
             errors.append(.versionsExhausted(workName))
             return platformDir.appending(path: workName, directoryHint: .isDirectory)
         case .overwrite:
             let target = platformDir.appending(path: workName, directoryHint: .isDirectory)
-            if !claimed.insert(target.path).inserted {
+            if !claimed.insert(key(target)).inserted {
                 errors.append(.duplicateOutput(target.path))
             } else if fm.fileExists(atPath: target.path) || (try? fm.destinationOfSymbolicLink(atPath: target.path)) != nil {
                 do {
@@ -541,8 +563,9 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         try ExportChecks.checkSource(source.fileURL)
         let platform = configuration.platformProfile(for: request.preset)
         let presetWarnings = try ExportChecks.checkPreset(request.preset, platform: platform)
+        var resolver = LazySlotResolver(configuration)
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            configuration.currentSlotResolver(), preset: request.preset, bindings: request.assetBindings, source: source.fileURL)
+            &resolver, preset: request.preset, bindings: request.assetBindings, source: source.fileURL)
         let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: request.preset,
                                    platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride)
         do {
@@ -577,7 +600,12 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         guard !request.sourceIds.isEmpty, !request.presets.isEmpty else { throw .emptyRequest() }
         var specs: [JobSpec] = []
         for sourceId in request.sourceIds {
-            guard let source = sourcesById[sourceId] else { throw .unknownSource(sourceId) }
+            guard var source = sourcesById[sourceId] else { throw .unknownSource(sourceId) }
+            if source.image == nil, let image = Self.sourceImage(at: source.fileURL) {
+                // 只读文件属性（尺寸、方向），给队列按像素数估算内存（§12.1、D-18、D-53）。
+                source.image = image
+                sourcesById[sourceId] = source
+            }
             for preset in request.presets {
                 specs.append(JobSpec(source: source, preset: preset, destination: request.destination,
                                      assetBindings: request.assetBindings, sourceColorOverride: request.sourceColorOverride))
@@ -586,38 +614,41 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         return await queue.submit(specs).map(\.jobId)
     }
 
-    public func start() async { await queue.resume() }
-    public func pause() async { await queue.pause() }
+    // 下面这些只转交给任务队列（它自己是 actor），不经过服务的 actor：服务在读写本地库时，
+    // 任务进度、状态查询和取消不必排在后面等。
 
-    public func cancel(_ job: JobID) async throws(ApplicationError) {
+    public nonisolated func start() async { await queue.resume() }
+    public nonisolated func pause() async { await queue.pause() }
+
+    public nonisolated func cancel(_ job: JobID) async throws(ApplicationError) {
         try await queue.cancel(job)
     }
 
-    public func retry(_ job: JobID) async throws(ApplicationError) -> AttemptID {
+    public nonisolated func retry(_ job: JobID) async throws(ApplicationError) -> AttemptID {
         try await queue.retry(job)
     }
 
-    public func status(_ job: JobID) async throws(ApplicationError) -> JobSnapshot {
+    public nonisolated func status(_ job: JobID) async throws(ApplicationError) -> JobSnapshot {
         guard let record = await queue.record(for: job) else { throw .unknownJob(job) }
         return record
     }
 
-    public func jobs() async -> [JobSnapshot] { await queue.allRecords() }
+    public nonisolated func jobs() async -> [JobSnapshot] { await queue.allRecords() }
 
-    public func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest? {
+    public nonisolated func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest? {
         try await status(job).manifest
     }
 
-    public func setMaxConcurrentJobs(_ count: Int) async { await queue.setMaxConcurrentJobs(count) }
-    public func setMemoryBudget(_ bytes: Int64?) async { await queue.setMemoryBudget(bytes) }
+    public nonisolated func setMaxConcurrentJobs(_ count: Int) async { await queue.setMaxConcurrentJobs(count) }
+    public nonisolated func setMemoryBudget(_ bytes: Int64?) async { await queue.setMemoryBudget(bytes) }
 
-    public func removeStaleStaging(in destinationRoot: URL) async -> [URL] {
+    public nonisolated func removeStaleStaging(in destinationRoot: URL) async -> [URL] {
         await queue.removeStaleStaging(in: destinationRoot)
     }
 
-    public func events() async -> AsyncStream<JobEvent> { await queue.events() }
+    public nonisolated func events() async -> AsyncStream<JobEvent> { await queue.events() }
 
-    public func waitUntilFinished(_ jobs: [JobID]) async -> [JobSnapshot] {
+    public nonisolated func waitUntilFinished(_ jobs: [JobID]) async -> [JobSnapshot] {
         await queue.waitUntilFinished(jobs)
     }
 }

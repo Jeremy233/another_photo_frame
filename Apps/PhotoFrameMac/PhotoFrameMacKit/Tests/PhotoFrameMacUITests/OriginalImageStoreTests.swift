@@ -9,6 +9,11 @@ import UniformTypeIdentifiers
     /// 合成一张 width × height 的 JPEG（可选 EXIF 方向）。
     static func jpeg(_ name: String, width: Int, height: Int, orientation: Int = 1) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appending(path: "store-\(UUID().uuidString)-\(name).jpg")
+        try write(to: url, width: width, height: height, orientation: orientation)
+        return url
+    }
+
+    static func write(to url: URL, width: Int, height: Int, orientation: Int = 1) throws {
         let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                             space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
         ctx.setFillColor(CGColor(srgbRed: 0.2, green: 0.5, blue: 0.7, alpha: 1))
@@ -16,7 +21,65 @@ import UniformTypeIdentifiers
         let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
         CGImageDestinationAddImage(dest, ctx.makeImage()!, [kCGImagePropertyOrientation: orientation] as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw CocoaError(.fileWriteUnknown) }
-        return url
+    }
+
+    @Test func changedFileIsDecodedAgain() async throws {
+        let url = try Self.jpeg("changed", width: 1200, height: 800)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = OriginalImageStore()
+        let info = try #require(store.reloadInfo(url))
+        #expect(info.pixelSize == CGSize(width: 1200, height: 800))
+        _ = await store.load(.init(url: url, tier: .quick, hdr: false, modified: info.modified))
+        #expect(store.decodeCount == 1)
+
+        // 同一个文件换了内容：下次加载时按修改时间发现，重新读尺寸、重新解码。
+        try Self.write(to: url, width: 900, height: 600)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: url.path)
+        let changed = try #require(store.reloadInfo(url))
+        #expect(changed.pixelSize == CGSize(width: 900, height: 600) && changed.modified != info.modified)
+        #expect(store.best(url: url, hdr: false, modified: changed.modified) == nil)
+        _ = await store.load(.init(url: url, tier: .quick, hdr: false, modified: changed.modified))
+        #expect(store.decodeCount == 2)
+    }
+
+    @Test func fullDecodeNoLongerNeededIsNotCached() async throws {
+        let url = try Self.jpeg("full", width: 4000, height: 3000)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = OriginalImageStore()
+        let key = OriginalImageStore.Key(url: url, tier: .full, hdr: false)
+        // 请求它的视图已经不需要了（任务被取消）：几百 MB 的全分辨率不放进缓存。
+        let request = Task { await store.load(key) }
+        request.cancel()
+        #expect(await request.value == nil)
+        #expect(store.cached(key) == nil)
+        #expect(await store.load(key) != nil)
+        #expect(store.cached(key) != nil)
+    }
+
+    @Test func retainKeepsOnlyOriginalsStillInTheBatch() async throws {
+        let a = try Self.jpeg("a", width: 600, height: 400)
+        let b = try Self.jpeg("b", width: 600, height: 400)
+        defer { [a, b].forEach { try? FileManager.default.removeItem(at: $0) } }
+        let store = OriginalImageStore()
+        _ = await store.load(.init(url: a, tier: .quick, hdr: false))
+        _ = await store.load(.init(url: b, tier: .quick, hdr: false))
+        store.retain(urls: [b])
+        #expect(store.cached(.init(url: a, tier: .quick, hdr: false)) == nil)
+        #expect(store.cached(.init(url: b, tier: .quick, hdr: false)) != nil)
+    }
+
+    @Test func fullResolutionThresholdHasHysteresis() {
+        let size = CGSize(width: 8000, height: 6000)
+        // 还不知道这块画布的比例：不要全分辨率。
+        #expect(!OriginalImageStore.needsFull(pixelSize: size, scale: nil, showingFull: false))
+        // 清晰版本（3072 px）够用时不要，放大到不够时要。
+        #expect(!OriginalImageStore.needsFull(pixelSize: size, scale: 0.3, showingFull: false))
+        #expect(OriginalImageStore.needsFull(pixelSize: size, scale: 0.5, showingFull: false))
+        // 已经在显示全分辨率：缩到阈值的 3/4（2304 px）以下才释放。
+        #expect(OriginalImageStore.needsFull(pixelSize: size, scale: 0.35, showingFull: true))
+        #expect(!OriginalImageStore.needsFull(pixelSize: size, scale: 0.25, showingFull: true))
+        // 原图不比清晰版本大：从来不需要。
+        #expect(!OriginalImageStore.needsFull(pixelSize: CGSize(width: 3000, height: 2000), scale: 4, showingFull: false))
     }
 
     @Test func tiersAndCache() async throws {

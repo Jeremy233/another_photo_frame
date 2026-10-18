@@ -27,6 +27,14 @@ public struct PresetIssue: Hashable, Sendable, Codable, CustomStringConvertible 
 }
 
 extension ExportPreset {
+    /// 像素量（画布、图层尺寸与偏移、文字字号、字间距、内边距）的上限，与素材单边上限（D-85）和图层绘制上限相同。
+    /// 更大的值不会有用，只会让版式计算溢出或分配巨量内存。
+    public static let maxPixelExtent = 16384
+    /// 手动切片张数的上限：远高于各平台的轮播上限（≤ 35），防止版式一次排出海量切片。
+    public static let maxTileCount = 1000
+    /// 行距（字号的倍数）上限。
+    public static let maxLineHeight = 100.0
+
     /// ID（layerId、slotId）允许的字符：字母、数字、`.`、`_`、`-`，1…64 个字符。
     public static func isValidIdentifier(_ id: String) -> Bool {
         (1...64).contains(id.count) && id.allSatisfy { c in
@@ -62,11 +70,14 @@ extension ExportPreset {
         // 画布
         if canvas.width <= 0 || canvas.height <= 0 {
             error("invalid_canvas_size", "canvas", "画布尺寸必须为正：\(canvas.width)×\(canvas.height)")
+        } else if canvas.width > Self.maxPixelExtent || canvas.height > Self.maxPixelExtent {
+            error("invalid_canvas_size", "canvas", "画布单边不能超过 \(Self.maxPixelExtent) px：\(canvas.width)×\(canvas.height)")
         }
+        // 写成 m ≥ L − m 而不是 2m ≥ L：边距极大时 2m 会溢出。
         if canvas.minMarginPx < 0 {
             error("invalid_margin", "canvas.minMarginPx", "边距不能为负：\(canvas.minMarginPx)")
         } else if canvas.width > 0, canvas.height > 0,
-                  2 * canvas.minMarginPx >= min(canvas.width, canvas.height) {
+                  canvas.minMarginPx >= min(canvas.width, canvas.height) - canvas.minMarginPx {
             error("margin_too_large", "canvas.minMarginPx", "边距 \(canvas.minMarginPx) px 对画布过大")
         }
         checkColor(canvas.background, "canvas.background")
@@ -82,8 +93,11 @@ extension ExportPreset {
         // 全景
         if case .fixed(let n) = panorama.tileCount, n < 1 {
             error("invalid_tile_count", "panorama.tileCount", "切片张数必须 ≥ 1：\(n)")
+        } else if case .fixed(let n) = panorama.tileCount, n > Self.maxTileCount {
+            error("invalid_tile_count", "panorama.tileCount", "切片张数不能超过 \(Self.maxTileCount)：\(n)")
         }
-        if panorama.verticalMarginPx < 0 || (canvas.height > 0 && 2 * panorama.verticalMarginPx >= canvas.height) {
+        if panorama.verticalMarginPx < 0
+            || (canvas.height > 0 && panorama.verticalMarginPx >= canvas.height - panorama.verticalMarginPx) {
             error("invalid_vertical_margin", "panorama.verticalMarginPx", "切片上下边距无效：\(panorama.verticalMarginPx)")
         }
         if case .color(let c) = panorama.padColor { checkColor(c, "panorama.padColor") }
@@ -117,11 +131,16 @@ extension ExportPreset {
             if !(0...1).contains(layer.opacity) {
                 error("invalid_opacity", "\(path).opacity", "不透明度必须在 0…1 之间：\(layer.opacity)")
             }
-            if let s = layer.sizePx, !s.isPositive {
-                error("invalid_size", "\(path).sizePx", "尺寸必须为正")
+            for (field, size) in [("sizePx", layer.sizePx), ("maxBoundsPx", layer.maxBoundsPx)] {
+                guard let size else { continue }
+                if !size.isPositive {
+                    error("invalid_size", "\(path).\(field)", "尺寸必须为正")
+                } else if size.width > Self.maxPixelExtent || size.height > Self.maxPixelExtent {
+                    error("invalid_size", "\(path).\(field)", "尺寸不能超过 \(Self.maxPixelExtent) px")
+                }
             }
-            if let s = layer.maxBoundsPx, !s.isPositive {
-                error("invalid_size", "\(path).maxBoundsPx", "尺寸必须为正")
+            if abs(Double(layer.offset.x)) > Double(Self.maxPixelExtent) || abs(Double(layer.offset.y)) > Double(Self.maxPixelExtent) {
+                error("invalid_offset", "\(path).offsetPx", "偏移不能超过 ±\(Self.maxPixelExtent) px")
             }
             if layer.anchor == .center, layer.reference == .photo(.outside) {
                 error("center_anchor_outside", "\(path).anchor", "居中锚点不能放在照片外侧；请改为内侧或选择其他锚点")
@@ -161,10 +180,25 @@ extension ExportPreset {
             }
             if layer.type.usesText {
                 if let text = layer.text {
-                    if !(text.fontSizePx > 0) { error("invalid_text", "\(path).text.fontSizePx", "字号必须为正") }
-                    if !(text.lineHeight > 0) { error("invalid_text", "\(path).text.lineHeight", "行距必须为正") }
-                    if !text.letterSpacingPx.isFinite { error("invalid_text", "\(path).text.letterSpacingPx", "字间距无效") }
-                    if text.paddingPx < 0 { error("invalid_text", "\(path).text.paddingPx", "内边距不能为负") }
+                    let limit = Double(Self.maxPixelExtent)
+                    if !(text.fontSizePx > 0) {
+                        error("invalid_text", "\(path).text.fontSizePx", "字号必须为正")
+                    } else if !(text.fontSizePx <= limit) {
+                        error("invalid_text", "\(path).text.fontSizePx", "字号不能超过 \(Self.maxPixelExtent) px")
+                    }
+                    if !(text.lineHeight > 0) {
+                        error("invalid_text", "\(path).text.lineHeight", "行距必须为正")
+                    } else if !(text.lineHeight <= Self.maxLineHeight) {
+                        error("invalid_text", "\(path).text.lineHeight", "行距不能超过字号的 \(Int(Self.maxLineHeight)) 倍")
+                    }
+                    if !text.letterSpacingPx.isFinite || abs(text.letterSpacingPx) > limit {
+                        error("invalid_text", "\(path).text.letterSpacingPx", "字间距无效")
+                    }
+                    if text.paddingPx < 0 {
+                        error("invalid_text", "\(path).text.paddingPx", "内边距不能为负")
+                    } else if text.paddingPx > Self.maxPixelExtent {
+                        error("invalid_text", "\(path).text.paddingPx", "内边距不能超过 \(Self.maxPixelExtent) px")
+                    }
                     checkColor(text.color, "\(path).text.color")
                 } else {
                     warning("empty_text", "\(path).text", "文字图层没有内容")

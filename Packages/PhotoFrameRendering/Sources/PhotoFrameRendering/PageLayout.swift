@@ -35,8 +35,14 @@ struct PageLayout {
                 }
                 let pano = try PanoramaLayout(
                     tile: canvas.size, source: source, coverMinimumMargin: canvas.minMarginPx,
-                    verticalMargin: p.verticalMarginPx, slideCount: count, maxCarouselItems: maxCarouselItems)
-                warnings += pano.warnings.map { RenderWarning(code: $0.code, message: $0.message) }
+                    verticalMargin: p.verticalMarginPx, slideCount: count, maxCarouselItems: maxCarouselItems,
+                    includesCover: p.cover)
+                warnings += pano.warnings.map { warning in
+                    if case .exceedsCarouselLimit(let total, let limit) = warning, !p.cover {
+                        return RenderWarning(code: warning.code, message: "切片共 \(total) 张，超过平台轮播上限 \(limit) 张")
+                    }
+                    return RenderWarning(code: warning.code, message: warning.message)
+                }
                 let pad: PresetColor = switch p.padColor {
                 case .canvasBackground: canvas.background
                 case .color(let c): c
@@ -118,15 +124,27 @@ struct PageLayout {
                     note(p, page: page.page)
                     result[page.page] = p
                 }
-                if !plan.missingPages.isEmpty {
-                    warnings.append(RenderWarning(
-                        code: "overlay.missing_pages",
-                        message: "指定页码超出实际页数：\(plan.missingPages.map(String.init).joined(separator: ", "))（D-44）",
-                        layerId: layer.layerId))
-                }
             }
         } catch {
             throw .overlay(error, layerId: layer.layerId)
+        }
+        // 要显示的页不存在时只提示（D-44）：指定页码超出实际页数（单页版式只有第 0 页），
+        // 或者图层只在封面、而全景不输出封面。
+        let existing = Set(pages.map(\.role.page))
+        switch geometry.visibility {
+        case .coverOnly where !existing.contains(0):
+            warnings.append(RenderWarning(
+                code: "overlay.missing_pages", message: "图层只显示在封面，但不输出封面（D-44）", layerId: layer.layerId))
+        case .selectedSlides(let selected):
+            let missing = selected.filter { !existing.contains($0) }.sorted()
+            if !missing.isEmpty {
+                warnings.append(RenderWarning(
+                    code: "overlay.missing_pages",
+                    message: "指定页码超出实际页数：\(missing.map(String.init).joined(separator: ", "))（D-44）",
+                    layerId: layer.layerId))
+            }
+        default:
+            break
         }
         return result
     }

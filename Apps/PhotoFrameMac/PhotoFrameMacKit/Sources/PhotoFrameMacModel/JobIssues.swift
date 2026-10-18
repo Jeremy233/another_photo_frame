@@ -53,8 +53,9 @@ extension Workbench {
     /// 预览区不再显示这些提示，选中预设或源图时它们也只在这里。
     public var inspectorIssues: [JobIssue] {
         var issues: [JobIssue] = []
-        if case .jobs(let ids) = inspectorSubject {
-            guard ids.count == 1, let job = job(ids[0]) else { return [] }
+        let (subject, jobs) = inspected()
+        if case .jobs = subject {
+            guard jobs.count == 1, let job = jobs.first else { return [] }
             issues = job.issues
         }
         guard preview.subject == previewSubject else { return issues }

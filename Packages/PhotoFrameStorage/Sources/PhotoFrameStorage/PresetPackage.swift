@@ -152,7 +152,8 @@ public enum PresetPackage {
     /// 从文件读取。先检查文件大小，避免把超大文件读进内存。
     public static func readFile(at url: URL, limits: ArchiveLimits = .presetPackage) throws(PresetPackageError) -> Data {
         do {
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            // 符号链接按它指向的文件计算大小（链接自己的 `.fileSizeKey` 只是链接本身的大小）。
+            let size = try url.resolvingSymlinksInPath().resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= limits.maxArchiveBytes else {
                 throw PresetPackageError.archive(.archiveTooLarge(bytes: size, limit: limits.maxArchiveBytes))
             }

@@ -13,11 +13,23 @@ extension Workbench {
             libraryWarnings = list.warnings
         }
         let assetList = await service.listAssets(category: nil)
-        assets = assetList.assets
         let bindingList = await service.listBindings()
-        bindings = bindingList.bindings
+        setLibrary(assets: assetList.assets, bindings: bindingList.bindings)
         libraryWarnings += assetList.warnings + bindingList.warnings
         if let id = selectedPresetId, !presets.contains(where: { $0.presetId == id }) { selectedPresetId = nil }
+    }
+
+    /// 换上读到的素材和绑定。素材 ID 或绑定真的变了时，预设本地 / 默认绑定的解析结果可能跟着变：
+    /// 预览按新的内容渲染（不用缓存里的旧结果），全部任务重新校验。
+    func setLibrary(assets newAssets: [AssetInfo]? = nil, bindings newBindings: [PersistedBinding]) {
+        let assetsChanged = newAssets.map { Set($0.map(\.assetId)) != Set(assets.map(\.assetId)) } ?? false
+        let bindingsChanged = Set(newBindings) != Set(bindings)
+        if let newAssets { assets = newAssets }
+        bindings = newBindings
+        guard assetsChanged || bindingsChanged else { return }
+        libraryRevision += 1
+        scheduleValidation(allJobs.map(\.id))
+        refreshPreview()
     }
 
     // MARK: 预设
@@ -31,18 +43,25 @@ extension Workbench {
 
     func reference(_ id: UUID) -> PresetReference { .library(id.uuidString) }
 
-    func loadPresetEditor() {
+    /// 读取左栏选中的预设，在右栏编辑。`saved`：刚存储的草稿；存储期间又改过（草稿已经和它不同）时保留草稿，显示为未存储。
+    func loadPresetEditor(saved: ExportPreset? = nil) {
         guard let id = selectedPresetId else {
             presetEditor = nil
             refreshPreview()
             return
         }
         background("presetEditor") { [self] in
+            var loaded = false
             await perform("读取预设失败") {
                 let entry = try await service.resolvePreset(reference(id))
                 guard selectedPresetId == id else { return }
-                presetEditor = PresetEditor(entry: entry, draft: entry.preset)
+                var draft = entry.preset
+                if let saved, let current = presetEditor?.draft, current.presetId == id, current != saved { draft = current }
+                presetEditor = PresetEditor(entry: entry, draft: draft)
+                loaded = true
             }
+            // 读不到新选中的预设：不能留着上一个预设的编辑器，否则右栏显示的、「存储」写入的都是上一个预设。
+            if !loaded, selectedPresetId == id, presetEditor?.entry.preset.presetId != id { presetEditor = nil }
             refreshPreview()
         }
     }
@@ -68,9 +87,15 @@ extension Workbench {
 
     public func renamePreset(_ id: UUID, to name: String) async {
         await perform("无法重命名") {
-            _ = try await service.renamePreset(reference(id), to: name)
+            let renamed = try await service.renamePreset(reference(id), to: name)
             await refreshLibrary()
-            if selectedPresetId == id { loadPresetEditor() }
+            // 右栏正在编辑这个预设：只改名字，不重新读取（重新读取会丢掉还没存储的修改）。
+            if var editor = presetEditor, editor.entry.preset.presetId == id {
+                editor.entry.preset.name = renamed.name
+                editor.draft.name = renamed.name
+                presetEditor = editor
+                refreshPreview()
+            }
         }
     }
 
@@ -111,10 +136,12 @@ extension Workbench {
     /// 保存右栏对预设本身的修改。
     public func savePresetEdits() async {
         guard let editor = presetEditor, editor.isDirty, !editor.isReadOnly else { return }
+        let saved = editor.draft
         await perform("无法保存预设") {
-            _ = try await service.replacePreset(editor.draft)
+            _ = try await service.replacePreset(saved)
             await refreshLibrary()
-            loadPresetEditor()
+            // 存储期间又改过的内容不能被重新读到的预设覆盖掉。
+            loadPresetEditor(saved: saved)
         }
     }
 

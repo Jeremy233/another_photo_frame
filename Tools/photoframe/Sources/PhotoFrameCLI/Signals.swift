@@ -19,7 +19,7 @@ extension InterruptMonitor {
                 if isTriggered || !hasHandlers {
                     _exit(PhotoFrameExitCode.interrupted.rawValue)
                 }
-                FileHandle.standardError.write(Data("\n正在取消…（再按一次 Ctrl-C 立即退出）\n".utf8))
+                try? FileHandle.standardError.write(contentsOf: Data("\n正在取消…（再按一次 Ctrl-C 立即退出）\n".utf8))
                 trigger()
             }
             source.resume()

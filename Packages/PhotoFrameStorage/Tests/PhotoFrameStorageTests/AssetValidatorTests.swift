@@ -129,6 +129,39 @@ struct PNGValidationTests {
         #expect(v.data == good)
         #expect(v.warnings.count == 1)
     }
+
+    @Test("zlib 流分在多个 IDAT 里（前面夹着别的数据块）：能通过；任何一块 CRC 不对都拒绝")
+    func multipleIDAT() throws {
+        // 4×3 RGBA：每行 1 字节过滤类型（0）+ 16 字节像素。
+        let raw = Data((0..<3).flatMap { row in [UInt8(0)] + (0..<16).map { UInt8(row * 16 + $0) } })
+        let z = PNGBuilder.zlib(raw)
+        // 第一块只有 zlib 头的 1 个字节。
+        let parts = [Array(z[0..<1]), Array(z[1..<6]), Array(z[6...])]
+        let text = PNGBuilder.chunk("tEXt", Array("Comment\u{0}hi".utf8))
+        let chunks = [PNGBuilder.ihdr(width: 4, height: 3), text] + parts.map { PNGBuilder.chunk("IDAT", $0) }
+        let data = PNGBuilder.png(chunks)
+        let v = try AssetValidator.validate(data, format: .png)
+        #expect(v.pixelSize == PixelSize(width: 4, height: 3))
+        #expect(v.data == data && v.warnings.isEmpty)
+
+        // 多余数据照样去掉；传入的是下标不从 0 开始的切片时，结果相同，存下的数据从 0 开始编号。
+        let padded = Data([1, 2, 3]) + data + Data("tail".utf8)
+        let slice = padded[3...]
+        let s = try AssetValidator.validate(slice, format: .png)
+        #expect(s.data == data && s.data.startIndex == 0)
+        #expect(s.warnings == ["已去掉 IEND 之后 4 字节的多余数据"])
+
+        // 改坏中间那块 IDAT（chunks[3]）CRC 的最后一个字节。
+        var broken = data
+        broken[8 + chunks[0...3].reduce(0) { $0 + $1.count } - 1] ^= 0xFF
+        do {
+            _ = try AssetValidator.validate(broken, format: .png)
+            Issue.record("应拒绝")
+        } catch {
+            #expect(error.code == "asset.corrupted")
+            #expect(error.message == "素材文件已损坏：数据块 IDAT 校验和不符")
+        }
+    }
 }
 
 @Suite("素材校验：受限 SVG（D-09）")
@@ -174,6 +207,27 @@ struct SVGValidationTests {
     func rejected(data: Data) {
         let code = rejection { () throws(LibraryError) in try AssetValidator.validate(data, format: .svg) }
         #expect(code == "asset.svg_rejected" || code == "asset.type_mismatch", "\(String(decoding: data, as: UTF8.self))")
+    }
+
+    @Test("固有尺寸超出 Int 范围（≥ 2^63，含按 viewBox 推算的）：按「过大」拒绝，不崩溃")
+    func hugeIntrinsicSize() {
+        func message(_ attributes: String) -> String? {
+            do {
+                _ = try AssetValidator.validate(svg(attributes: attributes), format: .svg)
+                return nil
+            } catch {
+                #expect(error.code == "asset.svg_rejected", "\(attributes)")
+                return error.message
+            }
+        }
+        let max = Int.max
+        #expect(message(#"width="1e19" height="10""#) == "SVG 素材不符合受限格式：固有尺寸 \(max)×10 过大")
+        #expect(message(#"viewBox="0 0 1e19 1""#) == "SVG 素材不符合受限格式：固有尺寸 \(max)×1 过大")
+        #expect(message(#"width="5" height="1e300""#) == "SVG 素材不符合受限格式：固有尺寸 5×\(max) 过大")
+        #expect(message(#"height="1e19" viewBox="0 0 1 1""#) == "SVG 素材不符合受限格式：固有尺寸 \(max)×\(max) 过大")
+        #expect(message(#"width="1e10" viewBox="0 0 1 1e10""#) == "SVG 素材不符合受限格式：固有尺寸 10000000000×\(max) 过大")
+        // 2^63 以下的仍按原来的数值报错。
+        #expect(message(#"width="1e18" height="10""#) == "SVG 素材不符合受限格式：固有尺寸 1000000000000000000×10 过大")
     }
 
     @Test("元素数量、嵌套深度、文件大小上限")

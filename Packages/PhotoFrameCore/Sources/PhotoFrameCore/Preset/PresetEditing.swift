@@ -179,13 +179,15 @@ public enum PresetEditor {
         switch (value, component) {
         case (.object(let o), .key(let k)): o[k]
         case (.array(let a), .index(let i)): i < a.count ? a[i] : nil
-        case (.array(let a), .id(let id)): a.first { matches($0, id) }
+        case (.array(let a), .id(let id)): index(of: id, in: a).map { a[$0] }
         default: nil
         }
     }
 
-    private static func matches(_ element: JSONValue, _ id: String) -> Bool {
-        element["layerId"]?.stringValue == id || element["slotId"]?.stringValue == id
+    /// `[id]` 指向的元素：先按 `layerId` 找，没有再按 `slotId` 找。图层的 `slotId` 是它引用的素材槽，
+    /// 几个图层可以共用一个槽；不分先后地找，`layers[x]` 可能落到前面一个只是用了槽 `x` 的图层上。
+    private static func index(of id: String, in array: [JSONValue]) -> Int? {
+        array.firstIndex { $0["layerId"]?.stringValue == id } ?? array.firstIndex { $0["slotId"]?.stringValue == id }
     }
 
     /// 沿路径走到最后一段，把它设为 `newValue`（nil 表示删除）。中间各级必须已经存在。
@@ -210,7 +212,7 @@ public enum PresetEditor {
         case (.array(var a), .index), (.array(var a), .id):
             let i: Int? = switch component {
             case .index(let n): n < a.count ? n : nil
-            case .id(let id): a.firstIndex { matches($0, id) }
+            case .id(let id): index(of: id, in: a)
             default: nil
             }
             guard let i else { throw notFound }

@@ -50,6 +50,30 @@ struct MaliciousArchiveTests {
         expectArchiveError(try! PresetPackage.export(makePreset()), "archive.too_large", limits: limits)
     }
 
+    @Test("从文件读取：符号链接指向超大文件时按目标大小在读入内存前拒绝；指向正常文件照常读取")
+    func symlinkToLargeFile() throws {
+        let root = TempRoot()
+        let big = root.url.appending(path: "big.bin")
+        #expect(FileManager.default.createFile(atPath: big.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: 8 << 20)  // 稀疏文件，不真正占用磁盘
+        try handle.close()
+        let link = root.url.appending(path: "big.photoframe")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: big)
+        #expect(throws: PresetPackageError.archive(.archiveTooLarge(bytes: 8 << 20, limit: 4 << 20))) {
+            try PresetPackage.readFile(at: link)
+        }
+        #expect(throws: PresetPackageError.archive(.archiveTooLarge(bytes: 8 << 20, limit: 4 << 20))) {
+            try PresetPackage.readFile(at: big)
+        }
+
+        let good = root.url.appending(path: "good.photoframe")
+        try PresetPackage.export(makePreset(), to: good)
+        let goodLink = root.url.appending(path: "good-link.photoframe")
+        try FileManager.default.createSymbolicLink(at: goodLink, withDestinationURL: good)
+        #expect(try PresetPackage.readFile(at: goodLink) == Data(contentsOf: good))
+    }
+
     @Test("条目数量超过上限，包括谎报的条目数")
     func tooManyEntries() {
         let many = [ZipWriter.Entry(name: "manifest.json", data: validManifest)]

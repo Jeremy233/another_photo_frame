@@ -61,6 +61,8 @@ public struct AssetLibrary: AssetLookup, Sendable {
     public static let storageFormatVersion = 1
     static let metadataName = "asset.json"
     static let stagingName = ".staging"
+    /// `asset.json` 的读写上限。
+    static let maxMetadataBytes = 1 << 20
 
     public init(directory: URL, limits: AssetImportLimits = .default) {
         self.directory = directory
@@ -167,6 +169,8 @@ public struct AssetLibrary: AssetLookup, Sendable {
             assetId: UUID(), displayName: name, category: category, format: validated.format,
             pixelSize: validated.pixelSize, byteCount: validated.data.count, sha256: digest,
             importedAt: now, modifiedAt: now, importWarnings: validated.warnings)
+        // 先编码并检查元信息大小，读不回来时什么都不写。
+        let metadata = try encode(info)
 
         let staging = directory.appending(path: Self.stagingName, directoryHint: .isDirectory)
         cleanStaleStaging(staging)
@@ -174,7 +178,7 @@ public struct AssetLibrary: AssetLookup, Sendable {
         try LibraryFiles.ensureDirectory(work)
         do {
             try LibraryFiles.atomicWrite(validated.data, to: work.appending(path: "content.\(info.format.rawValue)"))
-            try LibraryFiles.atomicWrite(try encode(info), to: work.appending(path: Self.metadataName))
+            try LibraryFiles.atomicWrite(metadata, to: work.appending(path: Self.metadataName))
             try LibraryFiles.move(work, to: assetDirectory(info.assetId), what: "把素材移入库中")
         } catch {
             try? FileManager.default.removeItem(at: work)
@@ -187,18 +191,25 @@ public struct AssetLibrary: AssetLookup, Sendable {
 
     @discardableResult
     public func rename(_ id: UUID, to name: String) throws(LibraryError) -> AssetInfo {
-        var info = try info(id)
-        info.displayName = try PresetLibrary.checkedName(name)
-        return try saveMetadata(info)
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> AssetInfo in
+            var info = try info(id)
+            info.displayName = try PresetLibrary.checkedName(name)
+            return try saveMetadata(info)
+        }
     }
 
     /// 改变分组（例如把误放进「水印」的签名移到「签名」）。
     @discardableResult
     public func setCategory(_ id: UUID, to category: AssetCategory) throws(LibraryError) -> AssetInfo {
-        var info = try info(id)
-        info.category = category
-        return try saveMetadata(info)
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> AssetInfo in
+            var info = try info(id)
+            info.category = category
+            return try saveMetadata(info)
+        }
     }
+
+    /// 改名、改分组的读—改—写在这把跨进程锁里做（与预设、绑定共用库根目录下的 `.lock`），不会丢掉另一个进程同时做的修改。
+    var lockURL: URL { directory.deletingLastPathComponent().appending(path: ".lock") }
 
     /// 删除素材（读不出元信息的也可以删）。指向它的绑定不在这里处理：解析时按 D-28 警告并回退。
     public func delete(_ id: UUID) throws(LibraryError) {
@@ -231,12 +242,16 @@ public struct AssetLibrary: AssetLookup, Sendable {
         var asset: AssetInfo
     }
 
+    /// 编码 `asset.json`。超过读取上限时报错（例如 SVG 里有大量不同的未支持元素，导入提示很长）。
     private func encode(_ info: AssetInfo) throws(LibraryError) -> Data {
+        let data: Data
         do {
-            return try LibraryFiles.jsonEncoder.encode(MetadataFile(storageFormat: Self.storageFormatVersion, asset: info))
+            data = try LibraryFiles.jsonEncoder.encode(MetadataFile(storageFormat: Self.storageFormatVersion, asset: info))
         } catch {
             throw .io("编码素材信息失败：\(error)")
         }
+        try LibraryFiles.checkWritable(data, name: Self.metadataName, maxBytes: Self.maxMetadataBytes)
+        return data
     }
 
     private func saveMetadata(_ info: AssetInfo) throws(LibraryError) -> AssetInfo {
@@ -253,7 +268,7 @@ public struct AssetLibrary: AssetLookup, Sendable {
         }
         let data: Data
         do {
-            data = try LibraryFiles.read(assetDirectory(id).appending(path: Self.metadataName), maxBytes: 1 << 20)
+            data = try LibraryFiles.read(assetDirectory(id).appending(path: Self.metadataName), maxBytes: Self.maxMetadataBytes)
         } catch {
             return fail("asset.unreadable_metadata", "素材信息无法读取：\(error.message)")
         }

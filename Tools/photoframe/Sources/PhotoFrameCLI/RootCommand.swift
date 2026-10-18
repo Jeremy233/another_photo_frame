@@ -69,8 +69,9 @@ struct CommandContext {
 
     func log(_ text: String) { env.stderr.line(text) }
 
-    func warn(_ warnings: [ApplicationWarning], prefix: String = "") {
-        guard !json else { return }
+    /// `--json` 时警告在结果 JSON 里，这里不再写；`evenWithJSON` 用于结果 JSON 里没有的警告（例如读预设时的警告）。
+    func warn(_ warnings: [ApplicationWarning], prefix: String = "", evenWithJSON: Bool = false) {
+        guard !json || evenWithJSON else { return }
         for w in warnings { log("warning: \(prefix)[\(w.code)] \(w.message)") }
     }
 

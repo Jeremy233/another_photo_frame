@@ -71,6 +71,9 @@ import Testing
         #expect(page.dynamicRange == .hdr && page.format == .jpeg)
         let image = try #require(page.displayImage())
         #expect(image.contentHeadroom > 1, "按 HDR 解码：\(image.contentHeadroom)")
+        // 画面用的是后台解码好的同一张图，同样按 HDR 解码。
+        let shown = try #require(preview.pageDisplayImage)
+        #expect(shown.contentHeadroom == image.contentHeadroom && shown.width == image.width)
 
         // 预设输出 SDR：HDR 模式仍是 SDR，并说明原因。
         f.workbench.setField(\.output.dynamicRange, .sdr)
@@ -188,5 +191,139 @@ import Testing
         f.workbench.setField(\.canvas.minMarginPx, 120)
         await f.workbench.settle()
         #expect(preview.renderRequests == requests + 1)
+    }
+}
+
+/// 预览内容什么时候算变了：素材绑定、源图加入和检查、渲染失败；解码和缓存。
+@MainActor @Suite struct PreviewFreshnessTests {
+    @Test func presetBindingChangesRerenderAndRevalidate() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        await wb.importAssets([try f.assetPNG("sig.png")], category: .signature)
+        let asset = try #require(wb.assets(in: .signature).first)
+        await wb.duplicatePreset(f.presetId("Instagram Standard"))
+        await wb.settle()
+        let presetId = try #require(wb.selectedPresetId)
+        wb.addLayer(.signature)
+        await wb.savePresetEdits()
+        await wb.settle()
+        // 一张源图和一个用这个预设的任务；右栏回到预设，预览用这张源图。
+        let sourceIds = await wb.addSources([try f.photo("P.jpg")])
+        let sourceId = try #require(sourceIds.first)
+        await wb.drop(.preset(presetId), on: .source(sourceId))
+        let jobId = try #require(wb.sourceItem(sourceId)?.jobs.first?.id)
+        wb.selectedPresetId = nil
+        wb.selectedPresetId = presetId
+        await wb.settle()
+        let preview = wb.preview
+        #expect(preview.subject?.preset?.presetId == presetId)
+        #expect(preview.warnings.contains { $0.code == "slot.optional_missing" })
+        #expect(wb.job(jobId)?.validation?.warnings.contains { $0.code == "slot.optional_missing" } == true)
+
+        // 绑定保存在预设本地：预览重新渲染（不用缓存里的旧结果），用这个预设的任务重新校验。
+        let requests = preview.renderRequests
+        await wb.bindAsset(asset.assetId, slotId: "signature")
+        await wb.settle()
+        #expect(preview.renderRequests == requests + 1)
+        #expect(!preview.warnings.contains { $0.code == "slot.optional_missing" })
+        #expect(wb.job(jobId)?.validation?.warnings.contains { $0.code == "slot.optional_missing" } == false)
+
+        // 删除素材：绑定失效，同样重新渲染、重新校验。
+        await wb.deleteAsset(asset.assetId)
+        await wb.settle()
+        #expect(preview.renderRequests == requests + 2)
+        #expect(preview.warnings.contains { $0.code == "slot.stale_binding" })
+        #expect(wb.job(jobId)?.validation?.warnings.contains { $0.code == "slot.stale_binding" } == true)
+    }
+
+    @Test func addingASourceShowsThePresetPreview() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        wb.selectedPresetId = f.presetId("XHS Standard")
+        await wb.settle()
+        #expect(wb.preview.subject == nil)
+        // 选着预设时才加入第一张图：预览马上用它（不等源图检查完）。
+        let ids = await wb.addSources([try f.photo("Late.jpg")])
+        #expect(wb.sources.first?.inspection == nil)
+        #expect(wb.preview.subject?.sourceId == ids.first && wb.preview.subject?.preset?.name == "XHS Standard")
+        await wb.settle()
+        #expect(wb.preview.pageImage != nil)
+    }
+
+    @Test func inspectionDoesNotChangeThePreviewSubject() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        let ids = await wb.addSources([try f.hdrPhoto("Bright.tif")])
+        let id = try #require(ids.first)
+        wb.selection = [.source(id)]
+        #expect(wb.sourceItem(id)?.inspection == nil)
+        let before = try #require(wb.previewSubject)
+        await wb.settle()
+        #expect(wb.sourceItem(id)?.inspection.map { $0.hdr.kind != "none" } == true)
+        // 检查结果不是预览内容：不会因此重新渲染，预览也没有过时，它的提示仍然显示在 Inspector「警告」里。
+        #expect(wb.previewSubject == before)
+        #expect(wb.preview.subject == wb.previewSubject)
+    }
+
+    @Test func failedRenderClearsPagesAndWarnings() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        try await f.addJob("Wide.jpg", preset: "Instagram Panorama")
+        let preview = f.workbench.preview
+        await f.workbench.settle()
+        #expect(preview.roles.count > 1 && !preview.warnings.isEmpty)
+        // 源图被删掉后改参数：渲染失败，不留上一次的页数和提示。
+        try FileManager.default.removeItem(at: try #require(f.workbench.sources.first?.source.fileURL))
+        f.workbench.setField(\.canvas.minMarginPx, 80)
+        await f.workbench.settle()
+        #expect(preview.error != nil)
+        #expect(preview.roles.isEmpty && preview.warnings.isEmpty && preview.pageImage == nil)
+    }
+
+    @Test func pagesAreDecodedOnceForDisplay() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        try await f.addJob("Wide.jpg", preset: "Instagram Panorama")
+        let preview = f.workbench.preview
+        await f.workbench.settle()
+        let page = try #require(preview.pageImage)
+        let image = try #require(preview.pageDisplayImage)
+        #expect(image.width == page.pixelSize.width && image.height == page.pixelSize.height)
+
+        preview.page = .strip
+        await f.workbench.settle()
+        #expect(preview.stripImages.count == preview.strip.count && preview.stripImages.allSatisfy { $0 != nil })
+        #expect(preview.stripThumbnail?.height == 120)
+    }
+
+    @Test func removedSourcesLeaveTheRenderCache() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let a = try await f.addJob("A.jpg")
+        let b = try await f.addJob("B.jpg")
+        let wb = f.workbench
+        let preview = wb.preview
+        wb.selection = [.job(a)]
+        await wb.settle()
+        let sourceA = try #require(wb.job(a)?.sourceId)
+        let sourceB = try #require(wb.job(b)?.sourceId)
+        #expect(preview.cachedRenderSources == [sourceA, sourceB])
+        var remaining: Set<URL>?
+        wb.onSourcesRemoved = { remaining = $0 }
+
+        // 移除源图：它的渲染结果不再留着，界面也知道还剩哪些原图。
+        wb.selection = [.source(sourceA)]
+        wb.removeSelection()
+        #expect(preview.cachedRenderSources == [sourceB])
+        #expect(remaining == Set(wb.sources.map(\.source.fileURL)))
+
+        // 提交后源图离开「当前」，同样清掉。
+        await wb.startBatch()
+        await f.waitForRun()
+        #expect(preview.cachedRenderSources.isEmpty)
+        #expect(remaining?.isEmpty == true)
     }
 }

@@ -28,9 +28,12 @@ public struct CropLayout: Hashable, Sendable, Codable {
         guard canvas.isPositive else { throw .invalidCanvas(canvas) }
         guard source.isPositive else { throw .invalidSource(source) }
         guard minimumMargin >= 0 else { throw .invalidMargin(minimumMargin) }
+        // 先确认 W − 2m > 0（写成 m < W − m，边距极大时不溢出），再算内框。
+        guard minimumMargin < canvas.width - minimumMargin, minimumMargin < canvas.height - minimumMargin else {
+            throw .marginTooLarge(margin: minimumMargin, canvas: canvas)
+        }
         let inner = PixelSize(
             width: canvas.width - 2 * minimumMargin, height: canvas.height - 2 * minimumMargin)
-        guard inner.isPositive else { throw .marginTooLarge(margin: minimumMargin, canvas: canvas) }
         let ratio = aspectRatio ?? AspectRatio(inner)
         guard ratio.isValid else { throw .invalidAspectRatio(ratio) }
         guard (0...1).contains(anchor.x), (0...1).contains(anchor.y) else {

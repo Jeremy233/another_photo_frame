@@ -138,6 +138,30 @@ struct AssetLibraryTests {
         #expect(assets.list().warnings.count == 2)
     }
 
+    @Test("asset.json 会超过读取上限时（SVG 里有大量不同的未支持元素，提示很长）：拒绝导入，什么都不写")
+    func oversizedMetadata() throws {
+        let body = (0..<20_000).map { "<unsupported\($0)/>" }.joined() + #"<rect width="1" height="1"/>"#
+        let data = svg(body)
+        #expect(try AssetValidator.validate(data, format: .svg).warnings.count == 20_000)
+        do {
+            _ = try assets.importAsset(data, format: .svg, category: .signature, displayName: "many")
+            Issue.record("应拒绝导入")
+        } catch {
+            #expect(error.code == "library.io")
+            #expect(error.message.hasPrefix("读写文件失败：写入 asset.json 失败："))
+            #expect(error.message.hasSuffix("超过上限 \(AssetLibrary.maxMetadataBytes) 字节"))
+        }
+        let listing = assets.list()
+        #expect(listing.assets.isEmpty && listing.warnings.isEmpty)
+        #expect(root.allFiles().isEmpty)
+
+        // 提示少一些的同类 SVG 照常导入、能读回来。
+        let fewer = svg((0..<100).map { "<unsupported\($0)/>" }.joined() + #"<rect width="1" height="1"/>"#)
+        let info = try assets.importAsset(fewer, format: .svg, category: .signature, displayName: "fewer").asset
+        #expect(info.importWarnings.count == 100)
+        #expect(try assets.info(info.assetId) == info)
+    }
+
     @Test("重新校验已入库的素材")
     func revalidate() throws {
         let info = try assets.importAsset(svg(#"<text>x</text><rect width="1" height="1"/>"#), format: .svg,

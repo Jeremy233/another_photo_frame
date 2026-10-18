@@ -68,26 +68,30 @@ public enum AssetValidator {
 
     static func validatePNG(_ data: Data, limits: AssetImportLimits) throws(AssetRejection) -> ValidatedAsset {
         guard data.count <= limits.maxPNGBytes else { throw .tooLarge(bytes: data.count, limit: limits.maxPNGBytes) }
-        let bytes = [UInt8](data)
-        guard bytes.count >= 8, Array(bytes[0..<8]) == pngSignature else { throw .typeMismatch(expected: .png) }
+        guard data.count >= 8, data.starts(with: pngSignature) else { throw .typeMismatch(expected: .png) }
 
-        // 1. 逐块检查结构和 CRC，先拿到 IHDR，确认尺寸再解压。
+        // 1. 逐块检查结构和 CRC，先拿到 IHDR，确认尺寸再解压。直接按下标读 `data`，CRC 在切片上算，不复制文件内容。
+        let base = data.startIndex
         var offset = 8
         var header: (width: Int, height: Int, bitDepth: UInt8, colorType: UInt8, interlace: UInt8)?
-        var idat = Data()
+        var idatRanges: [Range<Int>] = []
+        var idatSize = 0
         var sawPalette = false
         var end: Int?
+        func byte(_ i: Int) -> UInt8 { data[base + i] }
         func be32(_ i: Int) -> UInt32 {
-            UInt32(bytes[i]) << 24 | UInt32(bytes[i + 1]) << 16 | UInt32(bytes[i + 2]) << 8 | UInt32(bytes[i + 3])
+            UInt32(byte(i)) << 24 | UInt32(byte(i + 1)) << 16 | UInt32(byte(i + 2)) << 8 | UInt32(byte(i + 3))
         }
+        /// `data` 中的一段（切片与 `data` 共用存储）。
+        func bytes(_ r: Range<Int>) -> Data { data[(base + r.lowerBound)..<(base + r.upperBound)] }
         while end == nil {
-            guard offset + 12 <= bytes.count else { throw .corrupted("文件被截断（缺少 IEND）") }
+            guard offset + 12 <= data.count else { throw .corrupted("文件被截断（缺少 IEND）") }
             let length = Int(be32(offset))
-            guard length <= bytes.count - offset - 12 else { throw .corrupted("数据块长度越界") }
-            let type = String(decoding: bytes[(offset + 4)..<(offset + 8)], as: UTF8.self)
+            guard length <= data.count - offset - 12 else { throw .corrupted("数据块长度越界") }
+            let type = String(decoding: bytes((offset + 4)..<(offset + 8)), as: UTF8.self)
             let body = (offset + 8)..<(offset + 8 + length)
             let crc = be32(offset + 8 + length)
-            guard CRC32.checksum(Data(bytes[(offset + 4)..<(offset + 8 + length)])) == crc else {
+            guard CRC32.checksum(bytes((offset + 4)..<(offset + 8 + length))) == crc else {
                 throw .corrupted("数据块 \(type) 校验和不符")
             }
             if header == nil, type != "IHDR" { throw .corrupted("第一个数据块不是 IHDR") }
@@ -95,13 +99,14 @@ public enum AssetValidator {
             case "IHDR":
                 guard header == nil, length == 13 else { throw .corrupted("IHDR 无效") }
                 let b = body.lowerBound
-                header = (Int(be32(b)), Int(be32(b + 4)), bytes[b + 8], bytes[b + 9], bytes[b + 12])
-                guard bytes[b + 10] == 0, bytes[b + 11] == 0, bytes[b + 12] <= 1 else { throw .corrupted("IHDR 的压缩、过滤或隔行方式无效") }
+                header = (Int(be32(b)), Int(be32(b + 4)), byte(b + 8), byte(b + 9), byte(b + 12))
+                guard byte(b + 10) == 0, byte(b + 11) == 0, byte(b + 12) <= 1 else { throw .corrupted("IHDR 的压缩、过滤或隔行方式无效") }
             case "PLTE":
                 sawPalette = true
             case "IDAT":
-                guard idat.count + length <= limits.maxPNGBytes else { throw .corrupted("IDAT 过大") }
-                idat.append(contentsOf: bytes[body])
+                guard idatSize + length <= limits.maxPNGBytes else { throw .corrupted("IDAT 过大") }
+                idatSize += length
+                idatRanges.append(body)
             case "acTL", "fcTL", "fdAT":
                 throw AssetRejection(code: "asset.unsupported_type", message: "不支持动画 PNG", hint: "请导出为静态 PNG")
             case "IEND":
@@ -124,9 +129,13 @@ public enum AssetValidator {
             throw .corrupted("不支持的颜色类型 \(h.colorType) / 位深 \(h.bitDepth)")
         }
         if h.colorType == 3, !sawPalette { throw .corrupted("索引色 PNG 缺少调色板") }
-        guard !idat.isEmpty else { throw .corrupted("没有图像数据") }
+        guard idatSize > 0 else { throw .corrupted("没有图像数据") }
 
         // 2. 流式解压，只数字节、不保留输出：大小必须与 IHDR 推算的完全一致（防压缩炸弹、防截断）。
+        // zlib 流可以跨多个 IDAT，按顺序拼起来；只有一个 IDAT 时直接用切片，不复制。
+        let idat = idatRanges.count == 1
+            ? bytes(idatRanges[0])
+            : idatRanges.reduce(into: Data(capacity: idatSize)) { $0.append(bytes($1)) }
         let expected = inflatedSize(width: h.width, height: h.height, bitsPerPixel: channels * Int(h.bitDepth), interlaced: h.interlace == 1)
         try checkZlibStream(idat, expectedSize: expected)
 
@@ -144,11 +153,12 @@ public enum AssetValidator {
 
         var warnings: [String] = []
         var stored = data
-        if let end, end < bytes.count {
+        if let end, end < data.count {
             stored = data.prefix(end)
-            warnings.append("已去掉 IEND 之后 \(bytes.count - end) 字节的多余数据")
+            warnings.append("已去掉 IEND 之后 \(data.count - end) 字节的多余数据")
         }
-        return ValidatedAsset(format: .png, pixelSize: size, data: Data(stored), warnings: warnings)
+        // 下标从 0 开始时（通常如此）直接用，不再复制一份。
+        return ValidatedAsset(format: .png, pixelSize: size, data: stored.startIndex == 0 ? stored : Data(stored), warnings: warnings)
     }
 
     static func channelCount(colorType: UInt8, bitDepth: UInt8) -> Int? {
@@ -252,7 +262,9 @@ public enum AssetValidator {
         guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else {
             throw .svg("缺少有效的 width / height 或 viewBox")
         }
-        let pixel = PixelSize(width: max(1, Int(size.width.rounded())), height: max(1, Int(size.height.rounded())))
+        // ≥ 2^63 时 Int(_:) 会崩溃：按 Int.max 算，交给下面的范围检查拒绝。
+        func pixels(_ v: Double) -> Int { max(1, Int(exactly: v.rounded()) ?? .max) }
+        let pixel = PixelSize(width: pixels(size.width), height: pixels(size.height))
         guard pixel.width <= limits.maxDimension * 4, pixel.height <= limits.maxDimension * 4 else {
             throw .svg("固有尺寸 \(pixel.width)×\(pixel.height) 过大")
         }

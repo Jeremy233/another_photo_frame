@@ -157,6 +157,31 @@ struct ColorManagementTests {
         #expect(darker == 0)
     }
 
+    @Test("透明 PNG 缩小到四分之一以下也没有灰边、黑边（先降采样再缩放的路径）", arguments: ["#FAFAF8", "#202020"])
+    func alphaHaloWhenShrunk(_ background: String) async throws {
+        let dir = try makeTempDirectory()
+        let src = dir.appendingPathComponent("photo.png")
+        try writeImage(makeImage8(width: 100, height: 100) { _, _ in (128, 128, 128) }, to: src, type: .png)
+        // watermark_alpha.png 是 400×160，放进 96×38 的框：缩放 0.24，走降采样路径。
+        let layer = OverlayLayer(layerId: "wm", type: .asset, anchor: .topLeft, reference: .canvas,
+                                 offset: OverlayOffset(x: 20, y: 20), sizePx: PixelSize(width: 96, height: 38), slotId: "wm")
+        let preset = makePreset(width: 600, height: 400, margin: 150, background: background,
+                                layers: [layer], slots: [AssetSlot(slotId: "wm")])
+        let result = try await render(src, preset, assets: ["wm": RenderAsset(fileURL: Fixtures.url("watermark_alpha.png"), format: .png)])
+        let img = try readSRGB8(result.outputs[0].fileURL)
+        let bg = try WorkingColor.rgb8(PresetColor(hex: background))
+        let rect = try #require(result.outputs[0].layers.first?.rect)
+        var darker = 0
+        for y in rect.minY..<rect.maxY {
+            for x in rect.minX..<rect.maxX {
+                let (r, g, b) = img[x, y]
+                // 只看中性像素（R≈G≈B）：水印的白色与背景的混合只会更亮；比背景暗就是透明像素里的颜色混进了边缘。
+                if abs(r - g) <= 2, abs(g - b) <= 2, r < min(bg.0, bg.1) - 1 { darker += 1 }
+            }
+        }
+        #expect(darker == 0)
+    }
+
     @Test("50% 白色在深色背景上按线性光合成（理想 189，gamma 空间为 144）")
     func linearLightOpacity() async throws {
         let dir = try makeTempDirectory()

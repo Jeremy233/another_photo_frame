@@ -250,10 +250,17 @@ private struct SourceRow: View {
     }
 }
 
-/// 源图缩略图：按需缩小解码。
+/// 源图缩略图：按需缩小解码。解码结果按文件（URL + 修改时间）放在共用的小缓存里，行滚出去再回来时不再解码。
 private struct Thumbnail: View {
     let url: URL
     @State private var image: NSImage?
+
+    /// 每张 120 px，几百张也占不了多少内存；系统内存紧张时 NSCache 自己会清。
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 500
+        return cache
+    }()
 
     var body: some View {
         Group {
@@ -265,7 +272,23 @@ private struct Thumbnail: View {
         }
         .frame(width: 44, height: 30)
         .clipShape(.rect(cornerRadius: 3))
-        .task(id: url) { image = await Self.load(url) }
+        .task(id: url) {
+            let key = Self.cacheKey(url)
+            if let cached = Self.cache.object(forKey: key) {
+                image = cached
+                return
+            }
+            let loaded = await Self.load(url)
+            // 行已经消失（任务被取消）就不放进缓存。
+            if let loaded, !Task.isCancelled { Self.cache.setObject(loaded, forKey: key) }
+            image = loaded
+        }
+    }
+
+    /// 缓存键：文件路径 + 修改时间（文件改了就重新解码）。
+    private static func cacheKey(_ url: URL) -> NSString {
+        let modified = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        return "\(url.path)\n\(modified?.timeIntervalSinceReferenceDate ?? 0)" as NSString
     }
 
     private static func load(_ url: URL) async -> NSImage? {

@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import PhotoFrameApplication
 import PhotoFrameMacModel
 import PhotoFrameStorage
@@ -318,11 +319,13 @@ private struct AssetList: View {
     }
 }
 
-/// 图标预览方式下的一个素材。
+/// 图标预览方式下的一个素材。图片在后台读取、按需缩小，按 assetId 缓存（同一个 ID 的素材内容不会变）。
 private struct AssetTile: View {
     let workbench: Workbench
     let asset: AssetInfo
     @State private var image: NSImage?
+
+    private static let cache = NSCache<NSString, NSImage>()
 
     var body: some View {
         VStack(spacing: 4) {
@@ -340,7 +343,32 @@ private struct AssetTile: View {
         }
         .draggable(DragPayload.asset(asset.assetId).string)
         .task(id: asset.assetId) {
-            image = await workbench.assetContentURL(asset.assetId).flatMap(NSImage.init(contentsOf:))
+            let key = asset.assetId.uuidString as NSString
+            if let cached = Self.cache.object(forKey: key) {
+                image = cached
+                return
+            }
+            guard let url = await workbench.assetContentURL(asset.assetId) else {
+                image = nil
+                return
+            }
+            let isVector = asset.format == .svg
+            let loaded = await Task.detached(priority: .utility) { Self.load(url, isVector: isVector) }.value
+            if let loaded, !Task.isCancelled { Self.cache.setObject(loaded, forKey: key) }
+            image = loaded
         }
+    }
+
+    /// 在后台读取。PNG 按 144 px 缩小解码（方块只有 64 × 48 pt，不用解码整张大图）；SVG 是矢量，交给 NSImage。
+    private nonisolated static func load(_ url: URL, isVector: Bool) -> NSImage? {
+        if isVector { return NSImage(contentsOf: url) }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 144,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: cg, size: .zero)
     }
 }

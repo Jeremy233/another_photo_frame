@@ -171,14 +171,19 @@ public struct PresetLibrary: Sendable {
 
     /// 按 CLI 的引用方式查找预设：UUID、完整名称（不区分大小写）或短名（`instagram-panorama`）。
     public func find(_ reference: String) throws(LibraryError) -> PresetEntry {
-        let listing = list()
         if let id = UUID(uuidString: reference) {
+            // 快速路径：内置预设，或磁盘上正好是 `<presetId>.json`（见 hasCanonicalFile）时不必读出整个库，结果与下面完全相同。
+            if builtIns.contains(where: { $0.presetId == id }) || hasCanonicalFile(id) { return try entry(id) }
+            let listing = list()
             if let e = listing.entry(id) { return e }
             if listing.unreadableIds.contains(id) { return try entry(id) }
             throw .presetNotFound(id)
         }
+        let listing = list()
         let byName = listing.all.filter { $0.name.compare(reference, options: [.caseInsensitive]) == .orderedSame }
-        let matches = byName.isEmpty ? listing.all.filter { $0.slug == Self.slug(for: reference) } : byName
+        // 短名为空（例如「🎞」「!!」）时不按短名匹配，否则会匹配到所有短名也为空的预设。
+        let slug = Self.slug(for: reference)
+        let matches = byName.isEmpty && !slug.isEmpty ? listing.all.filter { $0.slug == slug } : byName
         switch matches.count {
         case 1: return matches[0]
         case 0: throw .presetReferenceNotFound(reference)
@@ -217,14 +222,21 @@ public struct PresetLibrary: Sendable {
 
     @discardableResult
     public func rename(_ id: UUID, to name: String) throws(LibraryError) -> PresetEntry {
-        var e = try mutableEntry(id)
-        e.preset.name = try Self.checkedName(name)
-        return try write(e.preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> PresetEntry in
+            var e = try mutableEntry(id)
+            e.preset.name = try Self.checkedName(name)
+            return try write(e.preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
+        }
     }
 
     /// 保存修改。预设必须已经在库里且不是内置预设；分组（来源）和创建时间保持不变（D-81：导入的预设编辑后仍在「导入」组）。
     @discardableResult
     public func update(_ preset: ExportPreset) throws(LibraryError) -> PresetEntry {
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> PresetEntry in try replace(preset) }
+    }
+
+    /// ``update(_:)`` 的内容，调用方已经持有 `lockURL` 的锁。
+    private func replace(_ preset: ExportPreset) throws(LibraryError) -> PresetEntry {
         let e = try mutableEntry(preset.presetId)
         return try write(preset, origin: e.origin, createdAt: e.createdAt, mustBeNew: false)
     }
@@ -234,6 +246,11 @@ public struct PresetLibrary: Sendable {
     /// 内置预设只读（先复制）；presetId、schemaVersion 不能改；分组和创建时间不变（D-81）。
     @discardableResult
     public func edit(_ id: UUID, _ edits: [PresetEdit]) throws(LibraryError) -> PresetEditResult {
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> PresetEditResult in try apply(edits, to: id) }
+    }
+
+    /// ``edit(_:_:)`` 的内容，调用方已经持有 `lockURL` 的锁。
+    private func apply(_ edits: [PresetEdit], to id: UUID) throws(LibraryError) -> PresetEditResult {
         let e = try mutableEntry(id)
         let manifest: JSONValue
         do {
@@ -259,7 +276,7 @@ public struct PresetLibrary: Sendable {
         } catch {
             throw .package(error)
         }
-        let entry = try update(checked.preset)
+        let entry = try replace(checked.preset)
         return PresetEditResult(entry: entry, warnings: checked.warnings)
     }
 
@@ -267,10 +284,12 @@ public struct PresetLibrary: Sendable {
     /// 已经在目标组时什么也不做。内置预设不能移动，也不能移进内置组。
     @discardableResult
     public func move(_ id: UUID, to group: PresetOrigin) throws(LibraryError) -> PresetEntry {
-        let e = try mutableEntry(id)
-        guard group != .builtIn else { throw .builtInReadOnly(id) }
-        guard e.origin != group else { return e }
-        return try write(e.preset, origin: group, createdAt: e.createdAt, modifiedAt: e.modifiedAt, mustBeNew: false)
+        try LibraryFiles.withLock(lockURL) { () throws(LibraryError) -> PresetEntry in
+            let e = try mutableEntry(id)
+            guard group != .builtIn else { throw .builtInReadOnly(id) }
+            guard e.origin != group else { return e }
+            return try write(e.preset, origin: group, createdAt: e.createdAt, modifiedAt: e.modifiedAt, mustBeNew: false)
+        }
     }
 
     /// 删除用户预设。读不出来的文件也可以删除。
@@ -365,6 +384,24 @@ public struct PresetLibrary: Sendable {
 
     func fileURL(_ id: UUID) -> URL { directory.appending(path: "\(id.uuidString).json") }
 
+    /// 读—改—写（改名、修改、移动分组）在这把跨进程锁里做：GUI、CLI、MCP 同时改同一个预设时不会丢掉其中一个的修改。
+    /// 与绑定共用库根目录下的 `.lock`；锁内不再加锁（同一进程再开一次会一直等下去）。
+    var lockURL: URL { directory.deletingLastPathComponent().appending(path: ".lock") }
+
+    /// ``fileURL(_:)`` 是 ``list()`` 一定会读到、并且是唯一对应这个 presetId 的文件：普通文件（不是符号链接）、没有隐藏、
+    /// 磁盘上的文件名与它完全一致（含大小写），卷不区分大小写（只差大小写的文件名不能并存），目录可以列出。
+    /// 这时 ``entry(_:)`` 的结果（含读不出来时的错误）与按 ``list()`` 查找完全相同。
+    func hasCanonicalFile(_ id: UUID) -> Bool {
+        let url = fileURL(id)
+        guard let file = try? url.resourceValues(forKeys: [
+                  .isRegularFileKey, .isSymbolicLinkKey, .isHiddenKey, .nameKey, .volumeSupportsCaseSensitiveNamesKey]),
+              let dir = try? url.deletingLastPathComponent().resourceValues(forKeys: [.isReadableKey])
+        else { return false }
+        return file.isRegularFile == true && file.isSymbolicLink == false && file.isHidden == false
+            && file.name == url.lastPathComponent && file.volumeSupportsCaseSensitiveNames == false
+            && dir.isReadable == true
+    }
+
     private func importOptions(_ unknownFields: UnknownFieldPolicy) -> PresetImportOptions {
         let listing = list()
         let existing = Set(listing.all.map(\.presetId)).union(listing.unreadableIds)
@@ -387,7 +424,10 @@ public struct PresetLibrary: Sendable {
         if mustBeNew, FileManager.default.fileExists(atPath: url.path) { throw .presetAlreadyExists(id) }
         let now = LibraryFiles.now()
         let file = LibraryPresetFile(origin: origin, createdAt: createdAt ?? now, modifiedAt: modifiedAt ?? now)
-        try LibraryFiles.atomicWrite(try file.encode(preset), to: url)
+        let data = try file.encode(preset)
+        // 存盘格式比 manifest 多一层缩进和元信息，可能超过读取上限（maxFileBytes）。
+        try LibraryFiles.checkWritable(data, name: url.lastPathComponent, maxBytes: Self.maxFileBytes)
+        try LibraryFiles.atomicWrite(data, to: url)
         return PresetEntry(preset: preset, origin: origin, createdAt: file.createdAt, modifiedAt: file.modifiedAt, warnings: [])
     }
 

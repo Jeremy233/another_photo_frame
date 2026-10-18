@@ -166,6 +166,24 @@ struct OverlayTests {
         #expect(result.warnings.filter { $0.code == "overlay.asset_missing" }.map(\.layerId) == ["a"])
     }
 
+    @Test("要显示的页不存在时提示（D-44）：单页版式指定了切片页、全景不输出封面时只在封面的图层")
+    func missingPagesEverywhere() async throws {
+        let dir = try makeTempDirectory()
+        let src = dir.appendingPathComponent("pano.png")
+        try writeGradientPhoto(width: 3000, height: 1000, to: src)
+        func text(_ id: String, _ visibility: OverlayVisibility) -> OverlayLayer {
+            OverlayLayer(layerId: id, type: .text, visibility: visibility, anchor: .bottom, offset: OverlayOffset(x: 0, y: 16),
+                         text: TextStyle(content: id, fontSizePx: 30))
+        }
+        let fit = try await render(src, makePreset(layers: [text("onSlide", .selectedSlides([0, 2])), text("cover", .coverOnly)]))
+        #expect(fit.warnings.filter { $0.code == "overlay.missing_pages" }.map(\.layerId) == ["onSlide"])
+        #expect(fit.warnings.first { $0.layerId == "onSlide" }?.message.contains("2") == true)
+
+        let noCover = try await render(src, makePreset(panorama: PanoramaSettings(enabled: true, cover: false),
+                                                       layers: [text("cover", .coverOnly), text("all", .allSlides)]))
+        #expect(noCover.warnings.filter { $0.code == "overlay.missing_pages" }.map(\.layerId) == ["cover"])
+    }
+
     @Test("全景：图层默认只在封面；selectedSlides 超出页数只提示（D-44）")
     func panoramaVisibility() async throws {
         let dir = try makeTempDirectory()
@@ -245,6 +263,45 @@ struct MetadataOutputTests {
 }
 
 extension MetadataOutputTests {
+    @Test("HDR 输出保留拍摄参数与 GPS：有理数（光圈、快门、焦距、曝光补偿、海拔）和闪光灯值与 SDR 输出一样完整")
+    func hdrKeepsRationals() async throws {
+        let dir = try makeTempDirectory()
+        // PQ 源图（明确是 HDR），另存成带 EXIF / GPS 的 TIFF。
+        let pq = CGImageSourceCreateWithURL(Fixtures.url("hdr_pq2020_203nit.png") as CFURL, nil)!
+        let src = dir.appendingPathComponent("hdr.tif")
+        let dest = CGImageDestinationCreateWithURL(src as CFURL, UTType.tiff.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, CGImageSourceCreateImageAtIndex(pq, 0, nil)!, [
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "TestMake", kCGImagePropertyTIFFModel: "TestModel"],
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifFNumber: 5.6, kCGImagePropertyExifExposureTime: 0.004,
+                                             kCGImagePropertyExifFocalLength: 35.5, kCGImagePropertyExifExposureBiasValue: -0.7,
+                                             kCGImagePropertyExifFlash: 16],
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 43.7, kCGImagePropertyGPSLatitudeRef: "N",
+                                            kCGImagePropertyGPSLongitude: 110.7, kCGImagePropertyGPSLongitudeRef: "W",
+                                            kCGImagePropertyGPSAltitude: 2100.5],
+        ] as CFDictionary)
+        #expect(CGImageDestinationFinalize(dest))
+
+        let result = try await render(src, makePreset(width: 600, height: 600, output: OutputSettings(
+            format: .jpeg, dynamicRange: .hdr, metadata: .init(keepShootingInfo: true, keepGps: true))))
+        let out = result.outputs[0]
+        #expect(out.dynamicRange == .hdr)
+        #expect(!result.warnings.contains { $0.code == "output.metadata_dropped" })
+        let file = CGImageSourceCreateWithURL(out.fileURL as CFURL, nil)!
+        #expect(CGImageSourceCopyAuxiliaryDataInfoAtIndex(file, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil)
+        let p = CGImageSourceCopyPropertiesAtIndex(file, 0, nil) as! [CFString: Any]
+        let exif = p[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        let gps = p[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:]
+        func number(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+        #expect(number(exif[kCGImagePropertyExifFNumber]).map { abs($0 - 5.6) < 1e-6 } == true, "\(String(describing: exif[kCGImagePropertyExifFNumber]))")
+        #expect(number(exif[kCGImagePropertyExifExposureTime]).map { abs($0 - 0.004) < 1e-9 } == true)
+        #expect(number(exif[kCGImagePropertyExifFocalLength]).map { abs($0 - 35.5) < 1e-6 } == true)
+        #expect(number(exif[kCGImagePropertyExifExposureBiasValue]).map { abs($0 + 0.7) < 1e-6 } == true)
+        #expect(number(exif[kCGImagePropertyExifFlash]) == 16)
+        #expect(number(gps[kCGImagePropertyGPSAltitude]).map { abs($0 - 2100.5) < 1e-6 } == true)
+        #expect((p[kCGImagePropertyTIFFDictionary] as? [CFString: Any])?[kCGImagePropertyTIFFMake] as? String == "TestMake")
+        #expect(p[kCGImagePropertyPixelWidth] as? Int == 600)
+    }
+
     /// 读回作者与版权。ImageIO 写出时把 TIFF Artist 存成 XMP dc:creator，所以三处一起看。
     static func author(_ url: URL) -> AuthorInfo {
         let src = CGImageSourceCreateWithURL(url as CFURL, nil)!
