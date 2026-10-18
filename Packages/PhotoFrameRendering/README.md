@@ -4,7 +4,7 @@
 GUI 预览用同一条管线的预览模式（降采样，返回内存中的位图）。
 依赖 `PhotoFrameCore`（几何、预设）和 `PhotoFrameStorage`（素材解析结果），使用 ImageIO、Core Image、Core Graphics、Core Text。
 
-设计与每一步的颜色规则见 [docs/RenderingPipeline.md](../../docs/RenderingPipeline.md)。
+设计与每一步的颜色规则见 [docs/development/RenderingPipeline.md](../../docs/development/RenderingPipeline.md)。
 实现时提出的 14 个问题已由用户确认，对应规范 D-56 … D-69（列表见该文档 §4）。
 
 ## 运行测试

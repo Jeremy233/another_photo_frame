@@ -2,7 +2,7 @@ import Foundation
 import MCP
 import PhotoFrameApplication
 
-// MCP 工具的名字和 JSON Schema（§11.4）。字段名与 CLI `--json` 一致（docs/CLI.md、docs/MCP.md）。
+// MCP 工具的名字和 JSON Schema（§11.4）。字段名与 CLI `--json` 一致（docs/usage/CLI.md、docs/usage/MCP.md）。
 // Schema 用下面的小函数拼，不写大段嵌套字面量（旧版编译器对 `Value` 的大字面量类型推断很慢）。
 
 enum MCPToolName: String, CaseIterable {
@@ -51,7 +51,7 @@ enum Schema {
         .object(["description": .string(description)])
     }
 
-    /// 输出：成功和失败都有 `ok`；失败时有 `error`。其余字段见 docs/MCP.md。
+    /// 输出：成功和失败都有 `ok`；失败时有 `error`。其余字段见 docs/usage/MCP.md。
     static func output(_ properties: [String: Value]) -> Value {
         var all = properties
         all["ok"] = boolean("工具是否成功执行")

@@ -1,6 +1,6 @@
 import PhotoFrameApplication
 
-/// `photoframe` 的退出码。数值稳定，脚本可以依赖；完整的表见 docs/CLI.md。
+/// `photoframe` 的退出码。数值稳定，脚本可以依赖；完整的表见 docs/usage/CLI.md。
 public enum PhotoFrameExitCode: Int32, CaseIterable, Sendable, Codable {
     /// 成功（`--dry-run` 时表示校验通过）。
     case success = 0

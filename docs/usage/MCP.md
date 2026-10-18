@@ -100,7 +100,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 ## 工具
 
 所有工具的结果都同时放在 `structuredContent` 和一个 `text` 内容里（同一份 JSON），外层有 `ok`；失败时 `isError: true`，并有
-`error: {code, message, hint?}`。其余字段名与 CLI `--json`（[docs/CLI.md](CLI.md)）一致，值为空的可选字段省略（D-77）。结果格式见 D-104。
+`error: {code, message, hint?}`。其余字段名与 CLI `--json`（[docs/usage/CLI.md](CLI.md)）一致，值为空的可选字段省略（D-77）。结果格式见 D-104。
 所有路径参数都必须是**绝对路径**。
 
 | 工具 | 类型 | 作用 |
@@ -295,7 +295,7 @@ PhotoFrame 自己**不上传任何照片或数据**，MCP 服务器也只在本�
 
 ## 错误码
 
-除上表的 `mcp.*` 外，其余错误码与 CLI 相同（[docs/CLI.md](CLI.md)「退出码」一节列出了全部错误码及其分类）。MCP 特有的：
+除上表的 `mcp.*` 外，其余错误码与 CLI 相同（[docs/usage/CLI.md](CLI.md)「退出码」一节列出了全部错误码及其分类）。MCP 特有的：
 
 | 错误码 | 含义 |
 |---|---|
