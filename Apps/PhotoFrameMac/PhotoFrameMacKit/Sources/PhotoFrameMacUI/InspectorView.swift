@@ -9,6 +9,7 @@ import SwiftUI
 /// 颜色全部用系统语义色，浅色和深色外观都适用（Compressor 只有深色）。
 struct InspectorView: View {
     @Bindable var workbench: Workbench
+    @State private var savingBuiltIn: RenameRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +26,7 @@ struct InspectorView: View {
         }
         .background(Palette.panel)
         .controlSize(.regular)
+        .renameAlert($savingBuiltIn)
     }
 
     @ViewBuilder private var header: some View {
@@ -57,10 +59,21 @@ struct InspectorView: View {
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
         case .jobs, .preset(_):
+            // 内置预设改过：放在最上面，问要不要另存为用户预设（不另存的修改退出 App 后丢掉）。
+            if workbench.hasUnsavedBuiltInEdits {
+                NoticeBar(symbol: "square.and.pencil", text: "内置预设已修改。要把修改存储为用户预设吗？不存储的话，退出 App 后恢复原样。") {
+                    HStack {
+                        Button("存储为用户预设…") { askBuiltInPresetName() }
+                            .buttonStyle(.borderedProminent)
+                        Button("还原") { workbench.revertPresetEdits() }
+                    }
+                    .controlSize(.regular)
+                }
+            }
             PresetInfoCard(workbench: workbench)
             issues
             if case .preset(let id) = workbench.inspectorSubject, workbench.presetEditor?.isReadOnly == true {
-                NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改") {
+                NoticeBar(symbol: "lock", text: "这个预设只读，复制后才能修改") {
                     Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
@@ -84,6 +97,14 @@ struct InspectorView: View {
         let issues = workbench.inspectorIssues
         if !issues.isEmpty {
             InspectorSection(issues.contains(where: \.isError) ? "错误和警告" : "警告", key: "warnings") { JobIssueList(issues: issues) }
+        }
+    }
+
+    /// 另存内置预设的修改：先结束正在编辑的输入框（最后输入的值也存进去），再输入名称。
+    private func askBuiltInPresetName() {
+        endEditing()
+        savingBuiltIn = RenameRequest(title: "存储为用户预设", name: workbench.suggestedSaveAsName, confirm: "存储") { name in
+            Task { await workbench.saveBuiltInEditsAsPreset(name: name) }
         }
     }
 
@@ -398,7 +419,7 @@ private struct PresetInfoCard: View {
         switch workbench.inspectorSubject {
         case .preset:
             guard let editor = workbench.presetEditor else { return [] }
-            lines.append(editor.isReadOnly ? "内置预设（只读）" : "预设 · \(editor.entry.origin.groupTitle)")
+            lines.append(editor.isReadOnly ? "预设（只读）" : "预设 · \(editor.entry.origin.groupTitle)")
         case .jobs(let ids) where ids.count > 1:
             return ["只显示可以批量修改的共同字段", "不同的值显示为「多个值」"]
         default:
@@ -426,7 +447,10 @@ private struct PresetInfoCard: View {
         switch workbench.inspectorSubject {
         case .preset(let id):
             if let editor = workbench.presetEditor {
-                if !editor.isReadOnly {
+                // 内置预设不能存回去：另存在顶部的提示条里。
+                if editor.isBuiltIn {
+                    Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
+                } else if !editor.isReadOnly {
                     Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
                     Button("存储") {
                         // 先结束正在编辑的输入框，最后输入的值也存进去。

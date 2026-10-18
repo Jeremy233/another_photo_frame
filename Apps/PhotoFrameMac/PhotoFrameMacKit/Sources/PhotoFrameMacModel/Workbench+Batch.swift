@@ -62,7 +62,7 @@ extension Workbench {
             return
         }
         await perform("无法添加任务") {
-            let preset = try await service.resolvePreset(reference(presetId)).preset
+            let preset = try await presetContent(presetId)
             var created: [UUID] = []
             for id in sourceIds {
                 guard let i = sources.firstIndex(where: { $0.id == id }) else { continue }
@@ -259,12 +259,8 @@ extension Workbench {
         await perform("无法存储为预设") {
             let saved = try await service.savePreset(content, name: name)
             let stored = try await service.resolvePreset(reference(saved.presetId)).preset
-            // 新预设有新的 presetId，原预设的本地绑定对它不起作用，任务的成品会变（例如签名不见了）：
-            // 像「复制」一样（D-84）把新预设也有的素材槽的本地绑定复制过去。复制不了的（素材已删除等）跳过，导出时本来也会回退。
-            let slots = Set(stored.assetSlots.map(\.slotId))
-            for binding in await service.listBindings().bindings where binding.presetId == content.presetId && slots.contains(binding.slotId) {
-                try? await service.bindAsset(binding.assetId, slotId: binding.slotId, preset: reference(saved.presetId))
-            }
+            // 不复制本地绑定的话任务的成品会变（例如签名不见了）。
+            await copyPresetBindings(from: content.presetId, to: saved.presetId)
             // 存储期间又改过的任务保留改动（显示为已修改），只把它的基准换成新预设。
             updateJobs([id]) {
                 $0.basePreset = stored

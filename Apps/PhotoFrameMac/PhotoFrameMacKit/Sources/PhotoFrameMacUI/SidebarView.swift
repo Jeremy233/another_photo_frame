@@ -126,7 +126,7 @@ private struct PresetList: View {
 
     @ViewBuilder private func rows(_ presets: [CatalogPresetSummary], group: CatalogPresetOrigin) -> some View {
         ForEach(presets, id: \.presetId) { preset in
-            PresetRow(preset: preset)
+            PresetRow(preset: preset, isModified: workbench.hasUnsavedEdits(preset.presetId))
                 .tag(preset.presetId)
                 .draggable(DragPayload.preset(preset.presetId).string)
                 .contextMenu { menu(for: preset) }
@@ -230,10 +230,15 @@ private struct PresetList: View {
 /// 一行一个预设：小图标 + 名称；尺寸等信息放在悬停提示里，行高与 Compressor 一样紧凑。
 private struct PresetRow: View {
     let preset: CatalogPresetSummary
+    /// 有还没存储的修改（与任务行的「已修改」同一种写法）。
+    var isModified = false
 
     var body: some View {
-        SidebarRow(title: preset.name, symbol: preset.panorama == nil ? "rectangle.portrait" : "rectangle.split.3x1",
-                   help: "\(preset.name)\n\(detail)")
+        HStack(spacing: 4) {
+            SidebarRow(title: preset.name, symbol: preset.panorama == nil ? "rectangle.portrait" : "rectangle.split.3x1",
+                       help: "\(preset.name)\n\(detail)")
+            if isModified { Text("已修改").font(.subheadline).foregroundStyle(.secondary).fixedSize() }
+        }
     }
 
     private var detail: String {
