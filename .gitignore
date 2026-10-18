@@ -33,6 +33,8 @@ credentials*
 *.photoframe
 !**/fixtures/**
 !**/Assets.xcassets/**
+# 应用图标的原始素材（生成的插画，不是照片原片）
+!Apps/PhotoFrameMac/Design/**
 
 # Documentation illustrations and their shared synthetic sample
 !docs/illustrations/**/*.png

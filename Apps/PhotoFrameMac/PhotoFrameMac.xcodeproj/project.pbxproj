@@ -9,9 +9,11 @@
 /* Begin PBXBuildFile section */
 		2FF830A94D6BC9675FBC1CC2 /* PhotoFrameMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB4645D1B0D7D856F9222AE3 /* PhotoFrameMacApp.swift */; };
 		8988E51F03CC0275095A0A1F /* PhotoFrameMacUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4CA2BFCEBB30B44FA66479C2 /* PhotoFrameMacUI */; };
+		951C1A74DCC8D44EB5EB5D4C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A6AD069EBC701D1F1EEAAC1 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		2A6AD069EBC701D1F1EEAAC1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		96D335F85A03D3E9FAA6F8FC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A41ED6C21C9BD6F83004D4C2 /* PhotoFrameMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoFrameMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D653591E533C31E65F3DC073 /* PhotoFrameMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoFrameMac.entitlements; sourceTree = "<group>"; };
@@ -51,6 +53,7 @@
 		D5F707ACEF9388A58BF21265 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				2A6AD069EBC701D1F1EEAAC1 /* Assets.xcassets */,
 				96D335F85A03D3E9FAA6F8FC /* Info.plist */,
 				D653591E533C31E65F3DC073 /* PhotoFrameMac.entitlements */,
 				EB4645D1B0D7D856F9222AE3 /* PhotoFrameMacApp.swift */,
@@ -84,6 +87,7 @@
 			buildConfigurationList = 5A64A3F156E256B8B94976CD /* Build configuration list for PBXNativeTarget "PhotoFrameMac" */;
 			buildPhases = (
 				86369861CE92A38F0E5F20A6 /* Sources */,
+				D8DBD24F83EAFBCD2D913168 /* Resources */,
 				A8024BBC15BD4D75939DD1C3 /* Frameworks */,
 			);
 			buildRules = (
@@ -134,6 +138,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D8DBD24F83EAFBCD2D913168 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				951C1A74DCC8D44EB5EB5D4C /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		86369861CE92A38F0E5F20A6 /* Sources */ = {
