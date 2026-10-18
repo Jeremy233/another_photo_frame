@@ -65,6 +65,28 @@ Xcode 工程由 `Apps/PhotoFrameMac/project.yml` 用 XcodeGen 生成，改了 `p
 swift build -c release --package-path Tools/photoframe
 ```
 
+## 发布
+
+在签名方式（D-21）定下来之前，发布包用 **ad-hoc 签名**。只用 `CODE_SIGNING_ALLOWED=NO` 构建的应用只有链接器给可执行文件加的签名，资源文件（图标、`Assets.car`、内嵌的 `.bundle`）没有签名清单（`Contents/_CodeSignature` 不存在）。用户下载后 macOS 会说应用「已损坏」，而且「隐私与安全性」里不会出现「仍要打开」。v0.9.0 第一次上传的包就是这样，后来已经替换。
+
+```bash
+xcodebuild -project Apps/PhotoFrameMac/PhotoFrameMac.xcodeproj -scheme PhotoFrameMac \
+  -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+APP=build/Build/Products/Release/AnotherPhotoFrame.app
+
+# ad-hoc 签名：给资源生成签名清单，并开启 hardened runtime
+codesign --force --deep --options runtime --sign - "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"   # 必须显示 valid on disk
+
+# 打包，并在解压后的副本上再验证一次
+ditto -c -k --sequesterRsrc --keepParent "$APP" AnotherPhotoFrame-<版本>-macOS.zip
+
+# 命令行工具：可执行文件和旁边的 .bundle 放在同一个文件夹里打包
+swift build -c release --package-path Tools/photoframe
+```
+
+上传到 GitHub Release 之前，把 zip 解压到另一个目录，再运行一次 `codesign --verify --deep --strict`。`spctl -a` 对 ad-hoc 签名的应用总是返回 `rejected`，这是正常的：没有经过 Apple 公证。用户第一次打开时，到「系统设置 → 隐私与安全性」点「仍要打开」，或者运行 `xattr -dr com.apple.quarantine`。
+
 ## 持续集成
 
 GitHub Actions 在每次 push 和 Pull Request 时，对 `Packages/`、`Tools/`、`Apps/` 下的每个 Swift Package 运行 `swift test`，并不签名构建一次应用。运行环境是 GitHub 托管的 `macos-26` runner（Apple Silicon），使用 Xcode 26.6，比开发机的编译器旧，写代码时避免过于复杂的单行表达式。配置见 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)。
