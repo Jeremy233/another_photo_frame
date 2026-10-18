@@ -11,26 +11,31 @@ extension Workbench {
     /// 添加图片（按钮、从 Finder 拖入）。不支持的格式跳过并提示。返回新加入的源图。
     @discardableResult
     public func addSources(_ urls: [URL]) async -> [SourceID] {
-        var added: [SourceID] = []
+        var found: [PhotoSource] = []
         var failures: [String] = []
         for url in urls {
             do throws(ApplicationError) {
-                let source = try await service.addSource(url)
-                guard sourceItem(source.sourceId) == nil else { continue }
-                sources.append(SourceItem(source: source, jobs: []))
-                added.append(source.sourceId)
-                inspect(source.sourceId)
+                found.append(try await service.addSource(url))
             } catch {
                 failures.append("\(url.lastPathComponent)：\(error.displayText)")
             }
         }
+        // 一次加进批次：一步撤销。已经在批次里的跳过。
+        var added: [SourceID] = []
+        undoable("添加图片") {
+            for source in found where sourceItem(source.sourceId) == nil {
+                sources.append(SourceItem(source: source, jobs: []))
+                added.append(source.sourceId)
+            }
+        }
+        for id in added { inspect(id) }
         // 右栏在编辑左栏的预设、批次原来是空的时，预览要用刚加入的源图。
         if !added.isEmpty { refreshPreview() }
         if !failures.isEmpty { alert = WorkbenchAlert(title: "有图片没有添加", message: WorkbenchAlert.paragraph(failures)) }
         return added
     }
 
-    private func inspect(_ id: SourceID) {
+    func inspect(_ id: SourceID) {
         background("inspect-\(id)") { [self] in
             let result: Result<SourceInspection, ApplicationError>
             do throws(ApplicationError) { result = .success(try await service.inspectSource(.id(id))) } catch { result = .failure(error) }
@@ -47,7 +52,7 @@ extension Workbench {
     /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
     public func setColorOverride(_ value: SourceColorOverride?, for id: SourceID) {
         guard let i = sources.firstIndex(where: { $0.id == id }), sources[i].colorOverride != value else { return }
-        sources[i].colorOverride = value
+        undoable("更改色彩空间") { sources[i].colorOverride = value }
         scheduleValidation(sources[i].jobs.map(\.id))
         refreshPreview()
     }
@@ -64,11 +69,13 @@ extension Workbench {
         await perform("无法添加任务") {
             let preset = try await presetContent(presetId)
             var created: [UUID] = []
-            for id in sourceIds {
-                guard let i = sources.firstIndex(where: { $0.id == id }) else { continue }
-                let job = DraftJob(sourceId: id, preset: preset, destination: destination)
-                sources[i].jobs.append(job)
-                created.append(job.id)
+            undoable("添加任务") {
+                for id in sourceIds {
+                    guard let i = sources.firstIndex(where: { $0.id == id }) else { continue }
+                    let job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    sources[i].jobs.append(job)
+                    created.append(job.id)
+                }
             }
             scheduleValidation(created)
             if let last = created.last { selection = [.job(last)] }
@@ -92,18 +99,20 @@ extension Workbench {
         await perform("无法应用预设") {
             let preset = try await presetContent(presetId)
             var created: [UUID] = []
-            for id in sourceIds {
-                guard let i = sources.firstIndex(where: { $0.id == id }), let destination else { continue }
-                let job = DraftJob(sourceId: id, preset: preset, destination: destination)
-                sources[i].jobs.append(job)
-                created.append(job.id)
-            }
-            modifyJobs(replaced) { job in
-                job.basePreset = preset
-                job.preset = preset
-                // 新预设没有的素材槽不再留单任务绑定。
-                let slots = Set(preset.assetSlots.map(\.slotId))
-                job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }
+            undoable("应用预设") {
+                for id in sourceIds {
+                    guard let i = sources.firstIndex(where: { $0.id == id }), let destination else { continue }
+                    let job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    sources[i].jobs.append(job)
+                    created.append(job.id)
+                }
+                modifyJobs(replaced) { job in
+                    job.basePreset = preset
+                    job.preset = preset
+                    // 新预设没有的素材槽不再留单任务绑定。
+                    let slots = Set(preset.assetSlots.map(\.slotId))
+                    job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }
+                }
             }
             let affected = Set(created).union(replaced)
             scheduleValidation(Array(affected))
@@ -156,9 +165,11 @@ extension Workbench {
     public func remove(_ items: Set<BatchItemID>) {
         guard !items.isEmpty else { return }
         let sourceCount = sources.count
-        sources.removeAll { items.contains(.source($0.id)) }
-        for i in sources.indices where sources[i].jobs.contains(where: { items.contains(.job($0.id)) }) {
-            sources[i].jobs.removeAll { items.contains(.job($0.id)) }
+        undoable("移除") {
+            sources.removeAll { items.contains(.source($0.id)) }
+            for i in sources.indices where sources[i].jobs.contains(where: { items.contains(.job($0.id)) }) {
+                sources[i].jobs.removeAll { items.contains(.job($0.id)) }
+            }
         }
         // 没被移除的仍然选中。
         selection = selection.filter { item in
@@ -185,12 +196,14 @@ extension Workbench {
     /// 复制这些任务（第 10 节），选中复制出来的任务。
     public func duplicateJobs(_ ids: Set<UUID>) {
         var created: [UUID] = []
-        for s in sources.indices {
-            for job in sources[s].jobs where ids.contains(job.id) {
-                var copy = job
-                copy.id = UUID()
-                sources[s].jobs.append(copy)
-                created.append(copy.id)
+        undoable("复制任务") {
+            for s in sources.indices {
+                for job in sources[s].jobs where ids.contains(job.id) {
+                    var copy = job
+                    copy.id = UUID()
+                    sources[s].jobs.append(copy)
+                    created.append(copy.id)
+                }
             }
         }
         guard !created.isEmpty else { return }
@@ -205,7 +218,7 @@ extension Workbench {
 
     /// 改这些行的输出位置：任务本身，以及源图下面的全部任务（右键菜单「位置」、把位置拖到行上）。
     public func setDestination(_ url: URL, for items: Set<BatchItemID>) {
-        updateJobs(jobIds(in: items)) { $0.destination = url }
+        undoable("更改位置") { updateJobs(jobIds(in: items)) { $0.destination = url } }
     }
 
     /// 拖放或菜单作用于哪些行：落在选中的行上时是全部选中的行（§4.2：拖到多选中的一项等于拖到全部），否则只是这一行。
@@ -222,12 +235,12 @@ extension Workbench {
 
     /// 右栏「输出」改选中任务的位置。
     public func setDestinationForSelection(_ url: URL) {
-        updateJobs(selectedJobIds) { $0.destination = url }
+        undoable("更改位置") { updateJobs(selectedJobIds) { $0.destination = url } }
     }
 
     /// 右栏「输出」改选中任务的作品目录命名模板（§9.2）。
     public func setNamingTemplate(_ template: String) {
-        updateJobs(selectedJobIds) { $0.naming.workNameTemplate = template }
+        undoable("更改作品目录命名") { updateJobs(selectedJobIds) { $0.naming.workNameTemplate = template } }
     }
 
     /// 选中任务共同的任务级字段（位置、命名），不同时为「多个值」。
@@ -296,7 +309,7 @@ extension Workbench {
     public func bindAsset(_ assetId: UUID?, slotId: String) async {
         switch inspectorSubject {
         case .jobs(let ids):
-            updateJobs(ids) { $0.assetBindings[slotId] = assetId }
+            undoable("绑定素材") { updateJobs(ids) { $0.assetBindings[slotId] = assetId } }
         case .preset(let id):
             // 预设本地绑定存在库里、只认已存储的素材槽：新加的图层要先存储预设。
             if let editor = presetEditor, !editor.entry.preset.assetSlots.contains(where: { $0.slotId == slotId }) {
@@ -518,6 +531,8 @@ extension Workbench {
             return true
         }
         if sources.count != sourceCount { sourcesDidLeave() }
+        // 已提交的任务不能再被撤销回「当前」。
+        if !submitted.isEmpty { clearUndoHistory() }
         await refreshJobs()
         await resumeQueue()
         // 与 Compressor 一致：提交后切到「活跃」看进度（D-108，设置里可关，D-114）。

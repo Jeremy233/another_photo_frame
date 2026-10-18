@@ -186,7 +186,7 @@ extension Workbench {
 
     public func revertPresetEdits() {
         guard let editor = presetEditor else { return }
-        setPresetDraft(editor.entry.preset)
+        undoable("还原预设") { setPresetDraft(editor.entry.preset) }
     }
 
     /// 改右栏正在编辑的左栏预设的草稿，并记在 `presetDrafts` 里（与存储的一样时去掉）。

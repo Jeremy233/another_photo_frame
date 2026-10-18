@@ -62,7 +62,7 @@ private struct LayerSection: View {
             IntField(title: "水平偏移", value: optional(\.offset.x))
             IntField(title: "垂直偏移", value: optional(\.offset.y))
             LabeledContent("不透明度") {
-                SliderWithValue(value: workbench.layerBinding(layer.layerId, \.opacity, default: 1), range: 0...1,
+                SliderWithValue(workbench: workbench, value: workbench.layerBinding(layer.layerId, \.opacity, default: 1), range: 0...1,
                                 text: "\(Int((layer.opacity * 100).rounded()))%")
             }
             VisibilityPicker(workbench: workbench, layer: layer)

@@ -513,7 +513,7 @@ extension Workbench {
     func layerBinding<Value>(_ layerId: String, _ path: WritableKeyPath<OverlayLayer, Value>, default value: Value) -> Binding<Value> {
         Binding(
             get: { self.editedPreset?.layers.first { $0.layerId == layerId }?[keyPath: path] ?? value },
-            set: { v in self.updateLayer(layerId) { $0[keyPath: path] = v } })
+            set: { v in self.updateLayer(layerId, coalescing: "\(layerId) \(path)") { $0[keyPath: path] = v } })
     }
 }
 
@@ -725,7 +725,7 @@ private struct OutputTab: View {
             }
             if workbench.field(\.output.format) == .single(.jpeg) {
                 LabeledContent("质量") {
-                    SliderWithValue(value: quality, range: 1...100, step: 1,
+                    SliderWithValue(workbench: workbench, value: quality, range: 1...100, step: 1,
                                     text: workbench.field(\.output.quality).value.map(String.init) ?? "多个值")
                 }
             }
@@ -757,7 +757,9 @@ private struct OutputTab: View {
 }
 
 /// 滑块和它右边的当前值（质量、不透明度两个滑块同样处理）。值与附近的单位标签同为 13 pt。
+/// 一次拖动是一步撤销。
 struct SliderWithValue: View {
+    let workbench: Workbench
     @Binding var value: Double
     var range: ClosedRange<Double>
     var step: Double?
@@ -767,7 +769,11 @@ struct SliderWithValue: View {
     var body: some View {
         HStack(spacing: 8) {
             Group {
-                if let step { Slider(value: $value, in: range, step: step) } else { Slider(value: $value, in: range) }
+                if let step {
+                    Slider(value: $value, in: range, step: step, onEditingChanged: editingChanged)
+                } else {
+                    Slider(value: $value, in: range, onEditingChanged: editingChanged)
+                }
             }
             .labelsHidden()
             Text(text)
@@ -775,6 +781,10 @@ struct SliderWithValue: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 44, alignment: .trailing)
         }
+    }
+
+    private func editingChanged(_ editing: Bool) {
+        if editing { workbench.beginContinuousEdit() } else { workbench.endContinuousEdit() }
     }
 }
 
