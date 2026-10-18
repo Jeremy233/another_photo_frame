@@ -75,6 +75,75 @@ extension Workbench {
         }
     }
 
+    /// 把预设应用到这些行（拖到行上、任务列表有选择时点左栏的预设）：源图各建一个用这个预设的任务；
+    /// 任务换成这个预设（位置、命名不变）。源图和它下面的任务都在里面时只给源图建任务，不再改它的任务。
+    /// 做完后选中这些任务，右栏和预览显示它们（预览显示第一个），之后的修改作用于全部。
+    public func applyPreset(_ presetId: UUID, to items: Set<BatchItemID>) async {
+        let sourceIds = sources.map(\.id).filter { items.contains(.source($0)) }
+        let replaced = Set(sources.flatMap { item in
+            items.contains(.source(item.id)) ? [] : item.jobs.filter { items.contains(.job($0.id)) }.map(\.id)
+        })
+        guard !sourceIds.isEmpty || !replaced.isEmpty else { return }
+        let destination = locations.defaultLocation?.url
+        if !sourceIds.isEmpty, destination == nil {
+            alert = WorkbenchAlert(title: "无法添加任务", message: "没有输出位置：请先在左栏「位置」里添加一个。")
+            return
+        }
+        await perform("无法应用预设") {
+            let preset = try await presetContent(presetId)
+            var created: [UUID] = []
+            for id in sourceIds {
+                guard let i = sources.firstIndex(where: { $0.id == id }), let destination else { continue }
+                let job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                sources[i].jobs.append(job)
+                created.append(job.id)
+            }
+            modifyJobs(replaced) { job in
+                job.basePreset = preset
+                job.preset = preset
+                // 新预设没有的素材槽不再留单任务绑定。
+                let slots = Set(preset.assetSlots.map(\.slotId))
+                job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }
+            }
+            let affected = Set(created).union(replaced)
+            scheduleValidation(Array(affected))
+            showInInspector(Set(affected.map(BatchItemID.job)))
+            refreshPreview()
+        }
+    }
+
+    /// 任务列表有选中的行、右栏正显示它们时，点左栏的预设直接应用到选中的行，不用再拖（左栏的选择不变）。
+    /// 要编辑左栏的预设本身，先取消任务列表的选择。
+    public var appliesPresetOnClick: Bool { mode == .current && focus == .batch && !selection.isEmpty }
+
+    /// 点了左栏「预设」里的一行（包括仍然选中的那一个）。
+    public func clickPreset(_ id: UUID) async {
+        if appliesPresetOnClick {
+            await applyPreset(id, to: selection)
+        } else {
+            focusPreset()
+        }
+    }
+
+    /// 左栏预设列表的选择变了（点按、方向键）。应用到任务列表时由 ``clickPreset(_:)`` 处理，左栏的选择不变。
+    public func choosePreset(_ id: UUID?) {
+        guard !appliesPresetOnClick else { return }
+        selectedPresetId = id
+    }
+
+    /// 任务列表从上到下看得到的行：每张源图，后面是它的任务（折起来的源图不含任务）。
+    public var visibleItems: [BatchItemID] {
+        sources.flatMap { item in
+            [BatchItemID.source(item.id)] + (isCollapsed(item.id) ? [] : item.jobs.map { .job($0.id) })
+        }
+    }
+
+    /// ⌘A：选中任务列表里看得到的全部行（全部源图和它们的任务）。
+    public func selectAll() {
+        guard mode == .current, !sources.isEmpty else { return }
+        showInInspector(Set(visibleItems))
+    }
+
     /// 选中的源图（选中任务时取它所属的源图）；工具栏「应用预设」用。
     public var targetSourceIds: [SourceID] {
         let selection = self.selection
@@ -173,13 +242,12 @@ extension Workbench {
     public func drop(_ payload: DragPayload, on item: BatchItemID) async -> Bool {
         switch payload {
         case .preset(let id):
-            let sourceId: SourceID? = switch item {
-            case .source(let s): s
-            case .job(let j): job(j)?.sourceId
+            switch item {
+            case .source(let s): guard sourceItem(s) != nil else { return false }
+            case .job(let j): guard job(j) != nil else { return false }
             }
-            guard let sourceId else { return false }
-            // 拖到选中的多张源图之一时，对全部选中的源图生效（§4.2）。
-            await addJobs(preset: id, onto: sourceId)
+            // 拖到选中的行之一时，对全部选中的行生效（§4.2）。
+            await applyPreset(id, to: targets(for: item))
             return true
         case .location(let id):
             guard let location = location(id) else { return false }

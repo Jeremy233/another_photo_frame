@@ -88,7 +88,8 @@ private struct PresetList: View {
 
     /// 树形列表，三角常驻（参照 Compressor 左栏）：内置 ▸ 平台 ▸ 预设；用户保存、导入各一组。
     var body: some View {
-        List(selection: $workbench.selectedPresetId) {
+        // 任务列表有选择时，点预设直接应用到选中的行（`clickPreset`），左栏的选择不变。
+        List(selection: Binding(get: { workbench.selectedPresetId }, set: { workbench.choosePreset($0) })) {
             ForEach(groups, id: \.kind) { group in
                 DisclosureGroup(isExpanded: expanded(group.kind)) {
                     if group == .builtIn {
@@ -130,8 +131,8 @@ private struct PresetList: View {
                 .tag(preset.presetId)
                 .draggable(DragPayload.preset(preset.presetId).string)
                 .contextMenu { menu(for: preset) }
-                // 再点仍然选中的预设时右栏也切回它（选择没变，不会通知）。
-                .onRowClick { workbench.focusPreset() }
+                // 再点仍然选中的预设时右栏也切回它（选择没变，不会通知）；任务列表有选择时应用到选中的行。
+                .onRowClick { Task { await workbench.clickPreset(preset.presetId) } }
         }
     }
 

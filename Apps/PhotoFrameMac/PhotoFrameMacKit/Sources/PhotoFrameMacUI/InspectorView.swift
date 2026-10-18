@@ -108,7 +108,7 @@ struct InspectorView: View {
         }
     }
 
-    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上来创建任务"
+    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上，或选中源图后点预设，来创建任务"
 
     @ViewBuilder private var tab: some View {
         switch workbench.inspectorTab {

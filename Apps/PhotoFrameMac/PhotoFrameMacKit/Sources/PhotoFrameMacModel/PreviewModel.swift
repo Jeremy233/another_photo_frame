@@ -318,7 +318,7 @@ extension PreviewImage {
 }
 
 extension Workbench {
-    /// 预览跟着右栏：选中一个任务时预览它；选中源图时预览它的第一个任务（没有任务只看原图）；
+    /// 预览跟着右栏：选中任务时预览它（多选时第一个）；选中源图时预览它的第一个任务（没有任务只看原图）；
     /// 选中左栏预设时用选中的源图（没有则第一张源图）预览预设草稿。
     var previewSubject: PreviewSubject? {
         func subject(_ item: SourceItem, preset: ExportPreset?, bindings: [String: UUID]) -> PreviewSubject {
@@ -329,7 +329,8 @@ extension Workbench {
         let (inspectorSubject, jobs) = inspected()
         switch inspectorSubject {
         case .jobs:
-            guard jobs.count == 1, let job = jobs.first, let item = sourceItem(job.sourceId) else { return nil }
+            // 多选时预览第一个（右栏的修改作用于全部选中的任务）。
+            guard let job = jobs.first, let item = sourceItem(job.sourceId) else { return nil }
             return subject(item, preset: job.preset, bindings: job.assetBindings)
         case .source(let id):
             guard let item = sourceItem(id) else { return nil }
