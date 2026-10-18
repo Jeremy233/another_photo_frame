@@ -68,6 +68,56 @@ public struct DraftJob: Identifiable, Hashable, Sendable {
 
     public var isModified: Bool { preset != basePreset }
     public var warningCount: Int { (validation?.warnings.count ?? 0) + (validation?.errors.count ?? 0) }
+
+    /// 任务列表「输出」一列：最近一次校验的尺寸和页数（含封面），与「已完成」同一种写法。
+    public var outputSummary: String? {
+        guard let outputs = validation?.outputs, let first = outputs.first else { return nil }
+        return OutputSummary.text(size: first.pixelSize, pages: outputs.count)
+    }
+
+    /// 切片张数（不含封面）。
+    public var slideCount: Int? {
+        validation.map { $0.outputs.count { $0.role != .cover } }
+    }
+}
+
+/// 输出摘要的唯一写法：「1080 × 1440 · 4 页」。页数含封面（与进度、D-27、CLI 一致），「张」只用于切片。
+public enum OutputSummary {
+    public static func text(size: PixelSize, pages: Int) -> String {
+        "\(size.width) × \(size.height) · \(pages) 页"
+    }
+}
+
+extension JobRecord {
+    /// 「已完成」里的输出摘要：实际写出的文件。
+    public var outputSummary: String? {
+        guard let manifest, let first = manifest.items.first else { return nil }
+        return OutputSummary.text(size: first.pixelSize, pages: manifest.items.count)
+    }
+
+    /// 这次执行的警告。任务结束时队列已经把清单里的警告并入执行的警告，不再和 `manifest.warnings` 相加。
+    public var displayWarnings: [ApplicationWarning] { currentAttempt.warnings }
+}
+
+/// 源图的动态范围（D-62）。标为 HDR 但画面没有超出 SDR 白的内容时单独一种：按 SDR 导出，但不能说「源图不是 HDR」。
+public enum SourceDynamicRange: Sendable {
+    case sdr, hdr
+    case taggedWithoutHighlights
+
+    public init(_ hdr: SourceInspection.HDR) {
+        if hdr.kind == "none" {
+            self = .sdr
+        } else if let headroom = hdr.headroom, headroom <= 1.01 {
+            self = .taggedWithoutHighlights
+        } else {
+            self = .hdr
+        }
+    }
+}
+
+extension SourceItem {
+    /// 检查完成前为 nil。
+    public var dynamicRange: SourceDynamicRange? { inspection.map { SourceDynamicRange($0.hdr) } }
 }
 
 /// 任务列表里的一行。
@@ -109,8 +159,25 @@ public struct WorkbenchAlert: Identifiable, Equatable, Sendable {
         self.message = message
     }
 
-    init(_ error: ApplicationError, title: String = "操作失败") {
-        self.init(title: title, message: [error.message, error.hint].compactMap(\.self).joined(separator: "\n"))
+    init(_ error: ApplicationError, title: String) {
+        self.init(title: title, message: Self.paragraph([error.displayText]))
+    }
+
+    /// 多行的弹窗正文：每一行都是完整的句子，句末统一加「。」（提示、标签、单句说明不加）。
+    static func paragraph(_ lines: [String]) -> String {
+        lines.flatMap { $0.split(separator: "\n", omittingEmptySubsequences: false) }
+            .map { line in
+                guard let last = line.last, !"。！？.!?：；".contains(last) else { return String(line) }
+                return line + "。"
+            }
+            .joined(separator: "\n")
+    }
+}
+
+extension ApplicationError {
+    /// 给人看的全文：消息，有修改建议时另起一行「建议：…」。弹窗、汇总列表、悬停提示都用这一种写法。
+    public var displayText: String {
+        [message, hint.map { "建议：\($0)" }].compactMap(\.self).joined(separator: "\n")
     }
 }
 

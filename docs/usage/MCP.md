@@ -175,7 +175,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `presets` | string[]，必填，最多 64 | 预设引用；每张图 × 每个预设一个任务 |
 | `outputDirectory` | string，必填 | 输出根目录，在允许写入的目录内；不存在时创建 |
 | `overwrite` | bool，默认 false | 显式允许覆盖（D-49），见「覆盖」 |
-| `assumeProfile` | `srgb` / `display-p3` / `adobe-rgb` | 没有 ICC 的源图按什么解释（D-75） |
+| `assumeProfile` | `srgb` / `display-p3` / `adobe-rgb` / `prophoto-rgb` / `rec2020` | 没有 ICC 的源图按什么解释（D-75，与 GUI「按此解释」相同） |
 | `bindings` | object | 单任务素材绑定 `{slotId: assetId 或素材名称}`（D-14 最高优先级） |
 
 输出位置与 CLI 相同：`<outputDirectory>/<平台>/<源文件名>_<Standard|Panorama>[_vN]/00_Cover.jpg、01_Slide.jpg…`。

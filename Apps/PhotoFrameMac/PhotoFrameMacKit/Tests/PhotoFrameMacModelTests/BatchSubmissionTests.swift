@@ -29,7 +29,7 @@ import Testing
         let wb = f.workbench
         let other = f.root.appending(path: "Other", directoryHint: .isDirectory)
         // 后端还在校验第一个任务时，用户改了第二个任务的位置。
-        f.hooks.set { $0.beforeValidate = { @MainActor in wb.setDestination(other, for: .job(b)) } }
+        f.hooks.set { $0.beforeValidate = { @MainActor in wb.setDestination(other, for: [.job(b)]) } }
         await wb.startBatch()
         await f.waitForRun()
         // 改过的任务不提交改动前的内容：它留在「当前」，改动还在。

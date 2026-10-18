@@ -13,16 +13,16 @@ struct ActiveJobsView: View {
             // 没有任务时这一行是空的、下面是空表格（与 Compressor 一样，见 `showsQueueControls`）。
             ColumnHeader {
                 if workbench.showsQueueControls {
-                    HStack {
+                    HStack(spacing: BarMetrics.gap) {
                         Button(workbench.isQueuePaused ? "继续" : "暂停", systemImage: workbench.isQueuePaused ? "play.fill" : "pause.fill") {
                             Task { await workbench.toggleQueuePaused() }
                         }
-                        .help("暂停只停止派发新任务，正在执行的任务会做完（D-51）")
+                        .help(workbench.isQueuePaused ? "继续派发排队中的任务" : "暂停后不再派发新任务，正在执行的任务会做完")
                         Spacer()
                         if let progress = workbench.batchProgress { BatchProgressLabel(progress: progress) }
                     }
                     .buttonStyle(.borderless)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, BarMetrics.padding)
                 }
             }
             table.scrollContentBackground(.hidden)
@@ -36,45 +36,46 @@ struct ActiveJobsView: View {
             TableColumn("已用时间") { ElapsedTime(record: $0) }.width(80)
             TableColumn("进度") { JobProgressView(record: $0) }.width(min: 120, ideal: 160)
             TableColumn("") { record in
-                Button { Task { await workbench.cancel([record.jobId]) } } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .help("取消")
+                RowButton(symbol: "xmark.circle.fill", help: "取消") { Task { await workbench.cancel([record.jobId]) } }
             }
             .width(28)
         }
         .contextMenu(forSelectionType: JobID.self) { ids in
-            Button("取消") { Task { await workbench.cancel(ids) } }
+            if !ids.isEmpty { Button("取消") { Task { await workbench.cancel(ids) } } }
         }
+        .onDeleteCommand { Task { await workbench.cancel(workbench.jobSelection) } }
     }
 }
 
-/// 名称：源图 · 预设。
+/// 名称：源图 · 预设。两段各自中间截断，分隔点总在；悬停看全文和输出位置。
 private struct JobName: View {
     let record: JobRecord
 
     var body: some View {
+        let source = record.spec.source.displayName, preset = record.spec.preset.name
         Label {
-            Text("\(record.spec.source.displayName) · \(record.spec.preset.name)").lineLimit(1).truncationMode(.middle)
+            HStack(spacing: 4) {
+                Text(source).lineLimit(1).truncationMode(.middle)
+                Text("·").foregroundStyle(.secondary).fixedSize()
+                Text(preset).lineLimit(1).truncationMode(.middle)
+            }
         } icon: {
             Image(systemName: record.spec.preset.panorama.enabled ? "rectangle.split.3x1" : "rectangle.portrait")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.icon)
         }
-        .help(record.spec.destination.rootDirectory.displayPath)
+        .help("\(source) · \(preset)\n\(record.spec.destination.rootDirectory.displayPath)")
     }
 }
 
-/// 状态文字用强调色（失败为红色），参照 Compressor。
+/// 状态文字用强调色（失败为红色），参照 Compressor。文字都在 Labels.swift。
 private struct StatusText: View {
     let record: JobRecord
 
     var body: some View {
         switch record.status {
-        case .failed: Text("失败").foregroundStyle(.red).help(record.error?.message ?? "")
-        case .canceled: Text("已取消").foregroundStyle(.secondary)
-        case .completed: Text("成功").foregroundStyle(.tint)
-        case .queued: Text("等待").foregroundStyle(.tint)
-        default: Text("处理中 · \(record.status.title)").foregroundStyle(.tint)
+        case .failed: Text(record.statusTitle).foregroundStyle(Palette.error).help(record.error?.displayText ?? "")
+        case .canceled: Text(record.statusTitle).foregroundStyle(.secondary)
+        default: Text(record.statusTitle).foregroundStyle(.tint)
         }
     }
 }
@@ -122,26 +123,43 @@ private struct JobProgressView: View {
     }
 }
 
+/// 表格行尾的图标按钮：全应用一种样式（实心圆形图标、中性灰）。
+private struct RowButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Image(systemName: symbol) }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.icon)
+            .help(help)
+            .accessibilityLabel(help)
+    }
+}
+
 /// 「已完成」：导出历史，按天分组，可以在 Finder 中显示、重新导出、重试（UI 设计文档第 2 节）。
+/// 选择与「活跃」分开；每个操作在顶栏、右键菜单、行尾按钮用同一个判断。
 struct CompletedJobsView: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
         // 历史要过滤、排序再按天分组：每次只算一遍。
         let days = Self.days(workbench.finishedJobs)
+        let selected = workbench.selectedFinishedJobs
         VStack(spacing: 0) {
             ColumnHeader {
-                HStack {
-                    Button("在 Finder 中显示", systemImage: "folder") { reveal(workbench.jobSelection) }
-                        .disabled(workbench.outputURLs(workbench.jobSelection).isEmpty)
-                    Button("重新导出", systemImage: "arrow.clockwise") { Task { await workbench.reexport(workbench.jobSelection) } }
-                        .disabled(workbench.jobSelection.isEmpty)
-                    Button("重试", systemImage: "arrow.uturn.backward") { Task { await workbench.retry(workbench.jobSelection) } }
-                        .disabled(!workbench.jobSelection.contains(where: workbench.canRetry))
+                HStack(spacing: BarMetrics.gap) {
+                    Button("在 Finder 中显示", systemImage: "magnifyingglass") { reveal(selected) }
+                        .disabled(!canReveal(selected))
+                    Button("重新导出", systemImage: "arrow.clockwise") { Task { await workbench.reexport(selected) } }
+                        .disabled(!selected.contains(where: workbench.canReexport))
+                    Button("重试", systemImage: "arrow.uturn.backward") { Task { await workbench.retry(selected) } }
+                        .disabled(!selected.contains(where: workbench.canRetry))
                     Spacer()
                 }
                 .buttonStyle(.borderless)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, BarMetrics.padding)
             }
             // 没有记录时与「活跃」一样显示空表格（带列标题）。
             if days.isEmpty {
@@ -150,24 +168,32 @@ struct CompletedJobsView: View {
                 VerticalSplit(autosaveName: "HistoryAndDetail", topFraction: 0.65) {
                     table(days).scrollContentBackground(.hidden).filling(Palette.list)
                 } bottom: {
-                    JobDetail(record: selectedRecord).scrollContentBackground(.hidden).filling(Palette.panel)
+                    JobDetail(record: selected.count == 1 ? selected.first.flatMap(workbench.record) : nil)
+                        .scrollContentBackground(.hidden)
+                        .filling(Palette.panel)
                 }
             }
         }
     }
 
     private func table(_ days: [(title: String, records: [JobRecord])]) -> some View {
-        Table(of: JobRecord.self, selection: $workbench.jobSelection) {
+        Table(of: JobRecord.self, selection: $workbench.historySelection) {
             TableColumn("名称") { JobName(record: $0) }
             TableColumn("状态") { StatusText(record: $0) }.width(min: 60, ideal: 90)
             TableColumn("输出") { record in
-                if let manifest = record.manifest, let first = manifest.items.first {
-                    Text("\(manifest.items.count) 个文件 · \(first.pixelSize.text)").foregroundStyle(.secondary)
-                }
+                // 与批次列表的「输出」同一种写法：主文字色、等宽数字。
+                Text(record.outputSummary ?? "").monospacedDigit().lineLimit(1)
             }
             TableColumn("警告") { record in
-                let count = (record.manifest?.warnings.count ?? 0) + record.currentAttempt.warnings.count
-                if count > 0 { Label("\(count)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.yellow) }
+                let count = record.displayWarnings.count
+                if count > 0 {
+                    Label {
+                        Text("\(count)").monospacedDigit()
+                    } icon: {
+                        JobIssueIcon(isError: false)
+                    }
+                    .help(record.displayWarnings.map(\.message).joined(separator: "\n"))
+                }
             }
             .width(50)
             TableColumn("已用时间") { ElapsedTime(record: $0) }.width(80)
@@ -180,11 +206,13 @@ struct CompletedJobsView: View {
             }
         }
         .contextMenu(forSelectionType: JobID.self) { ids in
-            Button("在 Finder 中显示") { reveal(ids) }
-            Button("重新导出") { Task { await workbench.reexport(ids) } }
-            Button("重试") { Task { await workbench.retry(ids) } }.disabled(!ids.contains(where: workbench.canRetry))
+            if !ids.isEmpty {
+                Button("在 Finder 中显示") { reveal(ids) }.disabled(!canReveal(ids))
+                Button("重新导出") { Task { await workbench.reexport(ids) } }.disabled(!ids.contains(where: workbench.canReexport))
+                Button("重试") { Task { await workbench.retry(ids) } }.disabled(!ids.contains(where: workbench.canRetry))
+            }
         } primaryAction: { ids in
-            reveal(ids)
+            if canReveal(ids) { reveal(ids) }
         }
     }
 
@@ -206,58 +234,53 @@ struct CompletedJobsView: View {
         return groups
     }
 
-    private var selectedRecord: JobRecord? {
-        workbench.jobSelection.count == 1 ? workbench.jobSelection.first.flatMap(workbench.record) : nil
-    }
+    private func canReveal(_ ids: Set<JobID>) -> Bool { !workbench.outputURLs(ids).isEmpty }
 
     private func reveal(_ ids: Set<JobID>) {
         NSWorkspace.shared.activateFileViewerSelecting(workbench.outputURLs(ids))
     }
 }
 
-/// 每行右端的按钮：成功的「重新导出」，失败或取消的「重试」（D-52）。
+/// 每行右端的按钮：成功的「重新导出」，失败或取消的「重试」（D-52）。判断与顶栏、右键菜单相同。
 private struct RowAction: View {
     let workbench: Workbench
     let record: JobRecord
 
     var body: some View {
-        Group {
-            // 与 `canRetry` 相同的判断，直接用这一行的记录（不用每行再在全部任务里查一遍）。
-            if record.status == .failed || record.status == .canceled {
-                Button { Task { await workbench.retry([record.jobId]) } } label: { Image(systemName: "arrow.uturn.backward") }
-                    .help("重试")
-            } else {
-                Button { Task { await workbench.reexport([record.jobId]) } } label: { Image(systemName: "arrow.clockwise") }
-                    .help("重新导出")
-            }
+        switch record.status {
+        case .failed, .canceled:
+            RowButton(symbol: "arrow.uturn.backward.circle.fill", help: "重试") { Task { await workbench.retry([record.jobId]) } }
+        case .completed:
+            RowButton(symbol: "arrow.clockwise.circle.fill", help: "重新导出") { Task { await workbench.reexport([record.jobId]) } }
+        default:
+            EmptyView()
         }
-        .buttonStyle(.borderless)
     }
 }
 
-/// 选中一个已结束任务时的详情：输出文件、警告、错误。
+/// 选中一个已结束任务时的详情：错误和警告（与右栏同一种列表）、输出文件。
 private struct JobDetail: View {
     let record: JobRecord?
 
     var body: some View {
         if let record {
             List {
-                if let error = record.error {
-                    Section("错误") {
-                        Text(error.message).foregroundStyle(.red)
-                        if let hint = error.hint { Text(hint).foregroundStyle(.secondary) }
-                    }
+                let issues = record.issues
+                if !issues.isEmpty {
+                    Section(record.error == nil ? "警告" : "错误") { JobIssueList(issues: issues) }
                 }
                 if let manifest = record.manifest {
-                    Section(manifest.directory.displayPath) {
+                    Section {
                         ForEach(manifest.items, id: \.fileURL) { item in
                             OutputFileRow(item: item)
                         }
+                    } header: {
+                        // 路径从中间省略：开头的位置和结尾的作品目录名都看得到。
+                        Text(manifest.directory.displayPath)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(manifest.directory.displayPath)
                     }
-                }
-                let warnings = (record.manifest?.warnings ?? []) + record.currentAttempt.warnings
-                if !warnings.isEmpty {
-                    Section("警告") { ForEach(warnings, id: \.self) { Text($0.message) } }
                 }
             }
         } else {
@@ -266,19 +289,26 @@ private struct JobDetail: View {
     }
 }
 
+/// 一个输出文件：文件名 | 尺寸 | 色彩 | 大小 | 在 Finder 中显示。各行列宽相同（与批次列表的任务行同一种列布局）。
 private struct OutputFileRow: View {
     let item: OutputManifestItem
 
+    private static let layout = FractionColumns(fractions: [0.4, 0.2, 0.25, 0.15], trailing: 20)
+
     var body: some View {
-        HStack {
-            Label(item.fileName, systemImage: "doc")
-            Spacer()
-            Text(item.pixelSize.text).monospacedDigit()
-            Text(item.colorProfile ?? "").foregroundStyle(.secondary)
-            Text(ByteCountFormatter.string(fromByteCount: item.fileSizeBytes, countStyle: .file)).foregroundStyle(.secondary)
-            Button { NSWorkspace.shared.activateFileViewerSelecting([item.fileURL]) } label: { Image(systemName: "magnifyingglass.circle") }
-                .buttonStyle(.borderless)
-                .help("在 Finder 中显示")
+        Self.layout {
+            Label {
+                Text(item.fileName).lineLimit(1).truncationMode(.middle)
+            } icon: {
+                Image(systemName: "doc").foregroundStyle(Palette.icon)
+            }
+            .help(item.fileURL.displayPath)
+            Text(item.pixelSize.text).monospacedDigit().lineLimit(1)
+            Text(item.colorProfile ?? "").foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(item.colorProfile ?? "")
+            Text(ByteCountFormatter.string(fromByteCount: item.fileSizeBytes, countStyle: .file)).foregroundStyle(.secondary).monospacedDigit()
+            RowButton(symbol: "magnifyingglass.circle.fill", help: "在 Finder 中显示") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.fileURL])
+            }
         }
     }
 }
@@ -302,7 +332,7 @@ private struct BatchProgressLabel: View {
     }
 }
 
-/// 中栏底部：添加图片、默认导出位置、批处理进度、开始批处理（UI 设计文档第 11、12 节）。
+/// 中栏底部：添加图片、默认输出位置、批处理进度、开始批处理（UI 设计文档第 11、12 节）。
 /// 参照 Compressor 每栏一段的底栏，只放在中栏下面；左栏底部是它自己的 + / 齿轮。
 struct BottomBar: View {
     @Bindable var workbench: Workbench
@@ -311,6 +341,7 @@ struct BottomBar: View {
         ColumnFooter {
             Button { workbench.isAddingImages = true } label: { Image(systemName: "plus") }
                 .help("添加图片（⌘O）")
+                .accessibilityLabel("添加图片")
             // 标签字号保持系统表单标签的 13 pt。
             HStack(spacing: BarMetrics.gap - BarMetrics.popUpInset) {
                 Text("位置").font(.body)
@@ -322,16 +353,23 @@ struct BottomBar: View {
                 .labelsHidden()
             }
             .fixedSize()
-            .help("新任务的默认导出位置：\(workbench.locations.defaultLocation?.url.displayPath ?? "")")
+            .help("新任务的默认输出位置：\(workbench.locations.defaultLocation?.url.displayPath ?? "")")
             Spacer()
             if let progress = workbench.batchProgress { BatchProgressLabel(progress: progress) }
             Spacer()
-            Button("开始批处理") { Task { await workbench.startBatch() } }
-                .disabled(workbench.sources.allSatisfy(\.jobs.isEmpty) && !(workbench.isQueuePaused && !workbench.activeJobs.isEmpty))
+            Button("开始批处理") { startBatch(workbench) }
+                .disabled(!workbench.canStartBatch)
         }
     }
 
     private var defaultLocation: Binding<UUID?> {
         Binding(get: { workbench.locations.defaultLocation?.id }, set: { if let id = $0 { workbench.setDefaultLocation(id) } })
     }
+}
+
+/// 「开始批处理」（底栏按钮和 ⌘↩）：先结束正在编辑的输入框，最后输入的值才会用上。
+@MainActor
+func startBatch(_ workbench: Workbench) {
+    endEditing()
+    Task { await workbench.startBatch() }
 }

@@ -56,15 +56,26 @@ public final class Workbench {
 
     // MARK: 当前批次
 
-    public internal(set) var sources: [SourceItem] = []
+    public internal(set) var sources: [SourceItem] = [] {
+        didSet {
+            // 源图离开批次或任务全部删掉后，不再记着它折起来（再加任务时是展开的）。
+            if !collapsedSources.isEmpty {
+                let kept = collapsedSources.filter { id in sources.contains { $0.id == id && !$0.jobs.isEmpty } }
+                if kept != collapsedSources { collapsedSources = kept }
+            }
+        }
+    }
     /// 任务列表的选择（可多选）。非空时右栏显示源图 / 任务。
     public var selection: Set<BatchItemID> = [] {
         didSet {
             guard selection != oldValue else { return }
             if !selection.isEmpty { focus = .batch }
+            expandSelectedJobs()
             refreshPreview()
         }
     }
+    /// 批次列表里折起来的源图：只显示头部，不显示它的任务。
+    public internal(set) var collapsedSources: Set<SourceID> = []
     /// 左栏选中的预设。选中时右栏编辑预设本身。
     public var selectedPresetId: UUID? {
         didSet {
@@ -92,7 +103,10 @@ public final class Workbench {
 
     public internal(set) var jobs: [JobRecord] = []
     public internal(set) var isQueuePaused: Bool
+    /// 「活跃」表格的选择。
     public var jobSelection: Set<JobID> = []
+    /// 「已完成」表格的选择，与「活跃」分开：切换界面后顶栏按钮和详情只看这里选中的已结束任务。
+    public var historySelection: Set<JobID> = []
     /// 最近一次批处理包含的任务，底栏进度按它计算。
     var runJobIds: [JobID] = []
     /// 已经应用的任务事件数。读任务列表期间有事件改过记录时，读到的快照可能比这些记录旧（见 `refreshJobs`）。
@@ -228,8 +242,85 @@ public final class Workbench {
     /// 选中任务列表里的这些项，并让右栏显示它们：选择没变、右栏却在显示左栏的预设或位置时，也切回任务列表。
     func showInInspector(_ items: Set<BatchItemID>) {
         selection = items
+        focusBatch()
+    }
+
+    /// 点了任务列表里的行（包括仍然高亮的行）：右栏切回任务列表。选择没变时 `selection` 不会通知，所以由行的点击调用。
+    public func focusBatch() {
+        guard !selection.isEmpty, focus != .batch else { return }
         focus = .batch
         refreshPreview()
+    }
+
+    /// 点了左栏「预设」里的行（包括仍然选中的那一个）：右栏切到这个预设。
+    public func focusPreset() {
+        guard selectedPresetId != nil, focus != .preset else { return }
+        focus = .preset
+        refreshPreview()
+    }
+
+    /// 点了左栏「位置」里的行：右栏切到这个位置。
+    public func focusLocation() {
+        guard selectedLocationId != nil, focus != .location else { return }
+        focus = .location
+        refreshPreview()
+    }
+
+    // MARK: - 批次列表的折叠
+
+    public func isCollapsed(_ id: SourceID) -> Bool { collapsedSources.contains(id) }
+
+    /// 折起或展开一张源图的任务。没有任务的源图不折叠。
+    public func setCollapsed(_ id: SourceID, _ collapsed: Bool) {
+        if collapsed {
+            guard let item = sourceItem(id), !item.jobs.isEmpty else { return }
+            // 折起来之后选中的任务就看不见了：不再选中它们（⌫ 不会删掉看不见的东西）。
+            let hidden = Set(item.jobs.map { BatchItemID.job($0.id) })
+            collapsedSources.insert(id)
+            if !selection.isDisjoint(with: hidden) { selection.subtract(hidden) }
+        } else {
+            collapsedSources.remove(id)
+        }
+    }
+
+    /// 选中的任务所在的源图自动展开（例如新任务加到折起来的源图上）。
+    private func expandSelectedJobs() {
+        guard !collapsedSources.isEmpty else { return }
+        let jobs = Set(selection.compactMap { if case .job(let id) = $0 { id } else { nil } })
+        guard !jobs.isEmpty else { return }
+        for source in sources where collapsedSources.contains(source.id) && source.jobs.contains(where: { jobs.contains($0.id) }) {
+            collapsedSources.remove(source.id)
+        }
+    }
+
+    // MARK: - 菜单命令的可用状态（与对应按钮相同）
+
+    /// 底栏「开始批处理」和 ⌘↩：「当前」里有任务，或队列暂停着、还有没做完的任务。
+    public var canStartBatch: Bool {
+        sources.contains { !$0.jobs.isEmpty } || (isQueuePaused && activeCount > 0)
+    }
+
+    /// 预览只在「当前」里看得到：缩放命令、左栏开关只在这里可用（「活跃」「已完成」时左栏总是收起）。
+    public var isPreviewVisible: Bool { mode == .current }
+    public var canToggleSidebar: Bool { mode == .current }
+
+    /// ⌘D「复制」：任务列表里选中的任务，或左栏选中的预设。
+    public var canDuplicate: Bool {
+        guard mode == .current else { return false }
+        switch focus {
+        case .batch: return !selectedJobIds.isEmpty
+        case .preset: return selectedPresetId != nil
+        case .location: return false
+        }
+    }
+
+    public func duplicateFocused() async {
+        guard canDuplicate else { return }
+        switch focus {
+        case .batch: duplicateSelectedJobs()
+        case .preset: if let id = selectedPresetId { await duplicatePreset(id) }
+        case .location: break
+        }
     }
 
     // MARK: - 内部工具
@@ -301,8 +392,8 @@ public final class Workbench {
         await preview.settle()
     }
 
-    /// 执行服务调用，失败时弹出提示。
-    func perform(_ title: String = "操作失败", _ body: () async throws -> Void) async {
+    /// 执行服务调用，失败时弹出提示。标题统一写「无法 + 动作」，与按钮上的动词一致。
+    func perform(_ title: String, _ body: () async throws -> Void) async {
         do {
             try await body()
         } catch let error as ApplicationError {
@@ -310,6 +401,20 @@ public final class Workbench {
         } catch is CancellationError {
         } catch {
             alert = WorkbenchAlert(title: title, message: "\(error)")
+        }
+    }
+
+    /// 执行服务调用，失败时不弹窗、返回错误（批量操作收集起来一次提示）。
+    func attempt(_ body: () async throws -> Void) async -> ApplicationError? {
+        do {
+            try await body()
+            return nil
+        } catch let error as ApplicationError {
+            return error
+        } catch is CancellationError {
+            return nil
+        } catch {
+            return ApplicationError(code: "unknown", message: "\(error)")
         }
     }
 }

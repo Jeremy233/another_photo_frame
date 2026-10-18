@@ -33,13 +33,15 @@ import UniformTypeIdentifiers
         let fitWidth = try #require(Self.imageWidth(in: host))
         let button = try #require(Self.button(in: host) { $0.title.hasPrefix("适合窗口") }, "找不到缩放菜单")
         var titles: [String] = []
-        for (title, expected) in [("实际大小（100%）", PreviewZoom.actualSize), ("放大", .scale(1.5)), ("缩小", .actualSize), ("适合窗口", .fit)] {
+        for (title, expected) in [("实际大小（100%）", PreviewZoom.actualSize), ("放大预览", .scale(1.5)), ("缩小预览", .actualSize), ("适合窗口", .fit)] {
             titles = Self.choose(title, from: button)
             pump()
             #expect(workbench.preview.zoom == expected, "\(title)")
         }
-        // 菜单里都是中文。
-        #expect(titles.contains("放大") && titles.contains("缩小") && titles.contains("适合窗口") && titles.contains("实际大小（100%）"))
+        // 菜单里都是中文，与菜单栏「显示」里的缩放命令同名、同顺序。
+        // （下拉菜单的第一项是按钮自己的标题，不比较它。）
+        let commands = ["放大预览", "缩小预览", "实际大小（100%）", "适合窗口"]
+        #expect(titles.filter(commands.contains) == commands, "\(titles)")
         #expect(!titles.contains { $0.lowercased().contains("zoom") }, "\(titles)")
         #expect(button.title.hasPrefix("适合窗口"))
 

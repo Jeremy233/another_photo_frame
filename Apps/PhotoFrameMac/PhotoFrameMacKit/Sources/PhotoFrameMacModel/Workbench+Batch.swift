@@ -21,12 +21,12 @@ extension Workbench {
                 added.append(source.sourceId)
                 inspect(source.sourceId)
             } catch {
-                failures.append("\(url.lastPathComponent)：\(error.message)")
+                failures.append("\(url.lastPathComponent)：\(error.displayText)")
             }
         }
         // 右栏在编辑左栏的预设、批次原来是空的时，预览要用刚加入的源图。
         if !added.isEmpty { refreshPreview() }
-        if !failures.isEmpty { alert = WorkbenchAlert(title: "有图片没有添加", message: failures.joined(separator: "\n")) }
+        if !failures.isEmpty { alert = WorkbenchAlert(title: "有图片没有添加", message: WorkbenchAlert.paragraph(failures)) }
         return added
     }
 
@@ -56,7 +56,11 @@ extension Workbench {
 
     /// 为这些源图各创建一个任务（把预设拖到源图上，或按钮）。
     public func addJobs(preset presetId: UUID, to sourceIds: [SourceID]) async {
-        guard !sourceIds.isEmpty, let destination = locations.defaultLocation?.url else { return }
+        guard !sourceIds.isEmpty else { return }
+        guard let destination = locations.defaultLocation?.url else {
+            alert = WorkbenchAlert(title: "无法添加任务", message: "没有输出位置：请先在左栏「位置」里添加一个。")
+            return
+        }
         await perform("无法添加任务") {
             let preset = try await service.resolvePreset(reference(presetId)).preset
             var created: [UUID] = []
@@ -79,40 +83,72 @@ extension Workbench {
         }
     }
 
-    /// 删除选中的源图（连同它的任务）和任务。
-    public func removeSelection() {
-        let selection = self.selection
+    /// 从批次里移除这些源图（连同它们的任务）和任务（右键菜单作用于右键点到的行，⌫ 作用于选择）。不删文件。
+    public func remove(_ items: Set<BatchItemID>) {
+        guard !items.isEmpty else { return }
         let sourceCount = sources.count
-        sources.removeAll { selection.contains(.source($0.id)) }
-        for i in sources.indices where sources[i].jobs.contains(where: { selection.contains(.job($0.id)) }) {
-            sources[i].jobs.removeAll { selection.contains(.job($0.id)) }
+        sources.removeAll { items.contains(.source($0.id)) }
+        for i in sources.indices where sources[i].jobs.contains(where: { items.contains(.job($0.id)) }) {
+            sources[i].jobs.removeAll { items.contains(.job($0.id)) }
         }
-        self.selection = []
+        // 没被移除的仍然选中。
+        selection = selection.filter { item in
+            switch item {
+            case .source(let id): sourceItem(id) != nil
+            case .job(let id): job(id) != nil
+            }
+        }
         if sources.count != sourceCount { sourcesDidLeave() }
     }
 
-    /// 复制选中的任务（第 10 节）。
-    public func duplicateSelectedJobs() {
+    /// 移除选中的源图和任务（⌫）。
+    public func removeSelection() {
+        remove(selection)
+    }
+
+    /// 这些行涉及的任务，按列表顺序：选中的任务，加上选中的源图下面的全部任务。
+    public func jobIds(in items: Set<BatchItemID>) -> [UUID] {
+        sources.flatMap { item in
+            item.jobs.filter { items.contains(.source(item.id)) || items.contains(.job($0.id)) }.map(\.id)
+        }
+    }
+
+    /// 复制这些任务（第 10 节），选中复制出来的任务。
+    public func duplicateJobs(_ ids: Set<UUID>) {
         var created: [UUID] = []
         for s in sources.indices {
-            for job in sources[s].jobs where selection.contains(.job(job.id)) {
+            for job in sources[s].jobs where ids.contains(job.id) {
                 var copy = job
                 copy.id = UUID()
                 sources[s].jobs.append(copy)
                 created.append(copy.id)
             }
         }
+        guard !created.isEmpty else { return }
         scheduleValidation(created)
         selection = Set(created.map(BatchItemID.job))
     }
 
-    /// 改任务的输出位置（把位置拖到任务上，或右栏「输出」）。拖到源图上时改它的全部任务。
-    public func setDestination(_ url: URL, for item: BatchItemID) {
-        let ids: [UUID] = switch item {
-        case .job(let id): [id]
-        case .source(let id): sourceItem(id)?.jobs.map(\.id) ?? []
-        }
-        updateJobs(ids) { $0.destination = url }
+    /// 复制选中的任务（⌘D）。
+    public func duplicateSelectedJobs() {
+        duplicateJobs(Set(selectedJobIds))
+    }
+
+    /// 改这些行的输出位置：任务本身，以及源图下面的全部任务（右键菜单「位置」、把位置拖到行上）。
+    public func setDestination(_ url: URL, for items: Set<BatchItemID>) {
+        updateJobs(jobIds(in: items)) { $0.destination = url }
+    }
+
+    /// 拖放或菜单作用于哪些行：落在选中的行上时是全部选中的行（§4.2：拖到多选中的一项等于拖到全部），否则只是这一行。
+    public func targets(for item: BatchItemID) -> Set<BatchItemID> {
+        selection.contains(item) ? selection : [item]
+    }
+
+    /// 用预设给源图创建任务（把预设拖到源图上，或源图头部的「添加」菜单）：
+    /// 这张源图是选中的源图之一时，给全部选中的源图各建一个（与拖放一致）。
+    public func addJobs(preset presetId: UUID, onto sourceId: SourceID) async {
+        let targets = targetSourceIds.contains(sourceId) ? targetSourceIds : [sourceId]
+        await addJobs(preset: presetId, to: targets)
     }
 
     /// 右栏「输出」改选中任务的位置。
@@ -143,24 +179,24 @@ extension Workbench {
             }
             guard let sourceId else { return false }
             // 拖到选中的多张源图之一时，对全部选中的源图生效（§4.2）。
-            let targets = targetSourceIds.contains(sourceId) ? targetSourceIds : [sourceId]
-            await addJobs(preset: id, to: targets)
+            await addJobs(preset: id, onto: sourceId)
             return true
         case .location(let id):
             guard let location = location(id) else { return false }
-            setDestination(location.url, for: item)
+            setDestination(location.url, for: targets(for: item))
             return true
         case .asset:
             return false
         }
     }
 
-    /// 从 Finder 拖入文件；拖到某张源图上的图片同样作为新源图加入。
+    /// 从 Finder 拖入文件；拖到某张源图上的图片同样作为新源图加入。不支持的文件（例如 HEIC）与「添加图片」一样汇总提示。
+    /// 返回是否有可以加入的图片。
     public func dropFiles(_ urls: [URL]) async -> Bool {
-        let images = urls.filter { PhotoSource.supportedExtensions.contains($0.pathExtension.lowercased()) }
-        guard !images.isEmpty else { return false }
-        await addSources(images)
-        return true
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return false }
+        await addSources(files)
+        return files.contains { PhotoSource.supportedExtensions.contains($0.pathExtension.lowercased()) }
     }
 
     // MARK: 素材绑定
@@ -194,6 +230,11 @@ extension Workbench {
         case .jobs(let ids):
             updateJobs(ids) { $0.assetBindings[slotId] = assetId }
         case .preset(let id):
+            // 预设本地绑定存在库里、只认已存储的素材槽：新加的图层要先存储预设。
+            if let editor = presetEditor, !editor.entry.preset.assetSlots.contains(where: { $0.slotId == slotId }) {
+                alert = WorkbenchAlert(title: "无法绑定素材", message: "这个图层还没有存储：先点「存储」存储预设，再给新图层绑定素材。")
+                return
+            }
             await perform("无法绑定素材") {
                 try await service.bindAsset(assetId, slotId: slotId, preset: reference(id))
                 setLibrary(bindings: await service.listBindings().bindings)
@@ -207,7 +248,13 @@ extension Workbench {
 
     /// 把选中任务改过的参数存成新的用户预设（§4.2 `Save as Preset`）。任务改为基于新预设。
     public func saveSelectedJobAsPreset(name: String) async {
-        guard let id = selectedJobIds.first, let job = job(id) else { return }
+        guard let id = selectedJobIds.first else { return }
+        await saveJobAsPreset(id, name: name)
+    }
+
+    /// 把这个任务改过的参数存成新的用户预设（右键菜单作用于右键点到的任务）。
+    public func saveJobAsPreset(_ id: UUID, name: String) async {
+        guard let job = job(id) else { return }
         let content = job.preset
         await perform("无法存储为预设") {
             let saved = try await service.savePreset(content, name: name)
@@ -368,13 +415,13 @@ extension Workbench {
                 if let live = job(entry.job.id), request(for: live) == entry.request {
                     updateJobsQuietly(entry.job.id) { $0.validation = item }
                 }
-                problems += item.errors.map { "\(item.sourceURL.lastPathComponent) · \(item.presetName)：\($0.message)" }
+                problems += item.errors.map { "\(item.sourceURL.lastPathComponent) · \(item.presetName)：\($0.displayText)" }
             } catch {
-                problems.append(error.message)
+                problems.append(error.displayText)
             }
         }
         guard problems.isEmpty, items.count == batch.count else {
-            alert = WorkbenchAlert(title: "无法开始批处理", message: problems.joined(separator: "\n"))
+            alert = WorkbenchAlert(title: "无法开始批处理", message: WorkbenchAlert.paragraph(problems))
             return nil
         }
         return items
@@ -384,7 +431,7 @@ extension Workbench {
         let statuses = Dictionary(jobs.map { ($0.jobId, $0.status) }, uniquingKeysWith: { first, _ in first })
         if runJobIds.allSatisfy({ statuses[$0]?.isTerminal ?? true }) { runJobIds = [] }
         var submitted: [UUID: ExportRequest] = [:]
-        await perform("提交任务失败") {
+        await perform("无法提交任务") {
             for entry in batch {
                 // 按列表里现在的任务提交：校验之后删掉的跳过；改过的（影响导出的内容变了）留在「当前」，不提交改动前的内容。
                 guard let live = job(entry.job.id), request(for: live) == entry.request else { continue }

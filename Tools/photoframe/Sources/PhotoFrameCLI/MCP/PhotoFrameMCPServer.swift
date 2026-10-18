@@ -365,7 +365,7 @@ public actor PhotoFrameMCPServer {
 
     private static func assumedProfile(_ args: MCPArguments) throws(ApplicationError) -> SourceColorOverride? {
         guard let text = try args.string("assumeProfile") else { return nil }
-        guard let profile = AssumedProfile(rawValue: text) else { throw .invalidArguments("assumeProfile 只能是 srgb、display-p3、adobe-rgb") }
+        guard let profile = AssumedProfile(rawValue: text) else { throw .invalidArguments("assumeProfile 只能是 \(AssumedProfile.allCases.map(\.rawValue).joined(separator: "、"))") }
         return profile.override
     }
 

@@ -47,7 +47,7 @@ extension ApplicationError {
     }
     static func sourceUnsupportedFormat(_ ext: String) -> Self {
         Self(code: "source.unsupported_format", message: "不支持的源文件格式：\(ext.isEmpty ? "（无扩展名）" : ext)",
-             hint: "V1 支持 JPEG、PNG、TIFF（D-02）")
+             hint: "目前支持 JPEG、PNG、TIFF")
     }
     static func unknownSource(_ id: SourceID) -> Self {
         Self(code: "source.unknown", message: "没有这张源图：\(id)")
@@ -101,11 +101,11 @@ extension ApplicationError {
         Self(code: "job.invalid_preset", message: "预设有错误：\(issues.joined(separator: "；"))")
     }
     static func destinationUnavailable(_ path: String, _ reason: String) -> Self {
-        Self(code: "job.destination_unavailable", message: "输出目录不可用：\(path)（\(reason)）",
-             hint: "选择一个可写的输出目录")
+        Self(code: "job.destination_unavailable", message: "输出位置不可用：\(path)（\(reason)）",
+             hint: "选择一个可写的输出位置")
     }
     static func destinationInsideStaging(_ path: String) -> Self {
-        Self(code: "job.destination_invalid", message: "输出目录不能位于临时目录中：\(path)")
+        Self(code: "job.destination_invalid", message: "输出位置不能在临时目录里：\(path)")
     }
 
     // MARK: 渲染与发布
@@ -141,10 +141,10 @@ extension ApplicationError {
         Self(code: "export.output_format_mismatch", message: "输出文件内容不是 \(expected)：\(path)")
     }
     static func stagingFailed(_ detail: String) -> Self {
-        Self(code: "export.staging_failed", message: "无法准备临时目录：\(detail)", hint: "检查磁盘空间和输出目录权限")
+        Self(code: "export.staging_failed", message: "无法准备临时目录：\(detail)", hint: "检查磁盘空间和输出位置的权限")
     }
     static func publishFailed(_ detail: String) -> Self {
-        Self(code: "export.publish_failed", message: "发布输出失败：\(detail)", hint: "检查磁盘空间和输出目录权限，然后重试")
+        Self(code: "export.publish_failed", message: "发布输出失败：\(detail)", hint: "检查磁盘空间和输出位置的权限，然后重试")
     }
     static func overwriteRefused(_ path: String, _ reason: String) -> Self {
         Self(code: "export.overwrite_refused", message: "拒绝覆盖 \(path)：\(reason)",

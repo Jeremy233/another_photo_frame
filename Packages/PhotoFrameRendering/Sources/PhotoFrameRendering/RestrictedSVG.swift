@@ -54,7 +54,7 @@ struct RestrictedSVG {
 
     static func reject(_ why: String) -> RenderError {
         RenderError(code: "render.svg_rejected", message: "SVG 素材不符合受限格式：\(why)",
-                    hint: "只支持基本图形与路径（D-09），请导出为不含脚本、外部引用和文字的 SVG，或改用 PNG")
+                    hint: "只支持基本图形与路径：请导出为不含脚本、外部引用和文字的 SVG，或改用 PNG")
     }
 
     /// 把 viewBox 等比放进 `box`（xMidYMid meet），画进左下原点的 CG 上下文。

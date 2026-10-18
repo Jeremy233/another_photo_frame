@@ -206,8 +206,7 @@ struct SourceDecoder {
         _ cg: CGImage, embedded: Bool, override: SourceColorOverride?, into out: inout DecodedSource
     ) throws(RenderError) -> CGImage {
         let current = cg.colorSpace
-        let profileMissing = RenderWarning(
-            code: "source.profile_missing", message: "Source profile missing — assumed sRGB（源图没有颜色描述，按 sRGB 解释）")
+        let profileMissing = Self.profileMissing
         // 坑 20 / D-58：TRC 为 BT.709 / BT.2020 逆 OETF 参数曲线时改写成采样曲线。嵌入的 ICC 和覆盖（Rec. 2020）都要改。
         func rewritingTRC(_ space: CGColorSpace?) -> CGImage? {
             guard let data = space?.copyICCData() as Data?, let icc = ICCProfile(data), let p = icc.bt709FamilyParametricTRC,
@@ -224,15 +223,15 @@ struct SourceDecoder {
             let space = WorkingColor.space(for: override)
             guard current?.model == .rgb, let retagged = cg.copy(colorSpace: space) else {
                 // 非 RGB：覆盖用不上，与没有覆盖时一样按缺少颜色描述处理（像素保持原颜色空间）。
-                out.warnings.append(RenderWarning(code: "source.override_ignored", message: "非 RGB 图像，忽略输入色彩空间覆盖"))
+                out.warnings.append(RenderWarning(code: "source.override_ignored", message: "源图不是 RGB 图像，忽略指定的输入色彩空间"))
                 out.warnings.append(profileMissing)
                 out.sourceProfile = WorkingColor.describe(current)
                 out.sourceProfileOrigin = "assumedSRGB"
                 return cg
             }
-            out.sourceProfile = override.rawValue
+            out.sourceProfile = override.displayName
             out.sourceProfileOrigin = "override"
-            out.transformSteps.append("输入色彩空间覆盖为 \(override.rawValue)")
+            out.transformSteps.append("输入色彩空间覆盖为 \(override.displayName)")
             return rewritingTRC(space) ?? retagged
         }
         if !embedded {
@@ -249,9 +248,12 @@ struct SourceDecoder {
         return rewritingTRC(current) ?? cg
     }
 
+    /// 没有 ICC（D-04）：GUI、CLI、MCP 都显示这一句。
+    static let profileMissing = RenderWarning(code: "source.profile_missing", message: "源图没有 ICC，按 sRGB 解释")
+
     static func overrideIgnored(_ override: SourceColorOverride, embedded: String) -> RenderWarning {
         RenderWarning(code: "source.override_ignored",
-                      message: "源文件自带颜色描述（\(embedded)），忽略输入色彩空间覆盖 \(override.rawValue)：覆盖只用于没有 ICC 的源图（D-04）")
+                      message: "源图自带 ICC（\(embedded)），忽略指定的输入色彩空间 \(override.displayName)：它只用于没有 ICC 的源图")
     }
 
     private func decodeGainMapTIFF(
@@ -266,8 +268,7 @@ struct SourceDecoder {
         } else if iccData == nil {
             iccData = WorkingColor.sRGB.copyICCData() as Data?
             out.sourceProfileOrigin = "assumedSRGB"
-            out.warnings.append(RenderWarning(
-                code: "source.profile_missing", message: "Source profile missing — assumed sRGB（源图没有颜色描述，按 sRGB 解释）"))
+            out.warnings.append(Self.profileMissing)
         }
         guard let iccData, let icc = ICCProfile(iccData), let trc = icc.trcFunctions,
               let linearSpace = CGColorSpace(iccData: icc.linearized as CFData),

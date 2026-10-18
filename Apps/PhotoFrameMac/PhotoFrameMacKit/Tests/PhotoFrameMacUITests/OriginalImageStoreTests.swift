@@ -132,6 +132,23 @@ import UniformTypeIdentifiers
         #expect(OriginalImageStore().info(url)?.pixelSize == CGSize(width: 800, height: 1200))
     }
 
+    /// B13：清晰档已经是全部像素（原图不超过 3072 px）时，放大到 100% 以上也用最近邻。
+    @Test func smallOriginalsShowAllPixelsAtTheScreenTier() {
+        #expect(OriginalImageStore.showsAllPixels(tier: .screen, pixelSize: CGSize(width: 3000, height: 2000)))
+        #expect(!OriginalImageStore.showsAllPixels(tier: .screen, pixelSize: CGSize(width: 6000, height: 4000)))
+        #expect(OriginalImageStore.showsAllPixels(tier: .full, pixelSize: CGSize(width: 6000, height: 4000)))
+        // 快图可能是内嵌的小缩略图。
+        #expect(!OriginalImageStore.showsAllPixels(tier: .quick, pixelSize: CGSize(width: 300, height: 200)))
+    }
+
+    /// B25：只有 HDR 源图在 HDR 预览时按 HDR 解码；还不知道源图是不是 HDR 时按预览。
+    @Test func onlyHDRSourcesAreDecodedAsHDR() {
+        #expect(!OriginalImageStore.decodesHDR(previewHDR: true, sourceIsHDR: false))
+        #expect(OriginalImageStore.decodesHDR(previewHDR: true, sourceIsHDR: true))
+        #expect(OriginalImageStore.decodesHDR(previewHDR: true, sourceIsHDR: nil))
+        #expect(!OriginalImageStore.decodesHDR(previewHDR: false, sourceIsHDR: true))
+    }
+
     @Test func minimapMath() {
         // 内容 1000 × 800 pt（四周留白 16），可见区域 400 × 300，滚到 (216, 116)。
         let visible = Minimap.visibleRect(offset: CGPoint(x: 216, y: 116), container: CGSize(width: 400, height: 300),
