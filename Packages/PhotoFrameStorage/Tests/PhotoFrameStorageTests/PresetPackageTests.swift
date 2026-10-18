@@ -250,7 +250,7 @@ struct SpecExamplePackageTests {
         let repo = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let spec = try String(contentsOf: repo.appendingPathComponent("PhotoFrame_V1_Specification.md"), encoding: .utf8)
+        let spec = try String(contentsOf: repo.appendingPathComponent("docs/design/PhotoFrame_V1_Specification.md"), encoding: .utf8)
         let section = try #require(spec.range(of: "### 8.1 结构与文件格式"))
         let fence = try #require(spec.range(of: "```json\n", range: section.upperBound..<spec.endIndex))
         let end = try #require(spec.range(of: "\n```", range: fence.upperBound..<spec.endIndex))

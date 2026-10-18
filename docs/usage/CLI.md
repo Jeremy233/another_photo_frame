@@ -70,7 +70,7 @@ photoframe --help | --version
 
 `export` 和 `preview` 还接受 `--bind <slotId>=<素材>`（可重复），见「素材绑定」。
 
-`mcp serve` 以 stdio 运行本地 MCP 服务器（D-97、D-98），给 AI 客户端用，配置、工具和安全边界见 [docs/MCP.md](MCP.md)。
+`mcp serve` 以 stdio 运行本地 MCP 服务器（D-97、D-98），给 AI 客户端用，配置、工具和安全边界见 [docs/usage/MCP.md](MCP.md)。
 预设内容（画布、图层、输出等）用 `preset get` / `preset set` 逐项查看和修改，字段路径与 MCP 的 `get_preset` / `update_preset` 相同（D-93）。
 
 ### 指定预设：`--preset <id|名称|文件>`（D-76）
@@ -387,7 +387,7 @@ photoframe preset get "My IG" canvas
 - `colorProfile.origin`：`embedded`、`assumedSRGB`（没有 ICC，D-04）、`override`。
 - `hdr.kind`：`none`、`gainMap`、`gainMapTIFF`、`transferFunction`（PQ / HLG）、`floatLinear`（D-62）；HDR 时有 `headroom`。
   PQ / HLG / 浮点源的 headroom 是在小尺寸解码上测得的估计值。
-- `metadata`：图层文字模板可用的值，键见 `docs/RenderingPipeline.md`（`camera`、`make`、`model`、`lens`、`focalLength`、`focalLength35`、`aperture`、`shutter`、`iso`、`date`）。
+- `metadata`：图层文字模板可用的值，键见 [docs/development/RenderingPipeline.md](../development/RenderingPipeline.md)（`camera`、`make`、`model`、`lens`、`focalLength`、`focalLength35`、`aperture`、`shutter`、`iso`、`date`）。
 
 ### `preset list`
 

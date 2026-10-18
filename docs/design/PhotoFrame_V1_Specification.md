@@ -124,7 +124,7 @@
 5. 切片之间不各自套边框，保证滑动时几何连续。
 6. 如开启签名、EXIF 或相机贴图，默认只出现在封面；连续切片不重复叠加。
 
-![图 1：同一张后期完成的原图应用多个预设，形成独立任务，分别输出完整封面或全景轮播切片。](docs/illustrations/01-publishing-workflow.png)
+![图 1：同一张后期完成的原图应用多个预设，形成独立任务，分别输出完整封面或全景轮播切片。](illustrations/01-publishing-workflow.png)
 
 *图 1 · 发布工作流：同一原图可生成多种平台成品；每个任务保留自己的参数。风景为 AI 生成的示例素材。*
 
@@ -144,7 +144,7 @@ A 用户分享 `.photoframe` 文件；B 用户导入后看到画布与图层布�
 
 ### 4.1 三栏 Compressor 布局
 
-![图 2：PhotoFrame 三栏工作台概念图，参照 Compressor：顶栏切换当前、活跃、已完成；左侧预设、位置、素材；中间上方预览、下方任务列表；右侧 Inspector 分画布、全景、图层、输出；A、B、C 标注可拖动分隔线。](docs/illustrations/02-three-column-workbench.png)
+![图 2：PhotoFrame 三栏工作台概念图，参照 Compressor：顶栏切换当前、活跃、已完成；左侧预设、位置、素材；中间上方预览、下方任务列表；右侧 Inspector 分画布、全景、图层、输出；A、B、C 标注可拖动分隔线。](illustrations/02-three-column-workbench.png)
 
 *图 2 · 界面概念示意：A / B 调整三栏宽度，C 调整预览与任务列表高度；示意不代表已实现界面。*
 
@@ -233,7 +233,7 @@ top  = floor((H - pixelHeight) / 2),  bottom = H - pixelHeight - top
 
 不同原图纵横比产生的剩余留白可大于 `m`。
 
-![图 3：同一张完整全景照片居中放入 3:4、1:1、9:16 画布，虚线表示最小 60 px 边距内框，上下剩余留白随画布比例增加。](docs/illustrations/03-fit-and-minimum-margins.png)
+![图 3：同一张完整全景照片居中放入 3:4、1:1、9:16 画布，虚线表示最小 60 px 边距内框，上下剩余留白随画布比例增加。](illustrations/03-fit-and-minimum-margins.png)
 
 *图 3 · 封面 Fit：照片等比完整嵌入，虚线是最小安全边距内框；说明标记不写入导出文件。*
 
@@ -274,7 +274,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 | 3:1 | XHS 1080×1080 | 3 | 3240px | 0 / 0 |
 | 65:24 ≈ 2.7083:1 | XHS 1080×1080 | 3 | 2925px | 157.5 / 157.5（栅格化为 157 / 158，D-22） |
 
-![图 4：65:24 全景按高度缩放到 3900×1440，放入 4320×1440 的总画布，左右各补 210 px，再按全局坐标分成四张 1080×1440 切片；Cover 独立使用完整图 Fit。](docs/illustrations/04-seamless-panorama.png)
+![图 4：65:24 全景按高度缩放到 3900×1440，放入 4320×1440 的总画布，左右各补 210 px，再按全局坐标分成四张 1080×1440 切片；Cover 独立使用完整图 Fit。](illustrations/04-seamless-panorama.png)
 
 *图 4 · 65:24 → IG 数值算例：只有长卷最外侧补背景，内部接缝不加单页白边；虚线、尺寸线及文字仅用于说明。*
 
@@ -355,7 +355,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 [File + structured rendering report]
 ```
 
-![图 5：从源 ICC 解码、高精度工作空间、排版与线性光合成，到输出颜色转换、预览和编码的共享管线；背景与素材进入同一工作空间，HDR 需受控映射或拒绝。](docs/illustrations/05-managed-color-pipeline.png)
+![图 5：从源 ICC 解码、高精度工作空间、排版与线性光合成，到输出颜色转换、预览和编码的共享管线；背景与素材进入同一工作空间，HDR 需受控映射或拒绝。](illustrations/05-managed-color-pipeline.png)
 
 *图 5 · 建议色彩管线：预览与导出共用排版和颜色策略，输出文件嵌入与实际像素匹配的颜色描述；工作空间见 D-03，HDR→SDR 策略见 §6.7。*
 
@@ -368,7 +368,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ### 6.4 工作色域、位深、混合
 
-**【已确定：D-03】** 工作色彩空间为 **extended linear Rec.2020**（`kCGColorSpaceExtendedLinearITUR_2020`），像素格式为 **`RGBAh`**（半精度浮点，预乘 alpha）。V1 的输出都是 8-bit，RGBAh 的精度足够；以后如果增加 16-bit 输出，可以按任务改用 `RGBAf`。实测依据见[色彩 PoC 报告](docs/color-poc-report.md)。
+**【已确定：D-03】** 工作色彩空间为 **extended linear Rec.2020**（`kCGColorSpaceExtendedLinearITUR_2020`），像素格式为 **`RGBAh`**（半精度浮点，预乘 alpha）。V1 的输出都是 8-bit，RGBAh 的精度足够；以后如果增加 16-bit 输出，可以按任务改用 `RGBAf`。实测依据见[色彩 PoC 报告](../development/color-poc-report.md)。
 
 - 所有中间结果（Core Image 中间缓冲、自建的 CGImage / CGContext、缓存）都必须是 extended 浮点，不得使用 8-bit 或非 extended 的格式；PoC 实测非 extended 的 CG 上下文会截断广色域。
 - 输入 16-bit TIFF 后不得在渲染前无理由转换为 8-bit；JPEG 最终量化到 8-bit 是输出格式本身的正常限制。
@@ -618,7 +618,7 @@ Preset.assetSlots[]  --slotId-->  AssetBinding (user/this job/device)
 - 安全导入：验证类型、大小、尺寸、编码有效性；导出和分享时不泄露机器用户名、隐私路径、云令牌。
 - 用户可选择「本任务绑定」「保存到此预设的本地绑定」「设为本用户默认绑定」。
 
-![图 6：可分享预设只保存布局和 Slot，本地 Binding 把 Slot 绑定到 Asset Library 中的素材，再供 Renderer 使用；可选素材缺失时警告并跳过，必需素材缺失时阻止输出。](docs/illustrations/06-preset-and-local-assets.png)
+![图 6：可分享预设只保存布局和 Slot，本地 Binding 把 Slot 绑定到 Asset Library 中的素材，再供 Renderer 使用；可选素材缺失时警告并跳过，必需素材缺失时阻止输出。](illustrations/06-preset-and-local-assets.png)
 
 *图 6 · 预设与素材分离：布局可以分享，私人素材和真实本地路径留在接收者自己的环境中。*
 
@@ -681,7 +681,7 @@ Source (原图)
 
 **【已确定：D-46–D-50、D-54】** 作品目录为「源文件名_类型」，单图也输出 `00_Cover.jpg`，平台目录用英文名（无平台为 `Custom`）。永不覆盖原图；输出冲突默认自动加 `_v2`、`_v3` 后缀，用户可显式选择覆盖（GUI 确认、CLI `--overwrite`，D-49）；先写到输出根目录下的 `.photoframe-staging/`，校验成功后原子改名到目的地。输出清单只存在任务记录里，不写进作品目录。
 
-![图 7：任务从 queued 依次进入 validating、decoding、rendering、encoding、writing 和 completed；处理中可以失败或取消，失败重试创建新 Attempt，写出经过临时目录、校验、原子发布和结果清单。](docs/illustrations/07-job-lifecycle-and-atomic-export.png)
+![图 7：任务从 queued 依次进入 validating、decoding、rendering、encoding、writing 和 completed；处理中可以失败或取消，失败重试创建新 Attempt，写出经过临时目录、校验、原子发布和结果清单。](illustrations/07-job-lifecycle-and-atomic-export.png)
 
 *图 7 · 任务与落盘：处理中可失败或取消；重试保留历史，取消只清理本任务临时文件，成品校验成功后再发布。*
 
@@ -725,7 +725,7 @@ Source (原图)
 - GUI 的实时预览通过**同一 Renderer** 的 preview mode 完成。
 - 【建议】每个功能提供独立可测试 Swift Package；错误类型使用稳定 code + human-readable message + recoverable hint。
 
-![图 8：macOS GUI、CLI 和本地 stdio MCP 通过稳定接口调用 PhotoFrameApplication，后者使用 Core、Rendering 和 Adapters 模块及本地存储。](docs/illustrations/08-shared-backend-architecture.png)
+![图 8：macOS GUI、CLI 和本地 stdio MCP 通过稳定接口调用 PhotoFrameApplication，后者使用 Core、Rendering 和 Adapters 模块及本地存储。](illustrations/08-shared-backend-architecture.png)
 
 *图 8 · 共享后端模块：三入口复用核心服务与渲染实现；这不表示 V1 已要求跨进程共享实时队列。*
 
@@ -994,7 +994,7 @@ photoframe mcp serve
 
 - [x] **D-01** 最低系统版本：**macOS 26+，仅 Apple Silicon**（使用最新系统 UI 设计语言）。【已确定 2026-10-16】
 - [x] **D-02** 首批输入格式：**JPEG / PNG / TIFF**；三种格式的 HDR 变体须在首版支持（见 D-05）。**HEIC/HEIF（含 iPhone HDR 照片）放到 V2**：V1 只处理在后期软件里修完、导出后的成片，不处理手机直出照片。【已确定 2026-10-16】
-- [x] **D-03** 工作色域与高精度像素格式：**extended linear Rec.2020（`kCGColorSpaceExtendedLinearITUR_2020`）+ `RGBAh`（半精度浮点，预乘 alpha）**，全程不在 `[0,1]` 截断。色彩 PoC 实测三个候选（extended linear sRGB / Display P3 / Rec.2020）数值等价；Rec.2020 下 sRGB、P3、Adobe RGB 与 PQ/HLG 内容都没有负分量，对后续的非线性处理最稳健。详见[色彩 PoC 报告](docs/color-poc-report.md)。【已确定 2026-10-16】
+- [x] **D-03** 工作色域与高精度像素格式：**extended linear Rec.2020（`kCGColorSpaceExtendedLinearITUR_2020`）+ `RGBAh`（半精度浮点，预乘 alpha）**，全程不在 `[0,1]` 截断。色彩 PoC 实测三个候选（extended linear sRGB / Display P3 / Rec.2020）数值等价；Rec.2020 下 sRGB、P3、Adobe RGB 与 PQ/HLG 内容都没有负分量，对后续的非线性处理最稳健。详见[色彩 PoC 报告](../development/color-poc-report.md)。【已确定 2026-10-16】
 - [x] **D-04** 无源 ICC：**默认假设 sRGB，显示警告，允许按源图或任务覆盖**。【已确定 2026-10-16】
 - [x] **D-05** HDR：**V1 支持 HDR 输入与输出**。输入支持所有受支持格式中的 HDR 形式（如 gain map JPEG、PQ/HLG PNG、float/PQ TIFF）；HDR 输出作为可选导出项，由**平台配置决定对应的 HDR 输出格式**（例如带 gain map 的 JPEG），并始终可选择 SDR 输出。【已确定 2026-10-16；具体格式矩阵见 D-17】
 - [x] **D-06** 输出默认：**sRGB JPEG，最高质量（Q100）**。EXIF 输出为可选项：「保留拍摄参数」「保留 GPS」，**默认全部隐藏（不写出）**；「保留 GPS」旁显示隐私警告。【已确定 2026-10-16】

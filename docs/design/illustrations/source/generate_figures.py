@@ -1,7 +1,7 @@
 """Generate the editable SVG illustrations used in the PhotoFrame specification.
 
 This script draws document diagrams; it does not process user photographs.
-Run from any directory: python3 docs/illustrations/source/generate_figures.py
+Run from any directory: python3 docs/design/illustrations/source/generate_figures.py
 Then rasterize with render_figures.mjs for the Markdown-compatible PNG assets.
 """
 

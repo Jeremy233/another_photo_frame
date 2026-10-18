@@ -1,7 +1,7 @@
 # photoframe
 
 命令行工具（规范 §11.3）和本地 stdio MCP 服务器 `photoframe mcp serve`（§11.4）。命令、参数、退出码和 JSON 格式见
-[docs/CLI.md](../../docs/CLI.md)，MCP 的配置、工具和安全边界见 [docs/MCP.md](../../docs/MCP.md)。
+[docs/usage/CLI.md](../../docs/usage/CLI.md)，MCP 的配置、工具和安全边界见 [docs/usage/MCP.md](../../docs/usage/MCP.md)。
 
 | 目录 | 内容 |
 |---|---|
