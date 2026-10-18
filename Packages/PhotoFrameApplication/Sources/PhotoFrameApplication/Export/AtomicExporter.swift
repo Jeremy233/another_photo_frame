@@ -20,6 +20,10 @@ public struct StagingArea: Hashable, Sendable {
     /// `.photoframe-staging/<attemptId>`
     public var directory: URL
     public var renderDirectory: URL { directory.appending(path: "render", directoryHint: .isDirectory) }
+    /// 组装作品目录的地方，发布时整个改名到目的地。
+    var assemblyDirectory: URL { directory.appending(path: "work", directoryHint: .isDirectory) }
+    /// 覆盖时挪开的旧作品目录。
+    var replacedDirectory: URL { directory.appending(path: "replaced", directoryHint: .isDirectory) }
 }
 
 /// 先写临时目录、校验、再原子发布（§9.2、§12.2）。
@@ -84,6 +88,14 @@ public struct AtomicExporter: Sendable {
         Self.stagingLock.withLock { _ in _ = rmdir(area.stagingRoot.path) }
     }
 
+    /// 删除本次执行的临时文件，但留下挪开的旧作品目录（`replaced/`）。
+    func discardKeepingReplaced(_ area: StagingArea) {
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: area.directory.path)) ?? [] where name != area.replacedDirectory.lastPathComponent {
+            try? fm.removeItem(at: area.directory.appending(path: name))
+        }
+    }
+
     /// 本进程内让「创建临时目录」与「删除空的 `.photoframe-staging`」互斥。
     static let stagingLock = Mutex(())
 
@@ -102,22 +114,27 @@ public struct AtomicExporter: Sendable {
         protectedSources: [URL] = [],
         isCanceled: @Sendable () -> Bool = { false }
     ) throws -> OutputManifest {
-        defer { discard(staging) }
+        // 覆盖失败、旧目录既没能恢复也没能挪出临时目录时，它还在 `replaced/` 里：只清理别的部分，
+        // 留给用户取回（残留的临时目录 24 小时后才由 D-55 清理）。
+        var keepsReplaced = false
+        defer { keepsReplaced ? discardKeepingReplaced(staging) : discard(staging) }
         let format = spec.preset.output.format
         let outputs = try checkedOutputs(result.outputs, staging: staging, format: format)
 
-        // 组装：按最终文件名移到作品目录。
+        // 组装：按最终文件名移到作品目录。临时目录里用固定的名字，作品名是 `render`、`replaced` 时也不会和
+        // 同一目录下的渲染目录、挪开的旧目录撞名；最终改名时才用作品名。
         let workName = spec.destination.naming.workName(source: spec.source, preset: spec.preset)
-        let assembly = staging.directory.appending(path: workName, directoryHint: .isDirectory)
+        let assembly = staging.assemblyDirectory
         do {
             try FileManager.default.createDirectory(at: assembly, withIntermediateDirectories: false)
         } catch {
             throw ApplicationError.stagingFailed(error.localizedDescription)
         }
         var staged: [(output: JobRenderedOutput, name: String, size: Int64, hash: String?)] = []
+        let positions = OutputNaming.positionCount(of: outputs.map(\.role))
         for output in outputs {
             if isCanceled() { throw CancellationError() }
-            let name = OutputNaming.fileName(for: output.role, format: format, outputCount: outputs.count)
+            let name = OutputNaming.fileName(for: output.role, format: format, outputCount: positions)
             let target = assembly.appending(path: name, directoryHint: .notDirectory)
             do {
                 try FileManager.default.moveItem(at: output.fileURL, to: target)
@@ -147,7 +164,8 @@ public struct AtomicExporter: Sendable {
         case .overwrite:
             let target = platformDir.appending(path: workName, directoryHint: .isDirectory)
             let replaced = try publishReplacing(
-                assembly, at: target, staging: staging, protectedSources: protectedSources + [spec.source.fileURL])
+                assembly, at: target, staging: staging, protectedSources: protectedSources + [spec.source.fileURL],
+                keepsReplaced: &keepsReplaced)
             published = target
             if replaced {
                 warnings.append(ApplicationWarning(code: "export.replaced_previous", message: "已替换之前导出的 \(target.path)"))
@@ -224,7 +242,13 @@ public struct AtomicExporter: Sendable {
         guard let handle = try? FileHandle(forReadingFrom: url) else { throw .outputMissing(url.path) }
         defer { try? handle.close() }
         var hasher = SHA256()
-        while let chunk = try? handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+        while true {
+            // 读失败时报错，不把读到一半的内容当成完整文件的 hash。
+            let chunk: Data?
+            do { chunk = try handle.read(upToCount: 1 << 20) } catch {
+                throw .publishFailed("无法读取 \(url.lastPathComponent)：\(error.localizedDescription)")
+            }
+            guard let chunk, !chunk.isEmpty else { break }
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()

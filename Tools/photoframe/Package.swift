@@ -13,6 +13,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.0"),
         // 官方 Swift MCP SDK，固定版本（§11.4「以实施时官方稳定版本为准」）；支持协议 2025-11-25 及更早版本。
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
+        // MCP SDK 的依赖；自己的 stdio 传输（MCPStdioTransport）实现 `Transport` 要用它的 `Logger`。
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
         .package(path: "../../Packages/PhotoFrameCore"),
         .package(path: "../../Packages/PhotoFrameStorage"),
         .package(path: "../../Packages/PhotoFrameApplication"),
@@ -24,6 +26,7 @@ let package = Package(
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "MCP", package: "swift-sdk"),
+                .product(name: "Logging", package: "swift-log"),
                 .product(name: "PhotoFrameCore", package: "PhotoFrameCore"),
                 .product(name: "PhotoFrameStorage", package: "PhotoFrameStorage"),
                 .product(name: "PhotoFrameApplication", package: "PhotoFrameApplication"),

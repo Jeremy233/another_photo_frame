@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 final class Fixture {
     let root: URL
     let service: LocalPhotoFrameService
+    /// 工作台用的服务：转发给 `service`，测试可以在调用中间插入动作或让调用失败。
+    let hooks: HookedService
     let workbench: Workbench
     let store: MemoryLocationStore
     let settingsStore = MemorySettingsStore()
@@ -21,9 +23,10 @@ final class Fixture {
             .resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         service = try LocalPhotoFrameService.makeDefault(.init(startsPaused: true, libraryRoot: root.appending(path: "Library")))
+        hooks = HookedService(service)
         let exports = ExportLocation(name: "Exports", url: root.appending(path: "Exports", directoryHint: .isDirectory))
         store = MemoryLocationStore(LocationList(locations: [exports], defaultId: exports.id))
-        workbench = Workbench(service: service, locationStore: store, settingsStore: settingsStore, debounce: .zero)
+        workbench = Workbench(service: hooks, locationStore: store, settingsStore: settingsStore, debounce: .zero)
     }
 
     deinit { try? FileManager.default.removeItem(at: root) }

@@ -15,6 +15,12 @@ public actor PhotoFrameMCPServer {
     let policy: MCPAccessPolicy
     /// 本服务器创建的任务，按创建顺序。只能查看、取消这些任务。
     private var ownedJobs: [JobID] = []
+    /// 已通过未结束任务数检查、还在提交中的任务数（`create_export_job` 在 `submit` 返回前占着名额）。
+    private var reservedJobs = 0
+    /// `shutdown()` 开始后不再创建任务。
+    private var isShuttingDown = false
+    /// 等正在提交的任务登记完的 `shutdown()`。
+    private var submissionWaiters: [CheckedContinuation<Void, Never>] = []
     /// 本次会话写出的预览文件字节数（导出成品从任务清单里算）。
     private var previewBytes: Int64 = 0
 
@@ -54,6 +60,11 @@ public actor PhotoFrameMCPServer {
 
     /// 取消本服务器创建的、尚未结束的任务，并等它们停下（队列会删除它们的临时目录）。
     public func shutdown() async {
+        isShuttingDown = true
+        // 先等正在提交的 create_export_job 把任务登记好（之后不会再有新任务），再全部取消。
+        if reservedJobs > 0 {
+            await withCheckedContinuation { submissionWaiters.append($0) }
+        }
         let ids = ownedJobs
         for id in ids {
             if let s = try? await service.status(id), !s.status.isTerminal { try? await service.cancel(id) }
@@ -160,6 +171,8 @@ public actor PhotoFrameMCPServer {
         let imagePaths = try args.strings("images", max: Self.maxListItems)
         let presetRefs = try args.strings("presets", max: Self.maxListItems)
         let destination = try policy.outputDirectory(args.requiredString("outputDirectory"), argument: "outputDirectory")
+        // 每个任务先写到 <输出目录>/.photoframe-staging/<attemptId>/，清理残留时也会删那里的旧目录：它同样不能经链接指向白名单外。
+        try policy.checkWritable(AtomicExporter.stagingRoot(for: destination), argument: "outputDirectory")
         let override = try Self.assumedProfile(args)
         let assetBindings = try await bindings(args)
 
@@ -201,15 +214,16 @@ public actor PhotoFrameMCPServer {
             let body = DryRunResultJSON(dryRun: false, valid: false, jobs: validation.items.map(DryRunJobJSON.init))
             return failure(validation.errors.first ?? .emptyRequestError, body: body)
         }
-        let active = try await activeJobCount()
         let count = request.sourceIds.count * request.presets.count
-        guard active + count <= policy.limits.maxActiveJobs else {
-            throw ApplicationError(code: "mcp.queue_full",
-                                   message: "未结束的任务最多 \(policy.limits.maxActiveJobs) 个（已有 \(active) 个，本次 \(count) 个）",
-                                   hint: "等已有任务结束，或在 MCP 客户端配置里调大 --max-active-jobs")
+        try await reserve(count)
+        let ids: [JobID]
+        do {
+            ids = try await service.submit(request)
+        } catch {
+            finishSubmission(count, ids: [])
+            throw error
         }
-        let ids = try await service.submit(request)
-        ownedJobs += ids
+        finishSubmission(count, ids: ids)
         var jobs: [ExportJobJSON] = []
         for id in ids { jobs.append(Self.jobJSON(try await service.status(id))) }
         return success(CreatedJobsJSON(valid: true, jobs: jobs))
@@ -242,10 +256,31 @@ public actor PhotoFrameMCPServer {
         return id
     }
 
-    private func activeJobCount() async throws(ApplicationError) -> Int {
-        var n = 0
-        for id in ownedJobs where !(try await service.status(id).status.isTerminal) { n += 1 }
-        return n
+    /// 检查未结束任务数上限并预留名额。取快照之后到预留之间没有 await，并发的 create_export_job 不会一起通过检查。
+    private func reserve(_ count: Int) async throws(ApplicationError) {
+        let snapshot = await service.jobs()
+        guard !isShuttingDown else {
+            throw ApplicationError(code: "mcp.shutting_down", message: "服务器正在退出，不再创建新任务")
+        }
+        let statuses = Dictionary(snapshot.map { ($0.jobId, $0.status) }, uniquingKeysWith: { first, _ in first })
+        // 快照里还没有的任务（快照之后才提交的）也算未结束。
+        let active = ownedJobs.count { statuses[$0].map { !$0.isTerminal } ?? true } + reservedJobs
+        guard active + count <= policy.limits.maxActiveJobs else {
+            throw ApplicationError(code: "mcp.queue_full",
+                                   message: "未结束的任务最多 \(policy.limits.maxActiveJobs) 个（已有 \(active) 个，本次 \(count) 个）",
+                                   hint: "等已有任务结束，或在 MCP 客户端配置里调大 --max-active-jobs")
+        }
+        reservedJobs += count
+    }
+
+    /// 结束预留并登记提交的任务（同一段同步代码）；没有正在提交的任务时唤醒等待的 `shutdown()`。
+    private func finishSubmission(_ count: Int, ids: [JobID]) {
+        reservedJobs -= count
+        ownedJobs += ids
+        guard reservedJobs == 0 else { return }
+        let waiters = submissionWaiters
+        submissionWaiters = []
+        for waiter in waiters { waiter.resume() }
     }
 
     /// 本次会话已写出的字节数：完成的导出任务 + 预览文件。
@@ -271,7 +306,8 @@ public actor PhotoFrameMCPServer {
             "image", "preset", "maxEdge", "pages", "dynamicRange", "outputDirectory", "overwrite", "assumeProfile", "bindings",
         ])
         let limits = policy.limits
-        let maxEdge = try args.int("maxEdge") ?? 1200
+        // 默认 1200，但不超过 --max-preview-edge（否则不传 maxEdge 的调用全部失败）。
+        let maxEdge = try args.int("maxEdge") ?? min(1200, limits.maxPreviewEdge)
         guard maxEdge >= 16, maxEdge <= limits.maxPreviewEdge else {
             throw .limitExceeded("maxEdge 应在 16…\(limits.maxPreviewEdge) 之间", hint: "在 MCP 客户端配置里调大 --max-preview-edge")
         }

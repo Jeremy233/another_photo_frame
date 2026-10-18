@@ -79,13 +79,17 @@ private struct StatusText: View {
     }
 }
 
-/// 已用时间：执行中每秒刷新。
+/// 已用时间：执行中每秒刷新。排队中和已结束的任务时间不变，不挂定时刷新（「已完成」列表里每行都有这一列）。
 private struct ElapsedTime: View {
     let record: JobRecord
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Text(Self.format(elapsed(at: context.date))).monospacedDigit()
+        if record.currentAttempt.startedAt != nil, record.currentAttempt.finishedAt == nil {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(Self.format(elapsed(at: context.date))).monospacedDigit()
+            }
+        } else {
+            Text(Self.format(elapsed(at: .now))).monospacedDigit()
         }
     }
 
@@ -123,6 +127,8 @@ struct CompletedJobsView: View {
     @Bindable var workbench: Workbench
 
     var body: some View {
+        // 历史要过滤、排序再按天分组：每次只算一遍。
+        let days = Self.days(workbench.finishedJobs)
         VStack(spacing: 0) {
             ColumnHeader {
                 HStack {
@@ -138,11 +144,11 @@ struct CompletedJobsView: View {
                 .padding(.horizontal, 10)
             }
             // 没有记录时与「活跃」一样显示空表格（带列标题）。
-            if workbench.finishedJobs.isEmpty {
-                table.scrollContentBackground(.hidden)
+            if days.isEmpty {
+                table(days).scrollContentBackground(.hidden)
             } else {
                 VerticalSplit(autosaveName: "HistoryAndDetail", topFraction: 0.65) {
-                    table.scrollContentBackground(.hidden).filling(Palette.list)
+                    table(days).scrollContentBackground(.hidden).filling(Palette.list)
                 } bottom: {
                     JobDetail(record: selectedRecord).scrollContentBackground(.hidden).filling(Palette.panel)
                 }
@@ -150,7 +156,7 @@ struct CompletedJobsView: View {
         }
     }
 
-    private var table: some View {
+    private func table(_ days: [(title: String, records: [JobRecord])]) -> some View {
         Table(of: JobRecord.self, selection: $workbench.jobSelection) {
             TableColumn("名称") { JobName(record: $0) }
             TableColumn("状态") { StatusText(record: $0) }.width(min: 60, ideal: 90)
@@ -183,10 +189,10 @@ struct CompletedJobsView: View {
     }
 
     /// 按结束日期分组：今天、昨天、更早的日期。
-    private var days: [(title: String, records: [JobRecord])] {
+    private static func days(_ records: [JobRecord]) -> [(title: String, records: [JobRecord])] {
         let calendar = Calendar.current
         var groups: [(title: String, records: [JobRecord])] = []
-        for record in workbench.finishedJobs {
+        for record in records {
             let date = record.currentAttempt.finishedAt ?? record.createdAt
             let title = calendar.isDateInToday(date) ? "今天"
                 : calendar.isDateInYesterday(date) ? "昨天"
@@ -216,7 +222,8 @@ private struct RowAction: View {
 
     var body: some View {
         Group {
-            if workbench.canRetry(record.jobId) {
+            // 与 `canRetry` 相同的判断，直接用这一行的记录（不用每行再在全部任务里查一遍）。
+            if record.status == .failed || record.status == .canceled {
                 Button { Task { await workbench.retry([record.jobId]) } } label: { Image(systemName: "arrow.uturn.backward") }
                     .help("重试")
             } else {

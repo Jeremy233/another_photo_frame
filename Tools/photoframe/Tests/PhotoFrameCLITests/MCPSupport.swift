@@ -55,23 +55,27 @@ final class MCPHarness: Sendable {
         self.client = client
     }
 
-    /// `read` / `write` 为 nil 时分别是 in/、out/；传空数组表示没有配置。
+    /// `read` / `write` 为 nil 时分别是 `inputName`、`outputName` 目录（默认 in/、out/）；传空数组表示没有配置。
+    /// `wrap` 可以把服务包一层（例如卡住 `submit`）。
     static func start(
-        limits: MCPLimits = MCPLimits(), read: [String]? = nil, write: [String]? = nil, renderer: (any JobRenderer)? = nil
+        limits: MCPLimits = MCPLimits(), read: [String]? = nil, write: [String]? = nil, renderer: (any JobRenderer)? = nil,
+        inputName: String = "in", outputName: String = "out",
+        wrap: (@Sendable (any PhotoFrameService) -> any PhotoFrameService)? = nil
     ) async throws -> MCPHarness {
         let sandbox = try Sandbox()
         let root = URL(filePath: MCPAccessPolicy.realPath(sandbox.root.path)!, directoryHint: .isDirectory)
-        let inputs = root.appending(path: "in", directoryHint: .isDirectory)
-        let outputs = root.appending(path: "out", directoryHint: .isDirectory)
+        let inputs = root.appending(path: inputName, directoryHint: .isDirectory)
+        let outputs = root.appending(path: outputName, directoryHint: .isDirectory)
         let outside = root.appending(path: "outside", directoryHint: .isDirectory)
         for dir in [inputs, outputs, outside] { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
 
         let options = LocalPhotoFrameService.Options(maxConcurrentJobs: 2, libraryRoot: root.appending(path: "Library"))
-        let service: any PhotoFrameService = if let renderer {
+        var service: any PhotoFrameService = if let renderer {
             try serviceFactory(renderer: renderer)(options)
         } else {
             try LocalPhotoFrameService.makeDefault(options)
         }
+        if let wrap { service = wrap(service) }
         let policy = try MCPAccessPolicy(readRoots: read ?? [inputs.path], writeRoots: write ?? [outputs.path], limits: limits)
         let photoframe = PhotoFrameMCPServer(service: service, policy: policy)
         let server = await photoframe.makeServer()
@@ -92,6 +96,11 @@ final class MCPHarness: Sendable {
     func call(_ name: String, _ arguments: [String: Value] = [:]) async throws -> ToolReply {
         let context = try await client.send(CallTool.request(.init(name: name, arguments: arguments)))
         return ToolReply(result: try await context.value)
+    }
+
+    /// 不经过 MCP 传输，直接在服务器上调用工具（并发测试用）。
+    func direct(_ name: MCPToolName, _ arguments: [String: Value]) async -> ToolReply {
+        ToolReply(result: await photoframe.call(name, arguments))
     }
 
     /// 合成一张照片，`relative` 相对于测试目录（例如 `in/a.jpg`、`outside/secret.jpg`），返回真实路径。

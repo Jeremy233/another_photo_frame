@@ -88,10 +88,12 @@ public enum LibraryLocation {
 
 enum LibraryFiles {
     /// 原子写：同目录临时文件 → fsync → rename。失败时原文件保持不变。
+    ///
+    /// 临时文件名长度固定（`.pf-<UUID>.tmp`），不随目标文件名变长：目标文件名接近 255 个字符时也能写入。
     static func atomicWrite(_ data: Data, to url: URL) throws(LibraryError) {
         let dir = url.deletingLastPathComponent()
         try ensureDirectory(dir)
-        let tmp = dir.appending(path: ".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+        let tmp = dir.appending(path: ".pf-\(UUID().uuidString).tmp")
         do {
             try data.write(to: tmp, options: .withoutOverwriting)
             let handle = try FileHandle(forWritingTo: tmp)
@@ -138,6 +140,10 @@ enum LibraryFiles {
 
     /// 读取普通文件；超过 `maxBytes` 时不读入内存。
     static func read(_ url: URL, maxBytes: Int) throws(LibraryError) -> Data {
+        // URL 会缓存资源值（各个副本共用一份）：长期持有的 URL（例如 AssetBindingStore.fileURL）在文件被替换后
+        // 仍会得到旧的类型和大小。每次先清掉缓存再查。
+        var url = url
+        url.removeAllCachedResourceValues()
         guard isRegularFile(url) else { throw .io("\(url.lastPathComponent) 不是普通文件") }
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -147,6 +153,13 @@ enum LibraryFiles {
             throw e
         } catch {
             throw .io("读取 \(url.lastPathComponent) 失败：\(describe(error))")
+        }
+    }
+
+    /// 写入前检查大小：超过读取上限（``read(_:maxBytes:)`` 的 `maxBytes`）的文件写进去也读不回来，所以不写。
+    static func checkWritable(_ data: Data, name: String, maxBytes: Int) throws(LibraryError) {
+        guard data.count <= maxBytes else {
+            throw .io("写入 \(name) 失败：\(data.count) 字节，超过上限 \(maxBytes) 字节")
         }
     }
 

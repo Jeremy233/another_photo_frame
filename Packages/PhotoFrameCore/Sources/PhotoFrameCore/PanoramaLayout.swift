@@ -10,7 +10,7 @@ public enum PanoramaWarning: Hashable, Sendable, Codable {
     case notLandscape(aspectRatio: Double)
     /// 横图，但渲染宽度不超过 2 张切片宽（自动张数 ≤ 2，即 R ≤ 2·W/(H−2v)），切片意义不大。
     case notWideEnough(automaticSlideCount: Int)
-    /// 封面 + 切片总数超过平台轮播上限（§5.3、D-18）。
+    /// 封面 + 切片总数超过平台轮播上限（§5.3、D-18）。不输出封面时只算切片。
     case exceedsCarouselLimit(totalItems: Int, limit: Int)
     /// 手动张数多于自动张数：长卷两端补更多底色（D-11）。
     case increasedSlideCount(automatic: Int, requested: Int)
@@ -84,6 +84,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
     ///   - verticalMargin: 所有切片共用的上下边距 v（D-10），渲染高度为 H − 2v。
     ///   - slideCount: 自动或手动张数；手动值小于自动张数时抛出 `slideCountBelowMinimum`（D-11）。
     ///   - maxCarouselItems: 平台轮播最多项数（含封面）；nil 表示不检查。
+    ///   - includesCover: 轮播里有没有封面（预设 `panorama.cover`）。没有封面时只按切片张数检查轮播上限。
     public init(
         tile: PixelSize,
         source: PixelSize,
@@ -91,11 +92,13 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         verticalMargin: Int = 0,
         slideCount: SlideCount = .automatic,
         maxCarouselItems: Int? = nil,
+        includesCover: Bool = true,
         slideCountTolerance: Double = PanoramaLayout.defaultSlideCountTolerance
     ) throws(GeometryError) {
         guard tile.isPositive else { throw .invalidCanvas(tile) }
         guard source.isPositive else { throw .invalidSource(source) }
-        guard verticalMargin >= 0, tile.height - 2 * verticalMargin > 0 else {
+        // 即 H − 2v > 0；写成 v < H − v，边距极大时不溢出。
+        guard verticalMargin >= 0, verticalMargin < tile.height - verticalMargin else {
             throw .invalidVerticalMargin(verticalMargin)
         }
         if case .manual(let n) = slideCount, n < 1 { throw .invalidSlideCount(n) }
@@ -133,8 +136,9 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         if n > automatic {
             warnings.append(.increasedSlideCount(automatic: automatic, requested: n))
         }
-        if let limit = maxCarouselItems, n + 1 > limit {
-            warnings.append(.exceedsCarouselLimit(totalItems: n + 1, limit: limit))
+        let carouselItems = n + (includesCover ? 1 : 0)
+        if let limit = maxCarouselItems, carouselItems > limit {
+            warnings.append(.exceedsCarouselLimit(totalItems: carouselItems, limit: limit))
         }
 
         self.tile = tile
@@ -160,12 +164,13 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         verticalMargin: Int = 0,
         slideCount: SlideCount = .automatic,
         maxCarouselItems: Int? = nil,
+        includesCover: Bool = true,
         slideCountTolerance: Double = PanoramaLayout.defaultSlideCountTolerance
     ) throws(GeometryError) {
         try self.init(
             tile: tile, source: source.displaySize, coverMinimumMargin: coverMinimumMargin,
             verticalMargin: verticalMargin, slideCount: slideCount,
-            maxCarouselItems: maxCarouselItems, slideCountTolerance: slideCountTolerance)
+            maxCarouselItems: maxCarouselItems, includesCover: includesCover, slideCountTolerance: slideCountTolerance)
     }
 
     static func slice(

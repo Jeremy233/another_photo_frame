@@ -45,9 +45,10 @@ struct PreviewPane: View {
             if preview.showsOriginal || subject.preset == nil {
                 OriginalImage(url: subject.sourceURL, preview: preview)
             } else if preview.page == .strip {
-                PanoramaStrip(pages: preview.strip, showsSeams: preview.showsSeams, preview: preview)
+                PanoramaStrip(pages: preview.strip, images: preview.stripImages, thumbnail: preview.stripThumbnail,
+                              showsSeams: preview.showsSeams, preview: preview)
             } else if let page = preview.pageImage {
-                PageImage(page: page, preview: preview)
+                PageImage(page: page, image: preview.pageDisplayImage, preview: preview)
             } else if let error = preview.error {
                 EmptyState(title: "无法预览", symbol: "exclamationmark.triangle", description: error.message)
             }
@@ -237,6 +238,8 @@ private struct ZoomCanvas<Content: View>: View {
     let preview: PreviewModel
     let contentPixels: CGSize
     var thumbnail: CGImage?
+    /// 这块画布「适合窗口」的比例或内容尺寸变了时告诉调用方（`preview.fitScale` 是几块画布共用的）。
+    var onFit: ((CanvasFit) -> Void)?
     @ViewBuilder var content: (CGSize) -> Content
     @Environment(\.displayScale) private var displayScale
     @State private var pinchBase: Double?
@@ -266,6 +269,7 @@ private struct ZoomCanvas<Content: View>: View {
             .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry = new }
             .onScrollPhaseChange { _, phase in if phase != .idle { activity() } }
             .onChange(of: fit, initial: true) { preview.fitScale = fit }
+            .onChange(of: CanvasFit(pixels: contentPixels, scale: fit), initial: true) { _, new in onFit?(new) }
             #if DEBUG
             .task {
                 for _ in 0..<EDRLogger.minimapCycles {
@@ -401,13 +405,21 @@ struct Minimap: View {
     }
 }
 
+/// 一块画布「适合窗口」时的比例，连同当时的内容尺寸（像素）。
+private struct CanvasFit: Equatable {
+    var pixels: CGSize
+    var scale: Double
+}
+
 /// 一页成品。放大到 100% 以上时用最近邻插值，看得清每个像素。
 private struct PageImage: View {
     let page: PreviewImage
+    /// 预览模型在后台解码好的位图（这里不再解码）。
+    let image: CGImage?
     let preview: PreviewModel
 
     var body: some View {
-        let cg = page.displayImage()
+        let cg = self.image
         let image = cg.map { NSImage(cgImage: $0, size: .zero) }
         ZoomCanvas(preview: preview, contentPixels: CGSize(width: page.pixelSize.width, height: page.pixelSize.height), thumbnail: cg) { _ in
             if let image {
@@ -421,12 +433,15 @@ private struct PageImage: View {
 }
 
 /// 原图（对比用），由 `OriginalImageStore` 分档解码并缓存：先显示快图，再换清晰版本；
-/// 放大到清晰版本不够时才解码全分辨率（100% 是真实像素），缩回后释放。缩放比例按原图真实尺寸计算。
+/// 放大到清晰版本不够时才解码全分辨率（100% 是真实像素），缩回、换图或离开后释放。缩放比例按原图真实尺寸计算。
 private struct OriginalImage: View {
     let url: URL
     let preview: PreviewModel
     @State private var shown: CGImage?
     @State private var shownTier: OriginalImageStore.Tier?
+    /// 这块画布自己报告的「适合窗口」比例。刚切到「原图」时 `preview.fitScale` 还是上一块画布（成品页）的，
+    /// 拿它判断会误开全分辨率解码（几百 MB，开始了就停不下来）。
+    @State private var canvasFit: CanvasFit?
 
     private var store: OriginalImageStore { .shared }
     private var hdr: Bool { preview.range == .hdr }
@@ -435,7 +450,8 @@ private struct OriginalImage: View {
         Group {
             if let info = store.info(url), let shown {
                 ZoomCanvas(preview: preview, contentPixels: info.pixelSize,
-                           thumbnail: store.cached(.init(url: url, tier: .quick, hdr: hdr)) ?? shown) { _ in
+                           thumbnail: store.cached(.init(url: url, tier: .quick, hdr: hdr, modified: info.modified)) ?? shown,
+                           onFit: { canvasFit = $0 }) { _ in
                     Image(nsImage: NSImage(cgImage: shown, size: .zero))
                         .resizable()
                         .interpolation(shownTier == .full && preview.effectiveScale >= 1 ? .none : .high)
@@ -447,6 +463,9 @@ private struct OriginalImage: View {
         }
         .task(id: LoadKey(url: url, hdr: hdr)) { await loadProgressively() }
         .task(id: LoadKey(url: url, hdr: hdr, full: needsFull)) { await updateFull() }
+        // 全分辨率只在这张原图显示期间留着。
+        .onChange(of: url) { old, _ in store.releaseFull(url: old) }
+        .onDisappear { store.releaseFull(url: url) }
     }
 
     private struct LoadKey: Hashable {
@@ -455,11 +474,14 @@ private struct OriginalImage: View {
         var full = false
     }
 
-    /// 放大到清晰版本的像素不够用时，需要全分辨率。
+    /// 放大到清晰版本的像素不够用时，需要全分辨率。只按这块画布自己的比例算，还没显示出画面时不要。
     private var needsFull: Bool {
-        guard let info = store.info(url), let limit = OriginalImageStore.Tier.screen.maxPixelSize else { return false }
-        let longEdge = max(info.pixelSize.width, info.pixelSize.height)
-        return longEdge > Double(limit) && longEdge * preview.effectiveScale > Double(limit)
+        guard shown != nil, let info = store.info(url) else { return false }
+        let scale: Double? = switch preview.zoom {
+        case .fit: canvasFit.flatMap { $0.pixels == info.pixelSize ? $0.scale : nil }
+        case .scale(let s): s
+        }
+        return OriginalImageStore.needsFull(pixelSize: info.pixelSize, scale: scale, showingFull: shownTier == .full)
     }
 
     private func show(_ image: CGImage, _ tier: OriginalImageStore.Tier) {
@@ -468,26 +490,34 @@ private struct OriginalImage: View {
     }
 
     private func loadProgressively() async {
+        // 每次加载读一次文件的修改时间：文件改了就重新解码，不用旧的缓存。
+        guard let modified = store.reloadInfo(url).map(\.modified) else {
+            shown = nil
+            return
+        }
         // 看过的图直接用缓存里最清晰的一档。
-        if let best = store.best(url: url, hdr: hdr) {
+        if let best = store.best(url: url, hdr: hdr, modified: modified) {
             show(best.image, best.tier)
             if best.tier != .quick { return }
-            if let screen = await store.load(.init(url: url, tier: .screen, hdr: hdr)), shownTier != .full { show(screen, .screen) }
+            if let screen = await store.load(.init(url: url, tier: .screen, hdr: hdr, modified: modified)), shownTier != .full {
+                show(screen, .screen)
+            }
             return
         }
         shown = nil
         // 快图和清晰版同时开始解码，快图先到先显示。
-        async let screen = store.load(.init(url: url, tier: .screen, hdr: hdr))
-        if let quick = await store.load(.init(url: url, tier: .quick, hdr: hdr)), shown == nil { show(quick, .quick) }
+        async let screen = store.load(.init(url: url, tier: .screen, hdr: hdr, modified: modified))
+        if let quick = await store.load(.init(url: url, tier: .quick, hdr: hdr, modified: modified)), shown == nil { show(quick, .quick) }
         if let screen = await screen, !Task.isCancelled, shownTier != .full { show(screen, .screen) }
     }
 
     private func updateFull() async {
+        guard let modified = store.info(url).map(\.modified) else { return }
         if needsFull {
-            if let full = await store.load(.init(url: url, tier: .full, hdr: hdr)), !Task.isCancelled { show(full, .full) }
+            if let full = await store.load(.init(url: url, tier: .full, hdr: hdr, modified: modified)), !Task.isCancelled { show(full, .full) }
         } else if shownTier == .full {
             store.releaseFull(url: url)
-            if let best = store.best(url: url, hdr: hdr) { show(best.image, best.tier) }
+            if let best = store.best(url: url, hdr: hdr, modified: modified) { show(best.image, best.tier) }
         }
     }
 }
@@ -495,19 +525,30 @@ private struct OriginalImage: View {
 /// 全景长卷：封面在前，切片并排，标出接缝（UI 设计文档第 8.2、9 节）。整条长卷一起缩放。
 private struct PanoramaStrip: View {
     let pages: [PreviewImage]
+    /// 预览模型在后台解码好的各页位图，与 `pages` 一一对应（这里不再解码）。
+    let images: [CGImage?]
+    /// 导航小窗用的整条长卷缩略图。
+    let thumbnail: CGImage?
     let showsSeams: Bool
     let preview: PreviewModel
 
-    /// 封面与切片之间的间隔（像素，按 100% 计）。
-    private static let gapPixels = 48.0
+    /// 封面与切片之间的间隔（像素，按 100% 计），与导航小窗的缩略图一致。
+    private static var gapPixels: Double { PreviewModel.stripGapPixels }
+
+    /// 一页和它解码好的位图。
+    private struct Page {
+        var image: PreviewImage
+        var decoded: CGImage?
+    }
 
     var body: some View {
-        let cover = pages.first { $0.role == .cover }
-        let slides = pages.filter { $0.role != .cover }
+        let entries = pages.indices.map { Page(image: pages[$0], decoded: images.indices.contains($0) ? images[$0] : nil) }
+        let cover = entries.first { $0.image.role == .cover }
+        let slides = entries.filter { $0.image.role != .cover }
         let height = Double(pages.map(\.pixelSize.height).max() ?? 1)
         let widths = pages.map { Double($0.pixelSize.width) * height / Double(max($0.pixelSize.height, 1)) }
         let total = widths.reduce(0, +) + (cover != nil && !slides.isEmpty ? Self.gapPixels : 0)
-        ZoomCanvas(preview: preview, contentPixels: CGSize(width: total, height: height), thumbnail: Self.stripThumbnail(pages)) { size in
+        ZoomCanvas(preview: preview, contentPixels: CGSize(width: total, height: height), thumbnail: thumbnail) { size in
             let k = size.height / max(height, 1)
             HStack(spacing: Self.gapPixels * k) {
                 if let cover { page(cover, height: size.height) }
@@ -523,30 +564,11 @@ private struct PanoramaStrip: View {
         }
     }
 
-    /// 导航小窗用的整条长卷缩略图（高 120 px，封面、间隔、切片依次排开）。
-    static func stripThumbnail(_ pages: [PreviewImage]) -> CGImage? {
-        let height = 120.0
-        let maxHeight = Double(pages.map(\.pixelSize.height).max() ?? 1)
-        let k = height / max(maxHeight, 1)
-        let hasCover = pages.contains { $0.role == .cover } && pages.count > 1
-        let width = pages.reduce(0.0) { $0 + Double($1.pixelSize.width) * k } + (hasCover ? gapPixels * k : 0)
-        guard width >= 1, let ctx = CGContext(data: nil, width: Int(width.rounded(.up)), height: Int(height), bitsPerComponent: 8, bytesPerRow: 0,
-                                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-        var x = 0.0
-        for page in pages {
-            let w = Double(page.pixelSize.width) * k
-            let h = Double(page.pixelSize.height) * k
-            if let image = page.displayImage() { ctx.draw(image, in: CGRect(x: x, y: height - h, width: w, height: h)) }
-            x += w + (page.role == .cover && hasCover ? gapPixels * k : 0)
-        }
-        return ctx.makeImage()
-    }
-
-    private func page(_ image: PreviewImage, height: Double) -> some View {
+    private func page(_ page: Page, height: Double) -> some View {
+        let image = page.image
         let aspect = Double(image.pixelSize.width) / Double(max(image.pixelSize.height, 1))
         return Group {
-            if let cg = image.displayImage() {
+            if let cg = page.decoded {
                 Image(nsImage: NSImage(cgImage: cg, size: .zero)).resizable()
                     .allowedDynamicRange(image.dynamicRange == .hdr ? .high : .standard)
             } else {

@@ -176,6 +176,30 @@ struct BindingPersistenceTests {
         #expect(try Data(contentsOf: root.url.appending(path: backups[0])) == Data("garbage".utf8))
     }
 
+    @Test("bindings.json 曾是符号链接、后被换成正常文件：之后的修改按新文件读取，不当成损坏文件备份")
+    func replacedSymlinkReadFresh() throws {
+        // 同一个 store（同一个 fileURL 实例）贯穿始终：URL 会缓存文件类型和大小。
+        let store = library.bindings
+        let elsewhere = root.url.appending(path: "elsewhere.json")
+        try Data(#"{"storageFormat": 1, "presetLocal": {}, "userGlobal": {}}"#.utf8).write(to: elsewhere)
+        try FileManager.default.createSymbolicLink(at: store.fileURL, withDestinationURL: elsewhere)
+        #expect(store.load().warnings.map(\.code) == ["binding.unreadable"])
+
+        // 原子替换成正常文件（里面已有一条默认绑定）。
+        let replacement = root.url.appending(path: "replacement.json")
+        try Data(#"{"storageFormat": 1, "presetLocal": {}, "userGlobal": {"camera.badge": "\#(svgC.assetId.uuidString)"}}"#.utf8)
+            .write(to: replacement)
+        #expect(rename(replacement.path, store.fileURL.path) == 0)
+        #expect(store.load().warnings.isEmpty)
+
+        try store.setDefaultBinding(slotId: "signature", assetId: pngA.assetId)
+        try store.setPresetBinding(presetId: preset.presetId, slotId: "signature", assetId: pngB.assetId)
+        let table = store.load().table
+        #expect(table.userGlobal == ["camera.badge": svgC.assetId, "signature": pngA.assetId])
+        #expect(table.presetBinding(preset.presetId, slotId: "signature") == pngB.assetId)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.url.path).filter { $0.hasPrefix("bindings.corrupt-") }.isEmpty)
+    }
+
     @Test("bindings.json 格式版本过新：不使用，也不覆盖")
     func newerBindingsFile() throws {
         let future = Data(#"{"storageFormat": 9, "presetLocal": {}, "userGlobal": {}, "rules": []}"#.utf8)

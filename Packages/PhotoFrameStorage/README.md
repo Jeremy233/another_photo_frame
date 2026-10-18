@@ -134,6 +134,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameStorage-build"
 - 预设文件：`{"storageFormat": 1, "origin": "user"|"imported", "createdAt", "modifiedAt", "preset": {manifest}}`。
   `preset` 与 `.photoframe` 的 `manifest.json` 完全相同，用 `PresetSchema` 读写，迁移和扩展字段规则都适用。
 - 所有写入都是「同目录临时文件 → fsync → rename」；崩溃只会留下以 `.` 开头的临时文件，读取时忽略。
+  写入前检查大小：存盘后会超过读取上限（预设文件、`asset.json` 各 1 MiB）的不写入，报 `library.io`。
 - 不缓存：每次调用都读盘，GUI、CLI、MCP 多个进程同时用同一个库也能看到彼此的修改。
 - 一个文件坏了只影响它自己：
   - 预设文件损坏、`schemaVersion` 或 `storageFormat` 比程序新、文件名与 presetId 不符：跳过并在 `PresetListing.warnings`

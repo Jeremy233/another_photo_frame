@@ -7,8 +7,25 @@ struct RenameOperation: Sendable {
 
     static let exclusive = RenameOperation { from, to in
         from.path.withCString { f in
-            to.path.withCString { t in renamex_np(f, t, UInt32(RENAME_EXCL)) == 0 ? 0 : errno }
+            to.path.withCString { t in
+                if renamex_np(f, t, UInt32(RENAME_EXCL)) == 0 { return 0 }
+                let code = errno
+                // exFAT 等卷不支持 RENAME_EXCL（ENOTSUP），改用普通 rename 并自己挡住已存在的目标。
+                return code == ENOTSUP ? renameUnlessExists(f, t) : code
+            }
         }
+    }
+
+    /// 不支持 `RENAME_EXCL` 的卷上的互斥改名：目标已存在（包括悬空的符号链接）时返回 EEXIST。
+    /// 普通 `rename` 只会替换空目录；要发布的作品目录和挪开的旧目录都不是空的，两个任务同时发布同名目录时
+    /// 后到的仍然得到 EEXIST（ENOTEMPTY），不会互相覆盖。
+    static func renameUnlessExists(_ from: UnsafePointer<CChar>, _ to: UnsafePointer<CChar>) -> Int32 {
+        var st = stat()
+        if lstat(to, &st) == 0 { return EEXIST }
+        guard errno == ENOENT else { return errno }
+        if Darwin.rename(from, to) == 0 { return 0 }
+        let code = errno
+        return code == ENOTEMPTY || code == ENOTDIR || code == EISDIR ? EEXIST : code
     }
 }
 
@@ -43,7 +60,10 @@ extension AtomicExporter {
     /// 2. 把旧目录改名挪进本次执行的临时目录；
     /// 3. 把新目录改名就位；失败则把旧目录改名挪回原处；
     /// 4. 删除挪开的旧目录。
-    func publishReplacing(_ assembly: URL, at target: URL, staging: StagingArea, protectedSources: [URL]) throws(ApplicationError) -> Bool {
+    /// - Parameter keepsReplaced: 旧目录既没能恢复、也没能挪出临时目录时设为 true，调用方清理时要留下它。
+    func publishReplacing(
+        _ assembly: URL, at target: URL, staging: StagingArea, protectedSources: [URL], keepsReplaced: inout Bool
+    ) throws(ApplicationError) -> Bool {
         // 目标还不存在：与默认策略一样互斥改名。期间被别人抢先创建（EEXIST）则走替换。
         let first = renameOperation.rename(assembly, target)
         if first == 0 { return false }
@@ -51,7 +71,7 @@ extension AtomicExporter {
 
         try checkReplaceable(target, protectedSources: protectedSources)
 
-        let aside = staging.directory.appending(path: "replaced", directoryHint: .isDirectory)
+        let aside = staging.replacedDirectory
         let moveAside = renameOperation.rename(target, aside)
         guard moveAside == 0 else { throw .publishFailed("无法挪开旧目录：\(String(cString: strerror(moveAside)))") }
 
@@ -65,6 +85,7 @@ extension AtomicExporter {
             let rescue = target.deletingLastPathComponent()
                 .appending(path: "\(target.lastPathComponent).previous-\(staging.attemptId)", directoryHint: .isDirectory)
             let rescued = renameOperation.rename(aside, rescue) == 0
+            keepsReplaced = !rescued
             throw .publishFailed("新目录无法就位，旧目录也无法恢复；旧目录\(rescued ? "保留在 \(rescue.path)" : "仍在 \(aside.path)")")
         }
         try? FileManager.default.removeItem(at: aside)

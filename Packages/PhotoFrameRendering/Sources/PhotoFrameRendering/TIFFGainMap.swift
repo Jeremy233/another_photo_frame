@@ -24,13 +24,16 @@ struct TIFFFile {
 
     struct IFD {
         var tags: [Int: Entry] = [:]
+        /// 旧规则会让整个 IFD 失败的标签（数量 ≥ 2^28 或越界）。越界的不放进 `tags`；gain map 检测靠它保持原来的判定。
+        var invalidTags: Set<Int> = []
     }
 
     let data: Data
     let little: Bool
 
     init(_ data: Data) throws {
-        self.data = Data(data)
+        // 只有切片才复制（偏移从 0 起算）；整个文件（内存映射）直接用，不复制。
+        self.data = data.startIndex == 0 ? data : Data(data)
         guard self.data.count >= 8 else { throw TIFFError("文件过短") }
         switch (self.data[0], self.data[1]) {
         case (0x49, 0x49): little = true
@@ -58,6 +61,8 @@ struct TIFFFile {
 
     var ifd0: IFD? { try? ifd(at: u32(4)) }
 
+    /// 只有项数异常或目录表本身越界才抛错。单个标签越界只跳过它；数量再大，只要不越界就保留。
+    /// 这样无关标签（如 Photoshop 分层 TIFF ≥ 256 MiB 的 37724、截断的私有标签）不会藏住 34675。
     func ifd(at offset: Int) throws -> IFD {
         let n = try u16(offset)
         guard n > 0, n < 4096 else { throw TIFFError("IFD 项数异常") }
@@ -66,10 +71,12 @@ struct TIFFFile {
             let e = offset + 2 + i * 12
             let tag = try u16(e), type = try u16(e + 2), count = try u32(e + 4)
             let size = [1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4][type] ?? 1
-            guard count >= 0, count < 1 << 28 else { throw TIFFError("标签 \(tag) 数量异常") }
+            // count 是 u32、size ≤ 8，total 不会溢出 Int。
+            guard count >= 0 else { r.invalidTags.insert(tag); continue }
             let total = size * count
             let valueOffset = total <= 4 ? e + 8 : try u32(e + 8)
-            guard valueOffset + total <= data.count else { throw TIFFError("标签 \(tag) 越界") }
+            if count >= 1 << 28 { r.invalidTags.insert(tag) }
+            guard valueOffset + total <= data.count else { r.invalidTags.insert(tag); continue }
             r.tags[tag] = Entry(type: type, count: count, valueOffset: valueOffset)
         }
         return r
@@ -102,6 +109,22 @@ struct TIFFFile {
         var height: Int
         var channels: Int
         var read: (_ x: Int, _ y: Int, _ c: Int) -> Float
+        /// 直接读码值用（gain map 还原按码值查表）：每个采样的字节数、是否浮点、字节序、条带布局。
+        var bytesPerSample: Int
+        var isFloat: Bool
+        var little: Bool
+        var stripOffsets: [Int]
+        var rowsPerStrip: Int
+        var rowBytes: Int
+
+        /// 8 / 16 位整数采样的码值个数（256 / 65536）；32 位整数与浮点为 nil。
+        var levels: Int? { !isFloat && bytesPerSample <= 2 ? 1 << (8 * bytesPerSample) : nil }
+
+        /// 第 y 行在文件中的起点（相对 data 起点）。
+        func rowStart(_ y: Int) -> Int { stripOffsets[y / rowsPerStrip] + (y % rowsPerStrip) * rowBytes }
+
+        /// 码值 → 归一化值，与 `read` 的整数分支相同（码值 / 最大码值）。
+        static func normalized(_ code: Int, levels: Int) -> Float { Float(code) / Float(levels - 1) }
     }
 
     func raster(_ ifd: IFD) throws -> Raster {
@@ -135,7 +158,7 @@ struct TIFFFile {
         }
         let data = self.data, little = self.little, isFloat = sampleFormat == 3
         let base = data.startIndex
-        return Raster(width: w, height: h, channels: spp) { x, y, c in
+        return Raster(width: w, height: h, channels: spp, read: { x, y, c in
             let o = base + offsets[y / rowsPerStrip] + (y % rowsPerStrip) * rowBytes + (x * spp + c) * bytesPerSample
             switch bytesPerSample {
             case 1:
@@ -148,7 +171,8 @@ struct TIFFFile {
                 for k in 0..<4 { v |= UInt32(data[o + k]) << (little ? 8 * k : 8 * (3 - k)) }
                 return isFloat ? Float(bitPattern: v) : Float(Double(v) / Double(UInt32.max))
             }
-        }
+        }, bytesPerSample: bytesPerSample, isFloat: isFloat, little: little, stripOffsets: offsets,
+        rowsPerStrip: rowsPerStrip, rowBytes: rowBytes)
     }
 }
 
@@ -229,11 +253,21 @@ struct GainMapMetadata: Hashable {
         var out = SIMD3<Float>()
         for c in 0..<3 {
             let i = multiChannel ? c : 0
-            let g = pow(Double(max(gain[i], 0)), 1 / gamma[i])
-            let logBoost = gainMapMin[i] + (gainMapMax[i] - gainMapMin[i]) * g
-            out[c] = Float((Double(base[c]) + baseOffset[i]) * pow(2, logBoost) - alternateOffset[i])
+            out[c] = expand(base[c], boost: boost(gain[i], channel: i), channel: i)
         }
         return out
+    }
+
+    /// 元数据通道 i 上 gain map 值对应的倍数 2^logBoost。
+    func boost(_ gain: Float, channel i: Int) -> Double {
+        let g = pow(Double(max(gain, 0)), 1 / gamma[i])
+        let logBoost = gainMapMin[i] + (gainMapMax[i] - gainMapMin[i]) * g
+        return pow(2, logBoost)
+    }
+
+    /// 一个通道的展开：(底图 + baseOffset) × 倍数 − alternateOffset。
+    func expand(_ base: Float, boost: Double, channel i: Int) -> Float {
+        Float((Double(base) + baseOffset[i]) * boost - alternateOffset[i])
     }
 }
 
@@ -244,12 +278,16 @@ struct GainMapTIFF {
     var gainMap: TIFFFile.IFD
     var metadata: GainMapMetadata
 
+    /// 检测与还原用到的标签。它们损坏时与以前一样整个 IFD 不用（IFD0 → 不是 gain map TIFF，SubIFD → 跳过）；
+    /// 其他标签损坏不影响检测。
+    static let usedTags: Set<Int> = [256, 257, 258, 259, 262, 273, 277, 278, 279, 284, 322, 330, 339, 34675, 52557]
+
     /// 检测文件是否带 SubIFD gain map。没有时返回 nil；有但无法解析时抛错（由调用方降级为 SDR 并警告）。
     static func detect(_ data: Data) throws -> GainMapTIFF? {
-        guard let file = try? TIFFFile(data), let ifd0 = file.ifd0 else { return nil }
+        guard let file = try? TIFFFile(data), let ifd0 = file.ifd0, ifd0.invalidTags.isDisjoint(with: usedTags) else { return nil }
         guard let subOffsets = try? file.ints(ifd0, 330) else { return nil }
         for offset in subOffsets {
-            guard let sub = try? file.ifd(at: offset) else { continue }
+            guard let sub = try? file.ifd(at: offset), sub.invalidTags.isDisjoint(with: usedTags) else { continue }
             let photometric = try? file.int(sub, 262)
             guard photometric == 52553 || sub.tags[52557] != nil else { continue }
             guard let raw = file.bytes(sub, 52557) else { throw TIFFError("gain map 缺少 52557 元数据标签") }
@@ -260,9 +298,10 @@ struct GainMapTIFF {
 
     /// 底图（SDR 版本）与 HDR 的线性像素，按 `step × step` 盒式平均降采样（D-18：按输出所需尺寸解码）。
     /// - Parameter linearize: 把底图编码值转成线性值（按底图 ICC 的 TRC）。
-    /// - Returns: 两个 RGBA half 缓冲，alpha = 1，宽高 = 原尺寸 / step（向下取整）。
+    /// - Returns: 两个 RGBA half 缓冲（小端，各 宽 × 高 × 8 字节，可直接交给 CGDataProvider），alpha = 1，
+    ///   宽高 = 原尺寸 / step（向下取整）。
     func reconstruct(step: Int, linearize: @escaping @Sendable (_ value: Float, _ channel: Int) -> Float) throws
-        -> (width: Int, height: Int, sdr: [Float16], hdr: [Float16])
+        -> (width: Int, height: Int, sdr: Data, hdr: Data)
     {
         let base = try file.raster(self.base)
         let gain = try file.raster(gainMap)
@@ -272,34 +311,80 @@ struct GainMapTIFF {
         let w = base.width / step, h = base.height / step
         guard w > 0, h > 0 else { throw TIFFError("降采样后尺寸为 0") }
         let meta = metadata
-        let sdr = UnsafeMutableBufferPointer<Float16>.allocate(capacity: w * h * 4)
-        let hdr = UnsafeMutableBufferPointer<Float16>.allocate(capacity: w * h * 4)
-        defer { sdr.deallocate(); hdr.deallocate() }
         let gainChannels = gain.channels
         let gw = gain.width, gh = gain.height, bw = base.width, bh = base.height
         let n = Float(step * step)
-        nonisolated(unsafe) let sdrOut = sdr, hdrOut = hdr
-        DispatchQueue.concurrentPerform(iterations: h) { y in
-            for x in 0..<w {
-                var s = SIMD3<Float>(), v = SIMD3<Float>()
-                for dy in 0..<step {
-                    for dx in 0..<step {
-                        let sx = x * step + dx, sy = y * step + dy
-                        let b = SIMD3(linearize(base.read(sx, sy, 0), 0), linearize(base.read(sx, sy, 1), 1), linearize(base.read(sx, sy, 2), 2))
-                        let gx = min(sx * gw / bw, gw - 1), gy = min(sy * gh / bh, gh - 1)
-                        let g = gainChannels == 1
-                            ? SIMD3(repeating: gain.read(gx, gy, 0))
-                            : SIMD3(gain.read(gx, gy, 0), gain.read(gx, gy, 1), gain.read(gx, gy, 2))
-                        s += b
-                        v += meta.apply(base: b, gain: g)
+        // 8 / 16 位整数采样只有 256 / 65536 个码值：底图线性化和增益倍数先按码值算成表（与逐采样计算是同一个表达式，
+        // 结果逐位相同），循环里直接读码值查表。32 位整数和浮点采样仍逐个计算。
+        let baseLevels = base.levels ?? 0, gainLevels = gain.levels ?? 0
+        let baseTable: [Float] = (0..<3).flatMap { c in
+            (0..<baseLevels).map { linearize(TIFFFile.Raster.normalized($0, levels: baseLevels), c) }
+        }
+        let boostTable: [Double] = (0..<(meta.multiChannel ? 3 : 1)).flatMap { i in
+            (0..<gainLevels).map { meta.boost(TIFFFile.Raster.normalized($0, levels: gainLevels), channel: i) }
+        }
+        // 直接写进两个 Data（交给 CGDataProvider 时不再复制）。
+        var sdr = Data(count: w * h * 8), hdr = Data(count: w * h * 8)
+        sdr.withUnsafeMutableBytes { sdrBytes in
+            hdr.withUnsafeMutableBytes { hdrBytes in
+                file.data.withUnsafeBytes { fileBytes in
+                    nonisolated(unsafe) let sdrOut = sdrBytes.bindMemory(to: Float16.self)
+                    nonisolated(unsafe) let hdrOut = hdrBytes.bindMemory(to: Float16.self)
+                    nonisolated(unsafe) let src = fileBytes
+                    /// 1 或 2 字节的码值（按文件字节序）。条带范围已在 `raster` 里检查过。
+                    @Sendable func code(_ o: Int, _ bytesPerSample: Int, _ little: Bool) -> Int {
+                        let a = Int(src[o])
+                        guard bytesPerSample == 2 else { return a }
+                        let b = Int(src[o + 1])
+                        return little ? a | b << 8 : a << 8 | b
+                    }
+                    DispatchQueue.concurrentPerform(iterations: h) { y in
+                        for x in 0..<w {
+                            var s = SIMD3<Float>(), v = SIMD3<Float>()
+                            for dy in 0..<step {
+                                let sy = y * step + dy
+                                let gy = min(sy * gh / bh, gh - 1)
+                                let baseRow = base.rowStart(sy), gainRow = gain.rowStart(gy)
+                                for dx in 0..<step {
+                                    let sx = x * step + dx
+                                    let gx = min(sx * gw / bw, gw - 1)
+                                    var b = SIMD3<Float>()
+                                    if baseLevels > 0 {
+                                        let o = baseRow + sx * base.channels * base.bytesPerSample
+                                        for c in 0..<3 {
+                                            b[c] = baseTable[c * baseLevels + code(o + c * base.bytesPerSample, base.bytesPerSample, base.little)]
+                                        }
+                                    } else {
+                                        b = SIMD3(linearize(base.read(sx, sy, 0), 0), linearize(base.read(sx, sy, 1), 1), linearize(base.read(sx, sy, 2), 2))
+                                    }
+                                    s += b
+                                    if gainLevels > 0 {
+                                        // 与 `meta.apply` 相同：输出通道 c 用元数据通道 i，单通道 gain map 三个通道都读第 0 个采样。
+                                        let o = gainRow + gx * gainChannels * gain.bytesPerSample
+                                        var e = SIMD3<Float>()
+                                        for c in 0..<3 {
+                                            let i = meta.multiChannel ? c : 0
+                                            let k = code(o + (gainChannels == 1 ? 0 : i) * gain.bytesPerSample, gain.bytesPerSample, gain.little)
+                                            e[c] = meta.expand(b[c], boost: boostTable[i * gainLevels + k], channel: i)
+                                        }
+                                        v += e
+                                    } else {
+                                        let g = gainChannels == 1
+                                            ? SIMD3(repeating: gain.read(gx, gy, 0))
+                                            : SIMD3(gain.read(gx, gy, 0), gain.read(gx, gy, 1), gain.read(gx, gy, 2))
+                                        v += meta.apply(base: b, gain: g)
+                                    }
+                                }
+                            }
+                            let i = (y * w + x) * 4
+                            s /= n; v /= n
+                            sdrOut[i] = Float16(s.x); sdrOut[i + 1] = Float16(s.y); sdrOut[i + 2] = Float16(s.z); sdrOut[i + 3] = 1
+                            hdrOut[i] = Float16(v.x); hdrOut[i + 1] = Float16(v.y); hdrOut[i + 2] = Float16(v.z); hdrOut[i + 3] = 1
+                        }
                     }
                 }
-                let i = (y * w + x) * 4
-                s /= n; v /= n
-                sdrOut[i] = Float16(s.x); sdrOut[i + 1] = Float16(s.y); sdrOut[i + 2] = Float16(s.z); sdrOut[i + 3] = 1
-                hdrOut[i] = Float16(v.x); hdrOut[i + 1] = Float16(v.y); hdrOut[i + 2] = Float16(v.z); hdrOut[i + 3] = 1
             }
         }
-        return (w, h, Array(sdr), Array(hdr))
+        return (w, h, sdr, hdr)
     }
 }

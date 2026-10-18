@@ -1,5 +1,6 @@
 import Compression
 import Foundation
+import zlib
 
 /// ZIP 常量与底层编解码工具。只实现 `.photoframe` 需要的子集：
 /// 无加密、无 ZIP64、单卷、存储（method 0）或 Deflate（method 8）。
@@ -28,18 +29,11 @@ enum ZipFormat {
 // MARK: - CRC-32（IEEE 802.3，ZIP 使用的多项式）
 
 enum CRC32 {
-    private static let table: [UInt32] = (0..<256).map { i in
-        var c = UInt32(i)
-        for _ in 0..<8 { c = (c & 1) != 0 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
-        return c
-    }
-
+    /// 用系统 zlib 的 `crc32_z`（长度是 size_t，不用分段）：结果与逐字节查表相同，但快得多（导入 64 MiB 的 PNG 时要算一遍）。
     static func checksum(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data {
-            crc = table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        data.withUnsafeBytes { raw in
+            UInt32(truncatingIfNeeded: crc32_z(0, raw.bindMemory(to: Bytef.self).baseAddress, z_size_t(raw.count)))
         }
-        return crc ^ 0xFFFF_FFFF
     }
 }
 

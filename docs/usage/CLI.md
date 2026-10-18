@@ -15,6 +15,9 @@ swift build -c release
 
 仓库在 iCloud 同步目录下时加 `--scratch-path "$TMPDIR/photoframe-build"`（原因见根 README）。
 
+要把 `photoframe` 复制到别处（例如 `~/bin/`）时，连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹；
+只复制可执行文件，启动时找不到资源包会直接崩溃。
+
 ## 约定
 
 - **stdout 只输出数据**：默认每行一个文件路径；加 `--json` 时是一个完整的 JSON 文档。进度、警告、错误都写到 stderr。
@@ -202,8 +205,8 @@ photoframe preset set "My IG" --unset 'layers[exif]'
 photoframe preset get "My IG" canvas
 ```
 
-- **值**先按 JSON 解析（`80`、`true`、`[0,16]`、`{…}`、`null`），解析不了时当作字符串（`#FFFFFF`、`My Name`）。要写内容是数字的字符串，
-  加引号：`'"80"'`。
+- **值**先按 JSON 解析（`80`、`-1`、`true`、`[0,16]`、`{…}`、`null`），解析不了时当作字符串（`#FFFFFF`、`My Name`）。要写内容是数字的字符串，
+  加引号：`'"80"'`。负数直接写，不会被当成选项。
 - 一次命令里的修改：先按顺序应用全部「路径 值」，再应用 `--unset`。
 - 改完的整份预设走一遍**与 `preset import` 完全相同的检查**（schema、不认识的字段、取值范围、引用、平台能力、1 MiB 上限），通过后原子写入
   （临时文件 → fsync → rename）；任何一项不通过都不修改，退出码 4。分组和创建时间不变（D-81）。

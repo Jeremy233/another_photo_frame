@@ -12,7 +12,10 @@ public struct PhotoFrameScene: Scene {
         // 本地库与 CLI / MCP 按同一套规则选位置（D-78、D-124）；GUI 先排队、点「开始批处理」才派发。
         do throws(ApplicationError) {
             let service = try LocalPhotoFrameService.makeDefault(.init(startsPaused: true))
-            _workbench = State(initialValue: .success(Workbench(service: service)))
+            let workbench = Workbench(service: service)
+            // 源图离开批次后，丢掉其他原图的解码缓存。
+            workbench.onSourcesRemoved = { OriginalImageStore.shared.retain(urls: $0) }
+            _workbench = State(initialValue: .success(workbench))
         } catch {
             _workbench = State(initialValue: .failure(error))
         }
