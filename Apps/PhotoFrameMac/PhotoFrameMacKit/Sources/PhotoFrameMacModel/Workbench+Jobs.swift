@@ -75,6 +75,7 @@ extension Workbench {
     }
 
     func apply(_ event: JobEvent) async {
+        defer { checkQuitWhenFinished() }
         switch event {
         case .queuePaused:
             isQueuePaused = true
@@ -105,6 +106,7 @@ extension Workbench {
     }
 
     public func refreshJobs() async {
+        defer { checkQuitWhenFinished() }
         let applied = appliedJobEvents
         let snapshot = await service.jobs()
         guard appliedJobEvents != applied else {
