@@ -92,6 +92,9 @@ public final class Workbench {
         }
     }
     public internal(set) var presetEditor: PresetEditor?
+    /// 左栏预设还没存储的修改，按预设 ID。只在内存里：换选别的预设再回来时还在，退出 App 后丢掉，
+    /// 内置预设下次启动就是出厂的定义（不写盘，也不改库里的预设）。
+    public internal(set) var presetDrafts: [UUID: ExportPreset] = [:]
     var focus: Focus = .batch
 
     enum Focus { case batch, preset, location }
@@ -232,8 +235,7 @@ public final class Workbench {
             guard var draft = presetEditor?.draft else { return }
             body(&draft)
             guard draft != presetEditor?.draft else { return }
-            presetEditor?.draft = draft
-            refreshPreview()
+            setPresetDraft(draft)
         case .source, .location, .none:
             break
         }
@@ -424,13 +426,12 @@ public struct PresetEditor: Equatable, Sendable {
     public var entry: CatalogPreset
     public var draft: ExportPreset
 
-    /// 内置预设只读，要先复制（D-81）。
+    /// 只有直接打开的预设文件只读。内置预设也可以改，但改动只留在内存里，要存储就另存为用户预设（不改出厂的定义）。
     public var isReadOnly: Bool {
-        switch entry.origin {
-        case .builtIn, .file: true
-        case .user, .imported: false
-        }
+        if case .file = entry.origin { true } else { false }
     }
+
+    public var isBuiltIn: Bool { entry.origin == .builtIn }
 
     public var isDirty: Bool { draft != entry.preset }
 }

@@ -87,9 +87,10 @@ import Testing
         wb.selectedPresetId = f.presetId("Instagram Standard")
         await wb.settle()
         #expect(wb.inspectorSubject == .preset(f.presetId("Instagram Standard")))
-        #expect(wb.presetEditor?.isReadOnly == true)
+        // 内置预设也可以改（只在内存里，见 BuiltInPresetEditingTests）。
+        #expect(wb.presetEditor?.isReadOnly == false && wb.presetEditor?.isBuiltIn == true)
         wb.setField(\.canvas.minMarginPx, 10)
-        #expect(wb.presetEditor?.isDirty == false)
+        #expect(wb.presetEditor?.isDirty == true)
 
         // 再点任务列表，右栏回到任务。
         wb.selection = [.job(jobId)]
