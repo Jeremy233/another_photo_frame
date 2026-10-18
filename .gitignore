@@ -37,7 +37,7 @@ credentials*
 !Apps/PhotoFrameMac/Design/**
 
 # Documentation illustrations and their shared synthetic sample
-!docs/illustrations/**/*.png
+!docs/design/illustrations/**/*.png
 
 # Xcode / Swift build output and per-user state
 build/

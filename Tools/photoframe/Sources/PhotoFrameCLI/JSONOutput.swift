@@ -3,7 +3,7 @@ import PhotoFrameApplication
 import PhotoFrameCore
 import PhotoFrameStorage
 
-// `--json` 的输出格式。这里的类型是 CLI 的公开契约（docs/CLI.md），与内部模型分开定义：
+// `--json` 的输出格式。这里的类型是 CLI 的公开契约（docs/usage/CLI.md），与内部模型分开定义：
 // 内部类型改名或加字段不会意外改变脚本看到的 JSON。改动格式时递增 `formatVersion`。
 
 enum JSONOutput {

@@ -28,7 +28,7 @@ swift run -c release colorpoc run               # 跑全部实验 → out/result
 swift run -c release colorpoc run --real <目录>  # 额外跑本地真实照片（照片不入库）
 ```
 
-`out/` 不入库。本次运行的完整表格快照在 [`Experiments/ColorPoC/results/synthetic.md`](../Experiments/ColorPoC/results/synthetic.md)。一次完整运行约 20 秒。
+`out/` 不入库。本次运行的完整表格快照在 [`Experiments/ColorPoC/results/synthetic.md`](../../Experiments/ColorPoC/results/synthetic.md)。一次完整运行约 20 秒。
 
 ## 2. 测试方法
 
@@ -206,7 +206,7 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 
 ## 8. 真实照片（Lightroom Classic 15.5.1 导出）
 
-样本放在仓库外的 `another_photo_frame_assets/D-03_HDR/`，不入库。本次运行的完整表格快照在 [`Experiments/ColorPoC/results/real-hdr.md`](../Experiments/ColorPoC/results/real-hdr.md)。
+样本放在仓库外的 `another_photo_frame_assets/D-03_HDR/`，不入库。本次运行的完整表格快照在 [`Experiments/ColorPoC/results/real-hdr.md`](../../Experiments/ColorPoC/results/real-hdr.md)。
 
 ### 8.1 HDR 样本与 Lightroom 实际写出的格式
 
@@ -238,7 +238,7 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 
 ### 8.3 SDR 四色彩空间样本（D-19）
 
-2 张 SDR 成片：glacier_np（3209×4813）和 glacier_np_person（8245×5497）。每张导出 sRGB、Adobe RGB、Display P3、ProPhoto 四种 JPEG Q100，以及 sRGB 和 ProPhoto 两种 16 位 TIFF。超出 sRGB 的像素占 1.3–2.5%（冰川湖的青绿色），没有超出 P3 的。完整表格见 [`Experiments/ColorPoC/results/real-sdr.md`](../Experiments/ColorPoC/results/real-sdr.md)，结论见 §7。
+2 张 SDR 成片：glacier_np（3209×4813）和 glacier_np_person（8245×5497）。每张导出 sRGB、Adobe RGB、Display P3、ProPhoto 四种 JPEG Q100，以及 sRGB 和 ProPhoto 两种 16 位 TIFF。超出 sRGB 的像素占 1.3–2.5%（冰川湖的青绿色），没有超出 P3 的。完整表格见 [`Experiments/ColorPoC/results/real-sdr.md`](../../Experiments/ColorPoC/results/real-sdr.md)，结论见 §7。
 
 - Lightroom 的 ProPhoto ICC 是 Adobe 自己的 "ProPhoto RGB"（940 B），不是 Apple 的 ROMM 配置文件；CI 能正确处理。
 - 三个工作空间的 SDR 输出之间 ΔE 中位 0.00、P95 ≤ 0.51，与 HDR 样本的结论一致。需要负分量的像素：extended linear sRGB 为 0.3–4.0%，Rec.2020 为 0.1–0.9%（主要是边缘振铃）。
@@ -259,7 +259,7 @@ HDR 源输出 SDR 时，tone map 只作用于照片图层；背景和水印本�
 
 ### 8.5 HDR→SDR tone map 对比（三张 16 位 PQ TIFF）
 
-用 `colorpoc tonemap` 生成。参照是同一张照片的 Lightroom SDR 底图，也就是摄影师认可的 SDR 版本。对比图在 `Experiments/ColorPoC/out/tonemap/<名字>_compare.jpg`，完整指标见 [`results/tonemap.md`](../Experiments/ColorPoC/results/tonemap.md)。所有方法的峰值都按画面估算：取 sRGB 线性分量最大值的 P99.95，不用 PQ 元数据的默认值 4.93。
+用 `colorpoc tonemap` 生成。参照是同一张照片的 Lightroom SDR 底图，也就是摄影师认可的 SDR 版本。对比图在 `Experiments/ColorPoC/out/tonemap/<名字>_compare.jpg`，完整指标见 [`results/tonemap.md`](../../Experiments/ColorPoC/results/tonemap.md)。所有方法的峰值都按画面估算：取 sRGB 线性分量最大值的 P99.95，不用 PQ 元数据的默认值 4.93。
 
 | 方法 | 与 Lightroom SDR 底图的 ΔE 中位 / P95（cannon_beach · aurora1 · grand_teton） | 有通道截断到 255 的像素 |
 |---|---|---|
