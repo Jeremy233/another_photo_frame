@@ -140,4 +140,21 @@ struct LayoutRenderingTests {
             _ = try await render(src, makePreset(panorama: PanoramaSettings(enabled: true, tileCount: .fixed(2))))
         }
     }
+
+    @Test("轮播上限：不输出封面时只算切片，提示里也不提封面（§5.3）")
+    func carouselLimitWithoutCover() throws {
+        let dir = try makeTempDirectory()
+        let src = dir.appendingPathComponent("pano.png")
+        try writeGradientPhoto(width: 3000, height: 1000, to: src)
+        let renderer = PhotoFrameRenderer()
+        func limitWarnings(cover: Bool, limit: Int) throws -> [RenderWarning] {
+            let preset = makePreset(panorama: PanoramaSettings(enabled: true, cover: cover))
+            return try renderer.plan(sourceURL: src, preset: preset, maxCarouselItems: limit).warnings
+                .filter { $0.code == "panorama.exceeds_carousel_limit" }
+        }
+        // 3000×1000 到 1080×1440：4 张切片。
+        #expect(try limitWarnings(cover: true, limit: 4).map(\.message) == ["封面 + 切片共 5 页，超过平台轮播上限 4 页"])
+        #expect(try limitWarnings(cover: false, limit: 4).isEmpty)
+        #expect(try limitWarnings(cover: false, limit: 3).map(\.message) == ["4 张切片，超过平台轮播上限 3 页"])
+    }
 }

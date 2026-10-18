@@ -86,6 +86,18 @@ enum ExportChecks {
 
     /// 素材槽解析（D-14、D-28、D-29）。缺少必需素材时抛出 `slot.missing_required`。
     /// 有图层写了相机匹配规则（D-111）时读源图的 EXIF Make / Model。
+    ///
+    /// 预设没有启用的素材图层时，解析结果与素材库、绑定、相机都无关（只有「单任务绑定没被使用」的提示），
+    /// 这时不读本地库，用空的解析器得到同样的结果。
+    static func resolveSlots(
+        _ resolver: inout LazySlotResolver, preset: ExportPreset, bindings: [String: UUID], source: URL
+    ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
+        guard resolver.isConfigured else { return (nil, []) }
+        let usesAssets = preset.layers.contains { $0.enabled && $0.type.usesAssetSlot }
+        let current = usesAssets ? resolver.get() : SlotResolver(library: InMemoryAssetLibrary(), bindings: AssetBindingTable())
+        return try resolveSlots(current, preset: preset, bindings: bindings, source: source)
+    }
+
     static func resolveSlots(
         _ resolver: SlotResolver?, preset: ExportPreset, bindings: [String: UUID], source: URL
     ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
@@ -106,5 +118,25 @@ enum ExportChecks {
         else { return CameraIdentity(make: nil, model: nil) }
         let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
         return CameraIdentity(make: tiff[kCGImagePropertyTIFFMake] as? String, model: tiff[kCGImagePropertyTIFFModel] as? String)
+    }
+}
+
+/// 用到时才取的素材解析器：取一次就留着，同一次校验里的多个任务共用；没有素材图层的预设不触发读库。
+struct LazySlotResolver {
+    private let configuration: QueueConfiguration
+    private var resolved: SlotResolver??
+
+    init(_ configuration: QueueConfiguration) {
+        self.configuration = configuration
+    }
+
+    /// 配置了素材来源（不读库就能知道）。
+    var isConfigured: Bool { configuration.assets != nil || configuration.slotResolver != nil }
+
+    mutating func get() -> SlotResolver? {
+        if let resolved { return resolved }
+        let value = configuration.currentSlotResolver()
+        resolved = .some(value)
+        return value
     }
 }

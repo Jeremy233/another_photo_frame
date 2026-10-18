@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 @testable import PhotoFrameCLI
 import Testing
@@ -86,6 +87,47 @@ struct MCPProcessTests {
     }
 }
 
+/// 空闲的服务器不占 CPU（SDK 自带的 stdio 传输每 10 ms 轮询一次）；客户端不再读输出时不被 SIGPIPE 杀掉。
+@Suite("MCP 可执行文件：stdio", .enabled(if: photoframeExecutable != nil, "需要 swift test 构建出的 photoframe"))
+struct MCPStdioTests {
+    @Test("空闲时几乎不用 CPU、不被定时唤醒；不把 stdin / stdout 改成非阻塞")
+    func idle() throws {
+        let box = try Sandbox()
+        let client = try StdioClient(arguments: ["mcp", "serve"], library: box.root.appending(path: "Library"), probeStdio: true)
+        defer { client.kill() }
+        _ = try client.request("initialize", [
+            "protocolVersion": "2025-11-25", "capabilities": [String: Any](), "clientInfo": ["name": "e2e", "version": "1"],
+        ])
+        try client.notify("notifications/initialized")
+        let modes = client.nonBlockingStdio()
+        #expect(!modes.stdin && !modes.stdout, "stdin / stdout 被设成了非阻塞（O_NONBLOCK 记在共用的文件描述上，退出后还在）")
+
+        Thread.sleep(forTimeInterval: 0.5)
+        let before = try client.usage()
+        Thread.sleep(forTimeInterval: 2)
+        let after = try client.usage()
+        // 以前：约 8 ms CPU、140 多次唤醒（每 10 ms 一次）；现在都接近 0。
+        #expect(after.cpu - before.cpu < 0.004, "空闲 2 秒用了 \(after.cpu - before.cpu) 秒 CPU")
+        #expect(after.wakeups - before.wakeups < 40, "空闲 2 秒被唤醒 \(after.wakeups - before.wakeups) 次")
+        #expect(try client.close() == 0)
+    }
+
+    @Test("客户端不再读 stdout / stderr：写入失败但进程不被 SIGPIPE 杀掉，stdin 结束后正常退出")
+    func clientStopsReading() throws {
+        let box = try Sandbox()
+        let client = try StdioClient(arguments: ["mcp", "serve"], library: box.root.appending(path: "Library"))
+        defer { client.kill() }
+        _ = try client.request("initialize", [
+            "protocolVersion": "2025-11-25", "capabilities": [String: Any](), "clientInfo": ["name": "e2e", "version": "1"],
+        ])
+        client.stopReading()
+        try client.post("tools/call", ["name": "list_presets", "arguments": [String: Any]()])
+        Thread.sleep(forTimeInterval: 0.5)  // 服务器写回复（EPIPE）
+        let end = try client.finish()
+        #expect(end.reason == .exit && end.status == 0, "退出：\(end.reason == .exit ? "exit" : "signal") \(end.status)")
+    }
+}
+
 /// 用换行分隔的 JSON-RPC 与子进程通信（MCP stdio 传输）。超过 120 秒没有结束的进程会被杀掉，测试不会挂住。
 final class StdioClient: @unchecked Sendable {
     private let process = Process()
@@ -96,8 +138,12 @@ final class StdioClient: @unchecked Sendable {
     private var nextId = 1
     private(set) var nonProtocolLines: [String] = []
     private let errorData = LockedData()
+    /// 与子进程的 stdin、stdout 共用打开的文件描述（O_NONBLOCK 记在那上面），用来检查模式。
+    private var stdinProbe: Int32 = -1
+    private var stdoutProbe: Int32 = -1
 
-    init(arguments: [String], library: URL) throws {
+    /// `probeStdio`：留一份 stdin、stdout 管道的描述符，之后用 `nonBlockingStdio()` 检查模式（检查前读不到 stdout 的 EOF）。
+    init(arguments: [String], library: URL, probeStdio: Bool = false) throws {
         guard let exe = photoframeExecutable else { throw TestFailure("找不到 photoframe 可执行文件") }
         process.executableURL = exe
         process.arguments = arguments
@@ -111,6 +157,10 @@ final class StdioClient: @unchecked Sendable {
         process.standardError = errors
         let sink = errorData
         errors.fileHandleForReading.readabilityHandler = { handle in sink.append(handle.availableData) }
+        if probeStdio {
+            stdinProbe = dup(input.fileHandleForReading.fileDescriptor)
+            stdoutProbe = dup(output.fileHandleForWriting.fileDescriptor)
+        }
         try process.run()
         let process = self.process
         DispatchQueue.global().asyncAfter(deadline: .now() + 120) { if process.isRunning { process.terminate() } }
@@ -140,8 +190,56 @@ final class StdioClient: @unchecked Sendable {
         return result["structuredContent"] as? [String: Any] ?? [:]
     }
 
+    /// 子进程的 stdin、stdout 是否是非阻塞的。查完关掉 stdout 那一份（否则这里一直占着写端，读不到 EOF）。
+    func nonBlockingStdio() -> (stdin: Bool, stdout: Bool) {
+        defer { closeProbes() }
+        return (fcntl(stdinProbe, F_GETFL) & O_NONBLOCK != 0, fcntl(stdoutProbe, F_GETFL) & O_NONBLOCK != 0)
+    }
+
+    /// 子进程到目前为止用的 CPU 时间（秒）和被中断唤醒的次数。
+    func usage() throws -> (cpu: Double, wakeups: UInt64) {
+        var info = rusage_info_v2()
+        let status = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(process.processIdentifier, RUSAGE_INFO_V2, $0) }
+        }
+        guard status == 0 else { throw TestFailure("proc_pid_rusage 失败：\(errno)") }
+        // 时间以 mach_absolute_time 的单位计。
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        let ticks = Double(info.ri_user_time + info.ri_system_time)
+        return (ticks * Double(timebase.numer) / Double(timebase.denom) / 1e9, info.ri_interrupt_wkups + info.ri_pkg_idle_wkups)
+    }
+
+    /// 客户端不再读 stdout / stderr（关掉读端），之后服务器的写入都得到 EPIPE。
+    func stopReading() {
+        closeProbes()
+        errors.fileHandleForReading.readabilityHandler = nil
+        try? output.fileHandleForReading.close()
+        try? errors.fileHandleForReading.close()
+    }
+
+    /// 只发请求，不等回复。
+    func post(_ method: String, _ params: [String: Any]) throws {
+        let id = nextId
+        nextId += 1
+        try send(["jsonrpc": "2.0", "id": id, "method": method, "params": params])
+    }
+
+    /// 关闭 stdin，等进程结束（`stopReading()` 之后用，不再读输出）。
+    func finish() throws -> (reason: Process.TerminationReason, status: Int32) {
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        return (process.terminationReason, process.terminationStatus)
+    }
+
+    private func closeProbes() {
+        for fd in [stdinProbe, stdoutProbe] where fd >= 0 { Darwin.close(fd) }
+        (stdinProbe, stdoutProbe) = (-1, -1)
+    }
+
     /// 关闭 stdin（客户端断开），等进程退出。
     func close() throws -> Int32 {
+        closeProbes()
         try input.fileHandleForWriting.close()
         process.waitUntilExit()
         errors.fileHandleForReading.readabilityHandler = nil
@@ -153,6 +251,7 @@ final class StdioClient: @unchecked Sendable {
     }
 
     func kill() {
+        closeProbes()
         if process.isRunning { process.terminate() }
     }
 

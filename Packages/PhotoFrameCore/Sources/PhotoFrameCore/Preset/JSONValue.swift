@@ -3,6 +3,8 @@ public enum JSONValue: Hashable, Sendable, Codable {
     case null
     case bool(Bool)
     case number(Double)
+    /// 绝对值超过 2^53 的整数：Double 存不准，单独保存，原样写回（D-15 扩展字段原样保留）。其余数值都是 `.number`。
+    case integer(Int64)
     case string(String)
     case array([JSONValue])
     case object([String: JSONValue])
@@ -13,6 +15,8 @@ public enum JSONValue: Hashable, Sendable, Codable {
             self = .null
         } else if let b = try? c.decode(Bool.self) {
             self = .bool(b)
+        } else if let i = try? c.decode(Int64.self), i.magnitude > Self.maxExactInteger {
+            self = .integer(i)
         } else if let n = try? c.decode(Double.self) {
             self = .number(n)
         } else if let s = try? c.decode(String.self) {
@@ -34,11 +38,15 @@ public enum JSONValue: Hashable, Sendable, Codable {
         case .number(let n):
             // 整数值按整数写出，避免 `1` 往返后变成 `1.0`。
             if n.rounded() == n, abs(n) < 1e15 { try c.encode(Int64(n)) } else { try c.encode(n) }
+        case .integer(let i): try c.encode(i)
         case .string(let s): try c.encode(s)
         case .array(let a): try c.encode(a)
         case .object(let o): try c.encode(o)
         }
     }
+
+    /// Double 能精确表示的最大整数 2^53。
+    static let maxExactInteger: UInt64 = 1 << 53
 
     public subscript(key: String) -> JSONValue? {
         if case .object(let o) = self { o[key] } else { nil }

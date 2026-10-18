@@ -8,9 +8,12 @@ import PhotoFrameCore
 /// GUI 预览调用同一条管线的 `renderPreview(_:)`。
 ///
 /// 只负责把成品写进 `RenderJob.outputDirectory`；原子发布、命名、冲突处理由调用方负责（§9.2）。
-/// 一个实例可以被多个任务并发使用：`CIContext` 是线程安全的，渲染器本身没有可变状态。
+/// 一个实例可以被多个任务并发使用：`CIContext` 是线程安全的；唯一的可变状态是预览的解码缓存，自带锁。
 public final class PhotoFrameRenderer: @unchecked Sendable {
     let context: CIContext
+    /// 预览用的解码缓存（§12.1「预览使用降采样解码与缩略图缓存」）：GUI 改颜色、文字、图层等不影响照片尺寸的参数，
+    /// 或翻到同一预设的另一页时，不再重新解码源图。导出不用它，每个任务的内存仍只取决于当前任务（D-18）。
+    let previewSources = DecodedSourceCache()
 
     public init() {
         context = WorkingColor.makeContext()
@@ -51,7 +54,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     /// 导出与预览共用的前半段：校验 → 版式 → 解码 → 图层规划 → HDR 决策（§6.1 第 3 条「预览 ≈ 导出」）。
     /// 两者只在解码采样尺度（`decodeScale`）和最后的输出方式上不同。
     private func prepare(
-        _ inputs: RenderInputs, decodeScale: Double = 1, progress: (RenderProgress) -> Void
+        _ inputs: RenderInputs, decodeScale: Double = 1, cachesDecode: Bool = false, progress: (RenderProgress) -> Void
     ) throws -> PreparedRender {
         let output = inputs.preset.output
         try Self.validate(output)
@@ -71,7 +74,9 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
                         height: max(1, Int((Double(needed.height) * decodeScale).rounded(.up))))
             : needed
         let decoder = SourceDecoder(context: context)
-        let source = try decoder.decode(inputs.sourceURL, neededSize: neededSize, override: inputs.sourceColorOverride)
+        let source = try cachesDecode
+            ? previewSources.source(inputs.sourceURL, neededSize: neededSize, override: inputs.sourceColorOverride, decoder: decoder)
+            : decoder.decode(inputs.sourceURL, neededSize: neededSize, override: inputs.sourceColorOverride)
         warnings += source.warnings
         guard source.displaySize == probe.displaySize else {
             throw RenderError(code: "render.decode_failed", message: "解码尺寸与文件属性不符")
@@ -95,7 +100,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             warnings.append(RenderWarning(code: "output.hdr_source_not_hdr", message: "源图不是 HDR，按 SDR 输出"))
         } else if !writesHDR {
             warnings.append(RenderWarning(code: "output.hdr_no_headroom",
-                                          message: "源图标为 HDR，但画面没有超过 SDR 白的内容（headroom = 1），按 SDR 输出"))
+                                          message: "源图标为 HDR，但画面没有超过 SDR 白的内容（余量 = 1），按 SDR 输出"))
         }
         let sdrMethod: SDRRenditionMethod
         switch source.hdrKind {
@@ -138,33 +143,74 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         let metadata = OutputMetadata.properties(from: source.properties, author: source.author, policy: output.metadata)
         let ext = output.format == .jpeg ? "jpg" : "png"
 
+        let pages = layout.pages
+        func url(_ plan: PagePlan) -> URL {
+            job.outputDirectory.appendingPathComponent(String(format: "%02d.%@", plan.role.page, ext))
+        }
         var outputs: [RenderedOutput] = []
-        for plan in layout.pages {
-            try Task.checkCancellation()
-            let background = try WorkingColor.ciColor(plan.background)
-            let sdrPage = PageComposer.compose(plan: plan, photo: photos.sdr(for: plan.photo, displaySize: source.displaySize),
-                                               overlays: overlays, background: background)
-            let url = job.outputDirectory.appendingPathComponent(String(format: "%02d.%@", plan.role.page, ext))
-            progress(RenderProgress(stage: .encoding, completedOutputs: outputs.count, totalOutputs: layout.pages.count))
-            let result: OutputEncoder.Written
-            if writesHDR, output.format == .jpeg {
-                let hdrPage = PageComposer.compose(plan: plan, photo: photos.hdr(for: plan.photo, displaySize: source.displaySize),
-                                                   overlays: overlays, background: background)
-                result = try encoder.writeHDRJPEG(sdr: sdrPage, hdr: hdrPage, headroom: source.headroom ?? 1,
-                                                  size: plan.canvas, settings: output, metadata: metadata, to: url)
-            } else {
-                result = try encoder.writeSDR(sdrPage, size: plan.canvas, settings: output, metadata: metadata, to: url)
-            }
-            written.append(url)
+        /// 第 `index` 页已写出：按页序记下文件、警告与输出信息。
+        func record(_ index: Int, _ result: OutputEncoder.Written) {
+            let plan = pages[index]
+            written.append(url(plan))
             warnings += result.warnings.map { RenderWarning(code: "output.metadata_dropped", message: $0, page: plan.role.page) }
             outputs.append(RenderedOutput(
-                role: plan.role, fileURL: url, pixelSize: plan.canvas, format: output.format,
+                role: plan.role, fileURL: url(plan), pixelSize: plan.canvas, format: output.format,
                 dynamicRange: writesHDR ? .hdr : .sdr, colorProfile: WorkingColor.sRGBProfileName,
                 hdrHeadroom: writesHDR ? source.headroom : nil, byteCount: result.byteCount,
                 photoRect: plan.photo.pageRect(canvas: plan.canvas),
                 layers: plan.overlays.map { RenderedLayer(layerId: $0.layer.layerId, rect: $0.rect) }))
         }
-        progress(RenderProgress(stage: .encoding, completedOutputs: outputs.count, totalOutputs: layout.pages.count))
+
+        // SDR 页面在本线程逐页渲染，编码与写文件交给后台，同时编码的页数受内存上限约束（EncodePipeline）。
+        let pipeline = EncodePipeline(pageBytes: pages.map { $0.canvas.width * $0.canvas.height * 4 }.max() ?? 0)
+        /// 按页序取回编码完的页并报告进度；在途页数超过 `limit` 时等最早的一页。
+        func collect(keeping limit: Int) throws {
+            while let (index, result) = pipeline.next(wait: pipeline.inFlight > limit) {
+                switch result {
+                case .success(let written): record(index, written)
+                case .failure(let error): throw PageEncodeFailure(page: index, error: error)
+                }
+                progress(RenderProgress(stage: .encoding, completedOutputs: outputs.count, totalOutputs: pages.count))
+            }
+        }
+
+        var current = 0
+        do {
+            for (index, plan) in pages.enumerated() {
+                current = index
+                try Task.checkCancellation()
+                let background = try WorkingColor.ciColor(plan.background)
+                let sdrPage = PageComposer.compose(plan: plan, photo: photos.sdr(for: plan.photo, displaySize: source.displaySize),
+                                                   overlays: overlays, background: background)
+                progress(RenderProgress(stage: .encoding, completedOutputs: outputs.count, totalOutputs: pages.count))
+                if writesHDR, output.format == .jpeg {
+                    try collect(keeping: 0)
+                    let hdrPage = PageComposer.compose(plan: plan, photo: photos.hdr(for: plan.photo, displaySize: source.displaySize),
+                                                       overlays: overlays, background: background)
+                    record(index, try encoder.writeHDRJPEG(sdr: sdrPage, hdr: hdrPage, headroom: source.headroom ?? 1,
+                                                           size: plan.canvas, settings: output, metadata: metadata, to: url(plan)))
+                } else {
+                    let image = try encoder.renderSRGB8(sdrPage, size: plan.canvas)
+                    pipeline.submit(EncodePipeline.Page(image: image, settings: output, metadata: metadata, url: url(plan)))
+                    try collect(keeping: pipeline.depth - 1)
+                }
+            }
+            try collect(keeping: 0)
+        } catch {
+            // 交给后台的页先全部结束，写出的文件记进 written，由 render 统一删除。
+            // 比出错处更早的页编码失败时报那一页的错误，与逐页执行时先遇到的错误相同。
+            let failure = error as? PageEncodeFailure
+            var earlier: RenderError?
+            while let (index, result) = pipeline.next(wait: true) {
+                switch result {
+                case .success: written.append(url(pages[index]))
+                case .failure(let error): if index < failure?.page ?? current, earlier == nil { earlier = error }
+                }
+            }
+            if let earlier { throw earlier }
+            throw failure?.error ?? error
+        }
+        progress(RenderProgress(stage: .encoding, completedOutputs: outputs.count, totalOutputs: pages.count))
         return RenderResult(outputs: outputs, diagnostics: prepared.diagnostics, warnings: warnings)
     }
 
@@ -173,7 +219,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     private func previewPages(_ request: PreviewRequest) throws -> PreviewResult {
         let canvas = request.preset.canvas.size
         let scale = try PreviewScale(canvas: canvas, size: request.size)
-        var prepared = try prepare(request.inputs, decodeScale: max(scale.x, scale.y), progress: { _ in })
+        var prepared = try prepare(request.inputs, decodeScale: max(scale.x, scale.y), cachesDecode: true, progress: { _ in })
         let (layout, source, photos) = (prepared.layout, prepared.source, prepared.photos)
         let showsHDR = prepared.writesHDR && request.color != .sRGB
         switch request.color {
@@ -257,7 +303,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             throw RenderError(code: "render.unsupported_output_color_space", message: "V1 只输出 sRGB：\(output.colorSpace)")
         }
         if output.dynamicRange == .hdr, output.format != .jpeg {
-            throw RenderError(code: "render.hdr_format_unsupported", message: "HDR 输出只支持带 gain map 的 JPEG（D-17）",
+            throw RenderError(code: "render.hdr_format_unsupported", message: "HDR 输出只支持带增益图的 JPEG",
                               hint: "把输出格式改为 JPEG，或改为 SDR 输出")
         }
     }
@@ -277,6 +323,80 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         else { throw .decodeFailed(url, "ImageIO 无法读取图像属性") }
         let orientation = ExifOrientation(rawValue: props[kCGImagePropertyOrientation] as? Int ?? 1) ?? .up
         return SourceImage(storedSize: PixelSize(width: w, height: h), orientation: orientation)
+    }
+}
+
+/// 预览的解码缓存。`SourceDecoder.decode` 的结果只取决于源文件、解码长边（由所需尺寸决定）和输入色彩空间覆盖，
+/// 所以按这几项（文件用路径、大小、修改时间和文件号识别）复用，像素与重新解码完全相同。
+/// 按最近使用淘汰，最多 `capacity` 份、总共不超过 `byteLimit`；单份超过上限的不缓存。
+final class DecodedSourceCache: @unchecked Sendable {
+    struct Key: Hashable {
+        var path: String
+        var fileSize: Int64?
+        var modified: Date?
+        var fileNumber: Int?
+        var longNeeded: Int
+        var override: SourceColorOverride?
+    }
+
+    let capacity: Int
+    let byteLimit: Int
+    private let lock = NSLock()
+    /// 最近使用的在后面。
+    private var entries: [(key: Key, source: DecodedSource)] = []
+    private var bytes = 0
+    /// 实际解码次数（测试用）。
+    private(set) var decodeCount = 0
+
+    init(capacity: Int = 2, byteLimit: Int = 256 << 20) {
+        self.capacity = capacity
+        self.byteLimit = byteLimit
+    }
+
+    func source(
+        _ url: URL, neededSize: PixelSize, override: SourceColorOverride?, decoder: SourceDecoder
+    ) throws(RenderError) -> DecodedSource {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let key = Key(
+            path: url.standardizedFileURL.path, fileSize: (attributes?[.size] as? NSNumber)?.int64Value,
+            modified: attributes?[.modificationDate] as? Date,
+            fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.intValue,
+            longNeeded: max(neededSize.width, neededSize.height, 1), override: override)
+        if let hit = lookup(key) { return hit }
+        let source = try decoder.decode(url, neededSize: neededSize, override: override)
+        store(source, for: key)
+        return source
+    }
+
+    private func lookup(_ key: Key) -> DecodedSource? {
+        lock.withLock {
+            guard let index = entries.firstIndex(where: { $0.key == key }) else { return nil }
+            let entry = entries.remove(at: index)
+            entries.append(entry)
+            return entry.source
+        }
+    }
+
+    private func store(_ source: DecodedSource, for key: Key) {
+        lock.withLock {
+            decodeCount += 1
+            if let index = entries.firstIndex(where: { $0.key == key }) {
+                bytes -= entries.remove(at: index).source.pixelBytes
+            }
+            guard source.pixelBytes <= byteLimit else { return }
+            entries.append((key, source))
+            bytes += source.pixelBytes
+            while entries.count > capacity || bytes > byteLimit {
+                bytes -= entries.removeFirst().source.pixelBytes
+            }
+        }
+    }
+
+    func removeAll() {
+        lock.withLock {
+            entries = []
+            bytes = 0
+        }
     }
 }
 

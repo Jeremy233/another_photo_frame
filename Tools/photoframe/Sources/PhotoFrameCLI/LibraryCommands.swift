@@ -506,13 +506,13 @@ struct AssetCommand: AsyncParsableCommand {
 // MARK: - 输出
 
 extension CommandContext {
-    /// 对齐的列；最后一列不补空格。
+    /// 对齐的列；最后一列不补空格。宽度按字符（字素簇）计，补空格也按字符补，不截断 emoji 和组合字符。
     func printTable(_ rows: [[String]]) {
         guard let columns = rows.first?.count else { return }
         let widths = (0..<columns).map { column in rows.map { $0[column].count }.max() ?? 0 }
         for row in rows {
             let cells = row.enumerated().map { i, cell in
-                i == row.count - 1 ? cell : cell.padding(toLength: widths[i], withPad: " ", startingAt: 0)
+                i == row.count - 1 ? cell : cell + String(repeating: " ", count: max(0, widths[i] - cell.count))
             }
             env.stdout.line(cells.joined(separator: "  "))
         }

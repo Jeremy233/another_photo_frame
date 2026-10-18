@@ -12,7 +12,7 @@ enum SourceFileFormat: String {
         if b.count >= 4, (b[0..<4] == [0x49, 0x49, 0x2A, 0x00] || b[0..<4] == [0x4D, 0x4D, 0x00, 0x2A]) { return .tiff }
         if b.count >= 4, (b[0..<4] == [0x49, 0x49, 0x2B, 0x00] || b[0..<4] == [0x4D, 0x4D, 0x00, 0x2B]) { return .tiff } // BigTIFF
         if b.count >= 12, String(decoding: b[4..<8], as: UTF8.self) == "ftyp" {
-            throw .unsupportedFormat("HEIC / HEIF（V1 不支持，D-02）")
+            throw .unsupportedFormat("HEIC / HEIF（暂不支持）")
         }
         throw .unsupportedFormat("无法识别的文件头")
     }
@@ -21,7 +21,7 @@ enum SourceFileFormat: String {
     ///
     /// - JPEG：APP2 `ICC_PROFILE` 段。
     /// - PNG：`iCCP`、`sRGB`、`cICP`，或 `gAMA` + `cHRM` 同时存在（等价的标准描述）。
-    /// - TIFF：IFD0 的 34675（InterColorProfile）标签。
+    /// - TIFF：IFD0 的 34675（InterColorProfile）标签（经典 TIFF 与 BigTIFF）。
     static func hasEmbeddedColorDescription(_ data: Data, format: SourceFileFormat) -> Bool {
         switch format {
         case .jpeg:
@@ -39,9 +39,43 @@ enum SourceFileFormat: String {
             }
             return !chunks.isDisjoint(with: ["iCCP", "sRGB", "cICP"]) || chunks.isSuperset(of: ["gAMA", "cHRM"])
         case .tiff:
-            guard let tiff = try? TIFFFile(data), let ifd0 = tiff.ifd0 else { return false }
+            guard let tiff = try? TIFFFile(data) else { return bigTIFFIFD0Contains(data, tag: 34675) }
+            guard let ifd0 = tiff.ifd0 else { return false }
             return ifd0.tags[34675] != nil
         }
+    }
+
+    /// BigTIFF（版本 43）的 IFD0 里有没有某个值不越界的标签。只为找 ICC；gain map TIFF 仍只支持经典 TIFF。
+    /// 结构：头 16 字节（偏移宽度 8），IFD = u64 项数 + 20 字节的目录项（标签 u16、类型 u16、数量 u64、值或偏移 8 字节）。
+    /// 与经典 TIFF 相同：项数异常或目录表越界时整个 IFD0 无效，单个标签越界只跳过它。
+    static func bigTIFFIFD0Contains(_ data: Data, tag wanted: Int) -> Bool {
+        let d = data.startIndex == 0 ? data : Data(data)
+        guard d.count >= 16 else { return false }
+        let little: Bool
+        switch (d[0], d[1]) {
+        case (0x49, 0x49): little = true
+        case (0x4D, 0x4D): little = false
+        default: return false
+        }
+        /// 偏移 o 处 n 字节的无符号整数；越界或超出 Int 时为 nil。
+        func uint(_ o: Int, _ n: Int) -> Int? {
+            guard o >= 0, o <= d.count - n else { return nil }
+            var v: UInt64 = 0
+            for k in 0..<n { v |= UInt64(d[o + k]) << (little ? 8 * k : 8 * (n - 1 - k)) }
+            return v <= UInt64(Int.max) ? Int(v) : nil
+        }
+        guard uint(2, 2) == 43, uint(4, 2) == 8, uint(6, 2) == 0, let first = uint(8, 8), let n = uint(first, 8),
+              n > 0, n < 4096, first <= d.count - 8 - n * 20
+        else { return false }
+        let sizes = [1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4, 16: 8, 17: 8, 18: 8]
+        for i in 0..<n {
+            let e = first + 8 + i * 20
+            guard uint(e, 2) == wanted, let type = uint(e + 2, 2), let count = uint(e + 4, 8) else { continue }
+            let (total, overflow) = (sizes[type] ?? 1).multipliedReportingOverflow(by: count)
+            guard !overflow, let valueOffset = total <= 8 ? e + 12 : uint(e + 12, 8), valueOffset <= d.count - total else { continue }
+            return true
+        }
+        return false
     }
 }
 
@@ -58,7 +92,8 @@ enum JPEGSegments {
 
     static func headerSegments(_ data: Data) -> [Segment] {
         var result: [Segment] = []
-        let d = Data(data)
+        // 只有切片才复制（偏移从 0 起算）；整个文件（内存映射）直接用，不复制。
+        let d = data.startIndex == 0 ? data : Data(data)
         var i = 2
         while i + 4 <= d.count, d[i] == 0xFF {
             let marker = d[i + 1]
@@ -74,7 +109,7 @@ enum JPEGSegments {
     }
 
     static func contains(_ data: Data, marker: UInt8, prefix: Data) -> Bool {
-        let d = Data(data)
+        let d = data.startIndex == 0 ? data : Data(data)
         return headerSegments(d).contains { s in
             s.marker == marker && d.subdata(in: s.payloadRange).starts(with: prefix)
         }

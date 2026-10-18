@@ -109,7 +109,7 @@ extension Workbench {
                 if let p = preset(name) { await addJobs(preset: p, to: [id]) }
             }
             // 直接改任务的目录，不写进位置列表（不留下任何偏好设置）。
-            if let exports { setDestination(exports, for: .source(id)) }
+            if let exports { setDestination(exports, for: [.source(id)]) }
         }
         if let first = sources.first?.jobs.first { selection = [.job(first.id)] }
         if let tab = env["PHOTOFRAME_UI_TAB"], let value = InspectorTab(rawValue: tab) { inspectorTab = value }
@@ -141,7 +141,7 @@ extension Workbench {
             if mode == "completed" {
                 while !activeJobs.isEmpty { try? await Task.sleep(for: .milliseconds(200)) }
                 self.mode = .completed
-                if let first = finishedJobs.first { jobSelection = [first.jobId] }
+                if let first = finishedJobs.first { historySelection = [first.jobId] }
             }
         }
     }

@@ -37,12 +37,27 @@ enum MetadataText {
         if let lens = exif[kCGImagePropertyExifLensModel] as? String, !lens.isEmpty { v["lens"] = lens }
         if let f = number(exif[kCGImagePropertyExifFocalLength]) { v["focalLength"] = "\(trim(f))mm" }
         if let f = number(exif[kCGImagePropertyExifFocalLenIn35mmFilm]) { v["focalLength35"] = "\(trim(f))mm" }
-        if let n = number(exif[kCGImagePropertyExifFNumber]) { v["aperture"] = "f/\(trim(n))" }
-        if let t = number(exif[kCGImagePropertyExifExposureTime]), t > 0 {
-            v["shutter"] = t >= 1 ? "\(trim(t))s" : "1/\(Int((1 / t).rounded()))s"
+        if let n = number(exif[kCGImagePropertyExifFNumber]) {
+            // 小于 1 的光圈保留两位小数（f/0.95），否则一位小数会进成 f/1。
+            v["aperture"] = n < 1 ? "f/\(String(format: "%g", (n * 100).rounded() / 100))" : "f/\(trim(n))"
         }
-        if let iso = (exif[kCGImagePropertyExifISOSpeedRatings] as? [Any])?.first.flatMap(number) {
-            v["iso"] = "ISO \(Int(iso))"
+        if let t = number(exif[kCGImagePropertyExifExposureTime]), t > 0 {
+            if t >= 1 {
+                v["shutter"] = "\(trim(t))s"
+            } else {
+                // 1/t 离最近的整数不超过 1/6 档时写整数（1/250s；0.3 s → 1/3s），否则保留一位小数（1/1.3s、1/2.5s）。
+                let r = 1 / t, n = r.rounded()
+                if r.isFinite { v["shutter"] = abs(log2(r / n)) <= 1.0 / 6 && n < Self.maxExactInteger ? "1/\(Int(n))s" : "1/\(trim(r))s" }
+            }
+        }
+        if var iso = (exif[kCGImagePropertyExifISOSpeedRatings] as? [Any])?.first.flatMap(number) {
+            // ISOSpeedRatings 是 16 位，超过 65535 的感光度相机写 65535，真实值在 RecommendedExposureIndex / ISOSpeed。
+            if iso == 65535, let exact = number(exif[kCGImagePropertyExifRecommendedExposureIndex])
+                ?? number(exif[kCGImagePropertyExifISOSpeed])
+            {
+                iso = exact
+            }
+            if abs(iso) < Self.maxExactInteger { v["iso"] = "ISO \(Int(iso))" }
         }
         if let d = exif[kCGImagePropertyExifDateTimeOriginal] as? String, d.count >= 10 {
             v["date"] = String(d.prefix(10)).replacingOccurrences(of: ":", with: "-")
@@ -91,17 +106,22 @@ enum MetadataText {
         return (lines.joined(separator: "\n"), missing)
     }
 
+    /// 数值型 EXIF。损坏的文件里可能是 inf / NaN（例如分母为 0 的分数），当作没有。
     private static func number(_ any: Any?) -> Double? {
-        switch any {
+        let value: Double? = switch any {
         case let n as NSNumber: n.doubleValue
         case let d as Double: d
         case let s as String: Double(s)
         default: nil
         }
+        return value.flatMap { $0.isFinite ? $0 : nil }
     }
 
+    /// 能精确换成整数显示的上限；更大的（只会出现在损坏的 EXIF 里）按 %g 显示，不做整数转换（会溢出崩溃）。
+    private static let maxExactInteger = 1e15
+
     private static func trim(_ v: Double) -> String {
-        v == v.rounded() ? String(Int(v)) : String(format: "%g", (v * 10).rounded() / 10)
+        v == v.rounded() && abs(v) < maxExactInteger ? String(Int(v)) : String(format: "%g", (v * 10).rounded() / 10)
     }
 }
 

@@ -231,6 +231,13 @@ struct PanoramaLayoutTests {
         #expect(extreme.slideCount == 14)
         #expect(extreme.warnings.contains(.exceedsCarouselLimit(totalItems: 15, limit: 10)))
         expectSeamless(extreme)
+        // 不输出封面时只算切片：4 张切片正好等于上限 4。
+        let noCover = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), maxCarouselItems: 4,
+                                         includesCover: false)
+        #expect(noCover.warnings.isEmpty)
+        let noCoverTooMany = try PanoramaLayout(tile: instagram, source: PixelSize(width: 3000, height: 1000), maxCarouselItems: 3,
+                                                includesCover: false)
+        #expect(noCoverTooMany.warnings == [.exceedsCarouselLimit(totalItems: 4, limit: 3)])
     }
 
     @Test("竖图、方图、不足 2 张宽：提示但仍可计算")

@@ -325,6 +325,25 @@ import Testing
         #expect(wb.allJobs.count == 1)
     }
 
+    @Test func overwriteRefusesNamesThatDifferOnlyInCase() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let wb = f.workbench
+        try await f.addJob()
+        await wb.startBatch()
+        await f.waitForRun()
+
+        // 两个任务的作品名只差大小写，都要覆盖已有的目录：不区分大小写的卷上是同一个目录，不能都覆盖。
+        try await f.addJob()
+        try await f.addJob("Other/BADLANDS.jpg")
+        await wb.startBatch()
+        guard !OutputNaming.volumeIsCaseSensitive(f.root) else { return }
+        #expect(try #require(wb.overwritePrompt).conflicts.count == 2)
+        await wb.resolveOverwrite(.overwrite)
+        #expect(wb.alert?.title == "无法覆盖")
+        #expect(wb.allJobs.count == 2)
+    }
+
     @Test func invalidJobBlocksBatch() async throws {
         let f = try Fixture()
         await f.workbench.load()

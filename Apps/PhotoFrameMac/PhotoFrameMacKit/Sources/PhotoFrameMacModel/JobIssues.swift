@@ -10,36 +10,41 @@ public struct JobIssue: Hashable, Sendable, Identifiable {
 
     public var id: String { "\(isError) \(code) \(message)" }
 
-    /// 常见警告的修改建议（错误优先用服务给的 hint）。
+    /// 常见警告的修改建议（错误优先用服务给的 hint）。控件用「」写出界面上的确切名称。
     static func hint(for code: String) -> String? {
         switch code {
-        case "panorama.not_landscape": "全景切片适合横向长图；不需要时在「全景」里关闭全景分割"
-        case "panorama.not_wide_enough": "按实际需要的张数导出；想要更多张可以在「全景」里改为手动张数"
-        case "panorama.exceeds_carousel_limit": "在「全景」里减少切片张数，或关闭封面"
-        case "panorama.increased_slide_count": "改回自动张数，长卷两端就不会补底色"
-        case "overlay.exceeds_canvas", "overlay.insufficient_margin": "在「图层」里调小图层或偏移，或在「画布」里加大最小边距"
-        case "overlay.overlaps_photo": "把图层的参照改为照片外侧，或加大画布边距"
-        case "overlay.missing_pages": "到「图层」里把显示页面改成实际存在的页"
-        case "overlay.font_missing": "改用系统字体，或先安装这个字体"
-        case "overlay.metadata_missing": "源图没有这些 EXIF 字段，对应部分会留空；可以改 EXIF 文字模板"
-        case "overlay.asset_missing", "overlay.empty_text", "overlay.missing_text": "在「图层」里给这个图层选素材或填文字，不需要就关闭它"
-        case "platform.hdr_unverified": "上传后的 HDR 效果尚未实测；不确定时把「输出」的动态范围改为 SDR"
-        case "output.hdr_source_not_hdr", "output.hdr_no_headroom": "把「输出」的动态范围改为「跟随源图」，就不会再提示"
-        case "output.metadata_dropped": "保留 HDR 时不能写入这些元数据；需要元数据时改为 SDR 输出"
-        case "source.profile_missing": "源图没有 ICC，按 sRGB 处理；颜色不对时在源图的 Inspector 里指定色彩空间"
-        case "source.override_ignored": "源图自带 ICC，指定的色彩空间没有使用"
-        case "render.crop_ignored_for_panorama": "全景切片不裁切；需要裁切时关闭全景分割"
+        case "panorama.not_landscape": "全景切片适合横向长图；不需要时在「全景」里取消「全景分割」"
+        case "panorama.not_wide_enough": "按实际需要的张数导出；想要更多张可以在「全景」里把「张数」改为手动"
+        case "panorama.exceeds_carousel_limit": "在「全景」里减少切片张数，或取消「封面」"
+        case "panorama.increased_slide_count": "把「全景」的「张数」改回自动，长卷两端就不会补背景色"
+        case "overlay.exceeds_canvas", "overlay.insufficient_margin":
+            "在「图层」里调小「水平偏移」「垂直偏移」，或在「画布」里加大「最小边距」"
+        case "overlay.overlaps_photo": "把图层的「参照」改为照片外侧，或在「画布」里加大「最小边距」"
+        case "overlay.missing_pages": "在「图层」里把「显示在」改成实际存在的页"
+        case "overlay.font_missing": "在「图层」里清空「字体」改用系统字体，或先安装这个字体"
+        case "overlay.metadata_missing": "源图没有这些 EXIF 字段，对应部分会留空；可以在「图层」里改「模板」"
+        case "overlay.asset_missing", "overlay.empty_text", "overlay.missing_text":
+            "在「图层」里给这个图层绑定「素材」或填写「文字」，不需要就取消「启用」"
+        case "platform.hdr_unverified": "上传后的 HDR 效果尚未实测；不确定时把「输出」的「动态范围」改为 SDR"
+        case "output.hdr_source_not_hdr", "output.hdr_no_headroom": "把「输出」的「动态范围」改为「跟随源图」，就不会再提示"
+        case "output.metadata_dropped": "保留 HDR 时不能写入这些元数据；需要元数据时把「动态范围」改为 SDR"
+        case "source.profile_missing": "颜色不对时选中源图，在右栏「色彩」里的「按此解释」选择色彩空间"
+        case "source.override_ignored": "「按此解释」只用于没有 ICC 的源图，这张源图按自带的 ICC 解释"
+        case "render.crop_ignored_for_panorama": "全景切片不裁切；需要裁切时在「全景」里取消「全景分割」"
+        case "slot.optional_missing": "把左栏「素材」里的素材拖到「图层」的「素材」行上，或取消这个图层的「启用」"
+        case "slot.stale_binding": "在「图层」的「素材」里重新选择素材"
+        case "slot.missing_required": "把左栏「素材」里的素材拖到「图层」的「素材」行上"
         default: nil
         }
     }
 }
 
 extension DraftJob {
-    /// 最近一次校验的错误和警告，错误在前。
+    /// 最近一次校验的错误和警告，错误在前。消息里的图层、素材槽用界面上的名字。
     public var issues: [JobIssue] {
         guard let validation else { return [] }
-        return validation.errors.map { JobIssue(isError: true, code: $0.code, message: $0.message, hint: $0.hint ?? JobIssue.hint(for: $0.code)) }
-            + validation.warnings.map { JobIssue(isError: false, code: $0.code, message: $0.message, hint: JobIssue.hint(for: $0.code)) }
+        let titles = preset.layerTitles
+        return (validation.errors.map(JobIssue.init) + validation.warnings.map(JobIssue.init)).map { $0.naming(titles) }
     }
 }
 
@@ -48,19 +53,48 @@ extension JobIssue {
     public var isInfo: Bool { code.hasPrefix("preview.") }
 }
 
+extension JobIssue {
+    init(_ warning: ApplicationWarning) {
+        self.init(isError: false, code: warning.code, message: warning.message, hint: JobIssue.hint(for: warning.code))
+    }
+
+    /// 错误：服务给了修改建议就用它的，否则用常见问题的建议。
+    public init(_ error: ApplicationError) {
+        self.init(isError: true, code: error.code, message: error.message, hint: error.hint ?? JobIssue.hint(for: error.code))
+    }
+}
+
+extension JobRecord {
+    /// 「已完成」详情里的错误和警告，与任务行、右栏同一种列表。
+    public var issues: [JobIssue] {
+        let titles = spec.preset.layerTitles
+        return ((error.map { [JobIssue($0)] } ?? []) + displayWarnings.map(JobIssue.init)).map { $0.naming(titles) }
+    }
+}
+
 extension Workbench {
-    /// Inspector「警告」里的内容：选中一个任务时它的校验结果，再加上当前预览渲染时的提示（校验里已有的同类不重复）。
-    /// 预览区不再显示这些提示，选中预设或源图时它们也只在这里。
+    /// 右栏「警告」里的内容：选中一个任务时它的校验结果，选中源图时源图检查的提示，再加上当前预览渲染时的提示。
+    /// 同一种（同一代码）的只列一次。预览区不显示这些提示，选中预设或源图时它们也只在这里。
     public var inspectorIssues: [JobIssue] {
         var issues: [JobIssue] = []
-        if case .jobs(let ids) = inspectorSubject {
-            guard ids.count == 1, let job = job(ids[0]) else { return [] }
+        let (subject, jobs) = inspected()
+        switch subject {
+        case .jobs:
+            guard jobs.count == 1, let job = jobs.first else { return [] }
             issues = job.issues
+        case .source(let id):
+            if let item = sourceItem(id) {
+                if let error = item.inspectionError { issues.append(JobIssue(error)) }
+                issues += item.inspection?.warnings.map(JobIssue.init) ?? []
+            }
+        case .preset, .location, .none:
+            break
         }
         guard preview.subject == previewSubject else { return issues }
-        let codes = Set(issues.map(\.code))
-        let extra = preview.warnings.filter { !codes.contains($0.code) }
-            .map { JobIssue(isError: false, code: $0.code, message: $0.message, hint: JobIssue.hint(for: $0.code)) }
+        var codes = Set(issues.map(\.code))
+        var extra: [JobIssue] = []
+        let titles = preview.subject?.preset?.layerTitles ?? [:]
+        for warning in preview.warnings where codes.insert(warning.code).inserted { extra.append(JobIssue(warning).naming(titles)) }
         return issues + extra.filter { !$0.isInfo } + extra.filter(\.isInfo)
     }
 }

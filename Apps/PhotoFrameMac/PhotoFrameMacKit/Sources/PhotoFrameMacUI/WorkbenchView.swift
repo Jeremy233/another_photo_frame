@@ -1,7 +1,7 @@
 import PhotoFrameMacModel
 import SwiftUI
 
-/// 主窗口：左栏（预设 | 位置 | 素材）、中间（当前 / 活跃 / 已完成）、右栏 Inspector（UI 设计文档顶部示意）。
+/// 主窗口：左栏（预设 | 位置 | 素材）、中间（当前 / 活跃 / 已完成）、右栏（代码里叫 Inspector，UI 设计文档顶部示意）。
 ///
 /// 布局参照 Compressor：整个窗口一条顶栏（左侧左栏开关，正中三个界面的切换，右侧 Inspector 开关），没有窗口标题；
 /// 下面三栏是自己封装的 AppKit 分栏（`ColumnSplit`），每栏顶部一行小号控件、底部各有一段操作栏。
@@ -73,7 +73,7 @@ public struct WorkbenchView: View {
             } label: {
                 Label("左栏", systemImage: "sidebar.leading")
             }
-            .disabled(workbench.mode != .current)
+            .disabled(!workbench.canToggleSidebar)
             .help("显示或隐藏左栏（⌃⌘S）")
         }
         ToolbarItem(placement: .principal) {
@@ -90,16 +90,16 @@ public struct WorkbenchView: View {
             Button {
                 workbench.showsInspector.toggle()
             } label: {
-                Label("Inspector", systemImage: "sidebar.trailing")
+                Label("右栏", systemImage: "sidebar.trailing")
             }
-            .help("显示或隐藏 Inspector（⌥⌘I）")
+            .help("显示或隐藏右栏（⌥⌘I）")
         }
     }
 
-    /// 有任务在跑时显示「活跃 (N)」。
+    /// 有任务在跑时显示「活跃（N）」。
     private func title(_ mode: WorkbenchMode) -> String {
         let count = workbench.activeCount
-        return mode == .active && count > 0 ? "\(mode.title) (\(count))" : mode.title
+        return mode == .active && count > 0 ? "\(mode.title)（\(count)）" : mode.title
     }
 }
 

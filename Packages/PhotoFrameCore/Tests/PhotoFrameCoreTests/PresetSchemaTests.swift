@@ -181,6 +181,24 @@ struct ExtensionFieldTests {
         #expect(rewritten["futureThing"] == .number(1))
     }
 
+    @Test("超出 Double 精度的整数（> 2^53）原样往返")
+    func bigIntegers() throws {
+        let json = """
+        {"schemaVersion": 1, "presetId": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "name": "big",
+         "x-id": 9007199254740993, "x-neg": -9223372036854775807, "x-small": 3, "x-float": 1.5,
+         "canvas": {"width": 1080, "height": 1080}}
+        """
+        let p = try PresetSchema.decode(jsonData(json)).preset
+        #expect(p.extensions["x-id"] == .integer(9_007_199_254_740_993))
+        #expect(p.extensions["x-neg"] == .integer(-9_223_372_036_854_775_807))
+        #expect(p.extensions["x-small"] == .number(3))
+        #expect(p.extensions["x-float"] == .number(1.5))
+        let text = String(decoding: try PresetSchema.encode(p), as: UTF8.self)
+        #expect(text.contains("9007199254740993"))
+        #expect(text.contains("-9223372036854775807"))
+        #expect(try PresetSchema.decode(PresetSchema.encode(p)).preset == p)
+    }
+
     @Test("扩展字段不能覆盖同名的正式字段")
     func extensionCannotShadowKnownKey() throws {
         var p = samplePreset()
@@ -332,6 +350,48 @@ struct InvalidPresetTests {
         ])
     }
 
+    @Test("极端数值报错而不是溢出崩溃：边距、切片张数、图层尺寸与偏移、文字、画布")
+    func extremeValues() throws {
+        var p = samplePreset()
+        p.canvas.minMarginPx = Int.max
+        p.panorama.verticalMarginPx = Int.max
+        #expect(Set(p.validate().errors.map(\.code)) == ["preset.margin_too_large", "preset.invalid_vertical_margin"])
+
+        p = samplePreset()
+        p.panorama.tileCount = .fixed(9_000_000_000_000_000)
+        p.layers = [
+            OverlayLayer(layerId: "big", type: .text, offset: OverlayOffset(x: 0, y: Int.max), sizePx: PixelSize(width: 48, height: Int.max),
+                         text: TextStyle(content: "A", fontSizePx: 1e19, letterSpacingPx: 1e12, lineHeight: 1e9, paddingPx: Int.max)),
+        ]
+        p.assetSlots = []
+        let errors = p.validate().errors
+        #expect(Set(errors.map(\.code)) == ["preset.invalid_tile_count", "preset.invalid_size", "preset.invalid_offset", "preset.invalid_text"])
+        #expect(Set(errors.filter { $0.code == "preset.invalid_text" }.map(\.path))
+                == ["layers[0].text.fontSizePx", "layers[0].text.lineHeight", "layers[0].text.letterSpacingPx", "layers[0].text.paddingPx"])
+
+        p = samplePreset()
+        p.canvas.width = Int.max
+        #expect(p.validate().errors.map(\.code).contains("preset.invalid_canvas_size"))
+
+        // 上限本身仍然合法。
+        p = samplePreset()
+        p.panorama.tileCount = .fixed(ExportPreset.maxTileCount)
+        p.canvas.width = ExportPreset.maxPixelExtent
+        #expect(p.validate().errors.isEmpty)
+
+        // 几何层直接调用时同样报错。
+        let canvas = PixelSize(width: 1080, height: 1440), source = PixelSize(width: 3000, height: 2000)
+        #expect(throws: GeometryError.marginTooLarge(margin: Int.max, canvas: canvas)) {
+            try FitLayout(canvas: canvas, minimumMargin: Int.max, source: source)
+        }
+        #expect(throws: GeometryError.marginTooLarge(margin: Int.max, canvas: canvas)) {
+            try CropLayout(canvas: canvas, minimumMargin: Int.max, source: source)
+        }
+        #expect(throws: GeometryError.invalidVerticalMargin(Int.max)) {
+            try PanoramaLayout(tile: canvas, source: source, verticalMargin: Int.max)
+        }
+    }
+
     @Test("没被使用的素材槽只是警告")
     func unusedSlotWarning() {
         var p = samplePreset()
@@ -431,6 +491,9 @@ struct OverlayLayerModelTests {
         #expect(PresetColor(hex: "#FAFAF8").isValidHex)
         #expect(!PresetColor(hex: "#FAFAF8FF").isValidHex)
         #expect(!PresetColor(hex: "#FFF").isValidHex)
+        // 全角数字、字母（中文输入法全角状态下输入）渲染时解析不了，校验时就拒绝。
+        #expect(!PresetColor(hex: "#ＦＡＦＡＦ８").isValidHex)
+        #expect(!PresetColor(hex: "#FAFAF８").isValidHex)
         #expect(OutputSettings.Format.allCases == [.jpeg, .png])
         #expect(throws: PresetError.self) {
             try PresetSchema.decode(jsonData("{\(head), \"output\": {\"format\": \"heic\"}}"))

@@ -12,16 +12,22 @@ import PhotoFrameCore
 /// 会截断广色域、在 gamma 空间混合）；PNG 素材用双线性缩放（PoC 坑 7：透明素材不用 Lanczos）。
 enum OverlayContent {
     case text(TextBlock)
-    case bitmap(CGImage, source: CGImageSource)
+    case bitmap(CGImage)
     case vector(RestrictedSVG)
 
     var naturalSize: PixelSize {
         switch self {
         case .text(let t): t.naturalSize
-        case .bitmap(let img, _): PixelSize(width: img.width, height: img.height)
+        case .bitmap(let img): PixelSize(width: img.width, height: img.height)
         case .vector(let svg):
-            PixelSize(width: max(1, Int(svg.size.width.rounded())), height: max(1, Int(svg.size.height.rounded())))
+            // 素材导入时已限制尺寸；绕过导入的文件（例如被替换）也不能因为超大或非有限的尺寸让整数转换崩溃。
+            PixelSize(width: Self.pixels(svg.size.width), height: Self.pixels(svg.size.height))
         }
+    }
+
+    /// SVG 固有尺寸 → 像素，限制在 1…1 << 20（非有限值按 1）。
+    static func pixels(_ v: Double) -> Int {
+        v.isFinite ? Int(min(max(v.rounded(), 1), Double(1 << 20))) : 1
     }
 
     // MARK: - 准备
@@ -45,7 +51,7 @@ enum OverlayContent {
             else {
                 throw RenderError(code: "render.asset_invalid", message: "素材 \(asset.fileURL.lastPathComponent) 不是有效的 PNG（或尺寸超过 16384）")
             }
-            return .bitmap(img, source: src)
+            return .bitmap(img)
         }
     }
 
@@ -69,24 +75,27 @@ enum OverlayContent {
                 if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
                 svg.draw(in: ctx, box: CGRect(x: 0, y: 0, width: size.width, height: size.height))
             }
-        case .bitmap(let full, let source):
-            // 等比放进图层框并居中，不变形。缩小超过一半时先用 ImageIO 降采样，避免双线性混叠。
+        case .bitmap(let full):
+            // 等比放进图层框并居中，不变形。缩小超过一半时先降采样到目标的两倍，避免双线性混叠。
             let s = min(Double(size.width) / Double(full.width), Double(size.height) / Double(full.height))
             let effective = s * min(sx, sy)
-            var img = full
-            if effective < 0.5, let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: Int((Double(max(full.width, full.height)) * effective * 2).rounded(.up)),
-            ] as CFDictionary) {
-                img = thumb
+            var img = PixelSize(width: full.width, height: full.height)
+            if effective < 0.5 {
+                let long = Double(max(full.width, full.height))
+                let scale = (long * effective * 2).rounded(.up) / long
+                img = PixelSize(width: max(1, Int((Double(full.width) * scale).rounded())),
+                                height: max(1, Int((Double(full.height) * scale).rounded())))
             }
             let k = s * Double(full.width) / Double(img.width)
             let w = Double(img.width) * k, h = Double(img.height) * k
             let dx = (Double(size.width) - w) / 2, dy = (Double(size.height) - h) / 2
             // 先用 CG 画进预乘的工作空间 RGBAh：CI 直接对非预乘 PNG 做双线性采样时，会把透明像素里的
             // RGB（常是黑色）插值进边缘，浅色背景上出现灰边（测试 alphaHalo 实测 233 vs 250）。
-            let premultiplied = try Self.draw(size: PixelSize(width: img.width, height: img.height)) { ctx in
-                ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+            // 降采样也在这里做（不用 ImageIO 缩略图：它在非预乘值上重采样，缩到四分之一以下同样出灰边）；
+            // 用中等插值，高质量插值的负瓣在透明边缘仍会压暗一两个码值。
+            let premultiplied = try Self.draw(size: img) { ctx in
+                if img.width != full.width || img.height != full.height { ctx.interpolationQuality = .medium }
+                ctx.draw(full, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
             }
             var transform = CGAffineTransform(scaleX: k, y: k).concatenating(CGAffineTransform(translationX: dx, y: dy))
             if pixels != nil { transform = transform.concatenating(CGAffineTransform(scaleX: sx, y: sy)) }
@@ -155,9 +164,13 @@ struct TextBlock {
         let lineHeight = Double(size) * max(style.lineHeight, 0.1)
         let width = lines.map { CTLineGetTypographicBounds($0, nil, nil, nil) }.max() ?? 0
         let pad = max(0, style.paddingPx)
-        let natural = PixelSize(
-            width: max(1, Int(width.rounded(.up)) + 2 * pad),
-            height: max(1, Int((lineHeight * Double(lines.count)).rounded(.up)) + 2 * pad))
+        // 先按浮点算：字号、行距、字间距、内边距极大时，转整数会溢出崩溃（预设校验已限制这些值，这里兜底）。
+        let naturalWidth = width.rounded(.up) + 2 * Double(pad)
+        let naturalHeight = (lineHeight * Double(lines.count)).rounded(.up) + 2 * Double(pad)
+        guard naturalWidth.isFinite, naturalHeight.isFinite, naturalWidth < Double(1 << 31), naturalHeight < Double(1 << 31) else {
+            throw RenderError(code: "render.overlay_too_large", message: "文字图层尺寸无效或过大")
+        }
+        let natural = PixelSize(width: max(1, Int(naturalWidth)), height: max(1, Int(naturalHeight)))
         return (TextBlock(lines: lines, font: font, lineHeightPx: lineHeight, padding: pad, naturalSize: natural), notes)
     }
 

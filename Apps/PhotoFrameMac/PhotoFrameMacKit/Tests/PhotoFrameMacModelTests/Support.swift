@@ -11,6 +11,8 @@ import UniformTypeIdentifiers
 final class Fixture {
     let root: URL
     let service: LocalPhotoFrameService
+    /// 工作台用的服务：转发给 `service`，测试可以在调用中间插入动作或让调用失败。
+    let hooks: HookedService
     let workbench: Workbench
     let store: MemoryLocationStore
     let settingsStore = MemorySettingsStore()
@@ -21,9 +23,10 @@ final class Fixture {
             .resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         service = try LocalPhotoFrameService.makeDefault(.init(startsPaused: true, libraryRoot: root.appending(path: "Library")))
+        hooks = HookedService(service)
         let exports = ExportLocation(name: "Exports", url: root.appending(path: "Exports", directoryHint: .isDirectory))
         store = MemoryLocationStore(LocationList(locations: [exports], defaultId: exports.id))
-        workbench = Workbench(service: service, locationStore: store, settingsStore: settingsStore, debounce: .zero)
+        workbench = Workbench(service: hooks, locationStore: store, settingsStore: settingsStore, debounce: .zero)
     }
 
     deinit { try? FileManager.default.removeItem(at: root) }
@@ -41,6 +44,30 @@ final class Fixture {
         let gradient = CGGradient(colorsSpace: space, colors: colors as CFArray, locations: [0, 1])!
         ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: 0), options: [])
         try write(ctx.makeImage()!, to: url, type: .jpeg, properties: properties)
+        return url
+    }
+
+    /// 没有颜色描述的 PNG：合成后去掉 iCCP、sRGB、cICP、gAMA、cHRM 块（「缺少 ICC」的源图）。
+    func photoWithoutProfile(_ name: String, width: Int = 360, height: Int = 240) throws -> URL {
+        let url = root.appending(path: "Originals/\(name)")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.setFillColor(CGColor(srgbRed: 0.3, green: 0.5, blue: 0.7, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        try write(ctx.makeImage()!, to: url, type: .png)
+        let data = try Data(contentsOf: url)
+        var out = Data(data.prefix(8))
+        var i = 8
+        while i + 12 <= data.count {
+            let length = data[i..<i + 4].reduce(0) { $0 << 8 | Int($1) }
+            let end = i + 12 + length
+            if !["iCCP", "sRGB", "cICP", "gAMA", "cHRM"].contains(String(decoding: data[i + 4..<i + 8], as: UTF8.self)) {
+                out += data[i..<end]
+            }
+            i = end
+        }
+        try out.write(to: url)
         return url
     }
 

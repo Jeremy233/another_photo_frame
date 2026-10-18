@@ -57,8 +57,8 @@ struct ColumnFooter<Content: View>: View {
             .menuStyle(.button)
             .menuIndicator(.hidden)
             .controlSize(.small)
-            .padding(.horizontal, 8)
-            .frame(height: 28)
+            .padding(.horizontal, BarMetrics.padding)
+            .frame(height: BarMetrics.height)
         }
         .background(Palette.panel)
     }
@@ -67,6 +67,10 @@ struct ColumnFooter<Content: View>: View {
 /// 各栏标题栏、底栏里相邻控件之间看得见的空隙（13 pt，以中栏底栏「位置」标签到菜单边框为准）。
 /// 带边框的小号按钮边框就是它的边界；其他控件自带内缩，在用到的地方减掉（数值是实测的）。
 enum BarMetrics {
+    /// 每栏顶部标题行、底部操作栏、预览上下两行的高度（参照 Compressor 约 28 pt）。
+    static let height: CGFloat = 28
+    /// 这些栏左右两端的内边距：各栏标题从同一处开始，与下面底栏的「+」对齐。
+    static let padding: CGFloat = 10
     static let gap: CGFloat = 13
     /// 弹出菜单（带边框）边框外的内缩。
     static let popUpInset: CGFloat = 1
@@ -100,6 +104,31 @@ enum Palette {
     static let group = Color(white: 0.176)
     /// 分隔线、描边。
     static let line = Color.black
+    /// 行图标（预设、位置、文件夹…）：所有列表和表格都是中性灰。用具体的颜色而不是层级样式 `.secondary`：
+    /// 非侧栏的 List 会把层级样式染成强调色。
+    static let icon = Color(nsColor: .secondaryLabelColor)
+    /// 警告（黄色三角）与错误（红色八角形）：全应用只用这两种颜色表示问题，没有橙色的「提醒」级别。
+    static let warning = Color.yellow
+    static let error = Color.red
+}
+
+/// 分组底色（源图头部、右栏分组框、信息卡）和放在它们上面的拖放高亮框的圆角。
+enum GroupStyle {
+    static let cornerRadius: CGFloat = 8
+}
+
+/// 标记（SDR / HDR、默认）：全应用一种胶囊样式，参照 Compressor 右栏的 SDR 标记。
+struct Badge: View {
+    var text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(.fill.secondary, in: .rect(cornerRadius: 4))
+            .fixedSize()
+    }
 }
 
 /// 拿到所在窗口做 AppKit 层面的设置（SwiftUI 没有对应修饰符的部分）。
@@ -134,21 +163,22 @@ extension View {
     }
 }
 
-/// 任务的错误和警告：每条完整显示，有修改建议的另起一行（任务行的弹出框和 Inspector 的「警告」共用）。
+/// 错误和警告的唯一写法：每条完整显示，图标 + 消息，有修改建议的另起一行「建议：…」。
+/// 任务行的弹出框、右栏的「警告」（任务、源图）、「已完成」的详情共用。字号固定，不随所在的行变化。
 struct JobIssueList: View {
     let issues: [JobIssue]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(issues) { issue in
+            ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if issue.isInfo {
-                        Image(systemName: "info.circle").foregroundStyle(.secondary)
+                        Image(systemName: "info.circle").foregroundStyle(Palette.icon)
                     } else {
                         JobIssueIcon(isError: issue.isError)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(issue.message)
+                        Text(issue.message).font(.body)
                         if let hint = issue.hint {
                             Text("建议：\(hint)").font(.callout).foregroundStyle(.secondary)
                         }
@@ -163,12 +193,23 @@ struct JobIssueList: View {
     }
 }
 
+/// 破坏性操作的按钮用红字（带边框的 macOS 按钮上 `role: .destructive` 看不出区别），参照 Compressor 的 Remove。
+struct DestructiveButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: .destructive, action: action) { Text(title).foregroundStyle(Palette.error) }
+    }
+}
+
+/// 问题图标：错误是红色八角形，警告是黄色三角，都是实心的。
 struct JobIssueIcon: View {
     let isError: Bool
 
     var body: some View {
         Image(systemName: isError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-            .foregroundStyle(isError ? Color.red : Color.yellow)
+            .foregroundStyle(isError ? Palette.error : Palette.warning)
     }
 }
 
@@ -199,6 +240,70 @@ struct EmptyState<Actions: View>: View {
 extension EmptyState where Actions == EmptyView {
     init(title: String, symbol: String, description: String? = nil, alignment: TextAlignment = .center) {
         self.init(title: title, symbol: symbol, description: description, alignment: alignment) { EmptyView() }
+    }
+}
+
+/// 按比例分配宽度的列（最后一列定宽放按钮）：各行用同一个布局时列对齐，栏变窄时一起缩。
+/// 按固定的列数算宽度：某一格暂时没有内容时，其他列的位置也不变。批次列表的任务行和「已完成」的文件行共用。
+struct FractionColumns: Layout {
+    var fractions: [CGFloat]
+    var trailing: CGFloat
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let height = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: proposal.width ?? 400, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let flexible = max(bounds.width - trailing - spacing * CGFloat(fractions.count), 0)
+        var x = bounds.minX
+        for (index, subview) in subviews.enumerated() {
+            let width = index < fractions.count ? flexible * fractions[index] : trailing
+            subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
+}
+
+extension View {
+    /// 点了列表里的一行（包括已经选中的行）时调用。不影响列表自己的选择、拖动和行里的按钮。
+    func onRowClick(_ action: @escaping () -> Void) -> some View {
+        contentShape(.rect).simultaneousGesture(TapGesture().onEnded(action))
+    }
+}
+
+/// 结束正在进行的文字编辑：输入框交出焦点，还没回车的数字写回。「开始批处理」「存储」之前调用，
+/// 否则最后输入的值不会用上（数字框只在回车或失焦时写回）。
+@MainActor
+func endEditing() {
+    for window in [NSApp.keyWindow, NSApp.mainWindow].compactMap(\.self) {
+        window.makeFirstResponder(nil)
+    }
+}
+
+/// 输入时只改本地草稿，回车或离开输入框时才写回：写回时会规范化文字的字段（例如页码）逐字输入不会被打断。
+struct CommitTextField: View {
+    let title: String
+    /// 当前的值（规范化后的文字）。
+    let text: String
+    var prompt: String?
+    let commit: (String) -> Void
+    @State private var draft: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField(title, text: Binding(get: { draft ?? text }, set: { draft = $0 }), prompt: prompt.map { Text($0) })
+            .focused($focused)
+            .onSubmit(apply)
+            .onChange(of: focused) { _, now in if !now { apply() } }
+            .onDisappear(perform: apply)
+    }
+
+    private func apply() {
+        guard let value = draft else { return }
+        draft = nil
+        commit(value)
     }
 }
 

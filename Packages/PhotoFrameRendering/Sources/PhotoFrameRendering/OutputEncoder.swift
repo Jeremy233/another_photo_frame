@@ -22,7 +22,12 @@ struct OutputEncoder {
     func writeSDR(
         _ page: CIImage, size: PixelSize, settings: OutputSettings, metadata: [CFString: Any], to url: URL
     ) throws(RenderError) -> Written {
-        let cg = try renderSRGB8(page, size: size)
+        try Self.encodeSDR(try renderSRGB8(page, size: size), settings: settings, metadata: metadata, to: url)
+    }
+
+    /// ``writeSDR(_:size:settings:metadata:to:)`` 的后半段：已经渲染好的 sRGB 8-bit 位图交给 ImageIO 编码并写出。
+    /// 不用 CI，可以在别的线程上与下一页的渲染同时进行。
+    static func encodeSDR(_ cg: CGImage, settings: OutputSettings, metadata: [CFString: Any], to url: URL) throws(RenderError) -> Written {
         let type: UTType = settings.format == .jpeg ? .jpeg : .png
         var props = metadata
         if settings.format == .jpeg {
@@ -55,7 +60,7 @@ struct OutputEncoder {
             }
         }
         bytes = try Self.ensureICC(bytes) // 合并元数据可能去掉 ICC
-        try write(bytes, to: url)
+        try Self.write(bytes, to: url)
         return Written(byteCount: bytes.count, warnings: warnings)
     }
 
@@ -94,14 +99,14 @@ struct OutputEncoder {
         return cg
     }
 
-    private func write(_ data: Data, to url: URL) throws(RenderError) {
+    private static func write(_ data: Data, to url: URL) throws(RenderError) {
         do { try data.write(to: url, options: .withoutOverwriting) } catch {
             throw RenderError(code: "render.write_failed", message: "无法写出 \(url.lastPathComponent)：\(error.localizedDescription)",
                               hint: "检查临时目录是否可写、磁盘空间是否足够，以及目标文件是否已存在")
         }
     }
 
-    private func encodeFailed(_ url: URL, _ why: String) -> RenderError {
+    private static func encodeFailed(_ url: URL, _ why: String) -> RenderError {
         RenderError(code: "render.encode_failed", message: "编码 \(url.lastPathComponent) 失败：\(why)")
     }
 
@@ -136,15 +141,10 @@ struct OutputEncoder {
     /// 无损替换元数据；如果结果里 gain map 丢了就放弃（返回 nil）。
     static func mergingMetadata(_ jpeg: Data, _ metadata: [CFString: Any]) -> Data? {
         guard let src = CGImageSourceCreateWithData(jpeg as CFData, nil),
-              let type = CGImageSourceGetType(src) else { return nil }
+              let type = CGImageSourceGetType(src),
+              let meta = imageMetadata(for: metadata) else { return nil }
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out as CFMutableData, type, 1, nil) else { return nil }
-        let meta = CGImageMetadataCreateMutable()
-        for dict in [kCGImagePropertyExifDictionary, kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary,
-                     kCGImagePropertyIPTCDictionary] {
-            guard let values = metadata[dict] as? [CFString: Any] else { continue }
-            for (k, v) in values { _ = CGImageMetadataSetValueMatchingImageProperty(meta, dict, k, v as CFTypeRef) }
-        }
         let options: [CFString: Any] = [kCGImageDestinationMetadata: meta, kCGImageDestinationMergeMetadata: true]
         guard CGImageDestinationCopyImageSource(dest, src, options as CFDictionary, nil) else { return nil }
         let result = out as Data
@@ -152,5 +152,31 @@ struct OutputEncoder {
               CGImageSourceCopyAuxiliaryDataInfoAtIndex(check, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
         else { return nil }
         return result
+    }
+
+    /// 由属性字典得到与 SDR 输出相同的元数据（XMP 形式），供 HDR 文件合并。
+    ///
+    /// 不能逐项用 `CGImageMetadataSetValueMatchingImageProperty` 填：有理数（光圈、快门、焦距、曝光补偿、GPS 海拔）
+    /// 会存成十进制字符串，写回 EXIF 时只剩整数部分（f/5.6 → 5，1/250 s → 0）。这里让 ImageIO 按属性字典
+    /// 编码一张 1×1 的 JPEG（与 SDR 输出写元数据的方式相同），取它的元数据，再去掉这张小图自己的尺寸与色彩空间。
+    static func imageMetadata(for properties: [CFString: Any]) -> CGImageMetadata? {
+        var pixel: UInt32 = 0
+        let data = NSMutableData()
+        guard let provider = CGDataProvider(data: Data(bytes: &pixel, count: 4) as CFData),
+              let tiny = CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 4,
+                                 space: WorkingColor.sRGB, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+              let dest = CGImageDestinationCreateWithData(data as CFMutableData, UTType.jpeg.identifier as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(dest, tiny, properties as CFDictionary)
+        guard CGImageDestinationFinalize(dest),
+              let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let copied = CGImageSourceCopyMetadataAtIndex(src, 0, nil),
+              let meta = CGImageMetadataCreateMutableCopy(copied)
+        else { return nil }
+        for path in ["exif:PixelXDimension", "exif:PixelYDimension", "exif:ColorSpace"] {
+            CGImageMetadataRemoveTagWithPath(meta, nil, path as CFString)
+        }
+        return meta
     }
 }

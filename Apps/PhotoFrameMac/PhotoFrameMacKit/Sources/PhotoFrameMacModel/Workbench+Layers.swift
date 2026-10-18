@@ -31,6 +31,19 @@ public enum LayerTemplate: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// 图层「显示在 → 指定页」的页码（D-27：0 = 封面）。输入框里是文字，回车或离开输入框时才解析写回，
+/// 逐字输入「0, 2」时逗号和空格不会被吞掉。
+public enum SlidePages {
+    /// 任何非数字字符都当分隔符：「0, 2，3」→ {0, 2, 3}。
+    public static func parse(_ text: String) -> Set<Int> {
+        Set(text.split { !$0.isASCII || !$0.isNumber }.compactMap { Int($0) })
+    }
+
+    public static func text(_ pages: Set<Int>) -> String {
+        pages.sorted().map(String.init).joined(separator: ", ")
+    }
+}
+
 extension Workbench {
     /// 在正在编辑的预设（单个任务或左栏预设）里加一个图层；需要素材的同时加一个同名素材槽。
     public func addLayer(_ template: LayerTemplate) {

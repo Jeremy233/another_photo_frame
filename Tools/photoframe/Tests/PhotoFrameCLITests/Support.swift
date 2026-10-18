@@ -177,6 +177,118 @@ struct FailingRenderer: JobRenderer {
     }
 }
 
+/// 转发到真正的服务，只在 `submit` 之前调用 `beforeSubmit`：用来把提交卡住，或模拟提交期间按下 Ctrl-C。
+final class HookedService: PhotoFrameService {
+    let base: any PhotoFrameService
+    let beforeSubmit: @Sendable (ExportRequest) async -> Void
+
+    init(_ base: any PhotoFrameService, beforeSubmit: @escaping @Sendable (ExportRequest) async -> Void) {
+        self.base = base
+        self.beforeSubmit = beforeSubmit
+    }
+
+    func submit(_ request: ExportRequest) async throws(ApplicationError) -> [JobID] {
+        await beforeSubmit(request)
+        return try await base.submit(request)
+    }
+
+    func listPresets() async throws(ApplicationError) -> CatalogPresetList { try await base.listPresets() }
+    func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset { try await base.resolvePreset(reference) }
+    func importPreset(from fileURL: URL, replace: Bool) async throws(ApplicationError) -> CatalogPresetImport {
+        try await base.importPreset(from: fileURL, replace: replace)
+    }
+    func exportPreset(_ reference: PresetReference, to fileURL: URL, overwrite: Bool) async throws(ApplicationError) {
+        try await base.exportPreset(reference, to: fileURL, overwrite: overwrite)
+    }
+    func duplicatePreset(_ reference: PresetReference, name: String?) async throws(ApplicationError) -> CatalogPresetSummary {
+        try await base.duplicatePreset(reference, name: name)
+    }
+    func renamePreset(_ reference: PresetReference, to name: String) async throws(ApplicationError) -> CatalogPresetSummary {
+        try await base.renamePreset(reference, to: name)
+    }
+    func deletePreset(_ reference: PresetReference) async throws(ApplicationError) { try await base.deletePreset(reference) }
+    func movePreset(_ reference: PresetReference, to group: PresetOrigin) async throws(ApplicationError) -> CatalogPresetSummary {
+        try await base.movePreset(reference, to: group)
+    }
+    func updatePreset(_ reference: PresetReference, edits: [PresetEdit]) async throws(ApplicationError) -> CatalogPresetUpdate {
+        try await base.updatePreset(reference, edits: edits)
+    }
+    func listAssets(category: AssetCategory?) async -> CatalogAssetList { await base.listAssets(category: category) }
+    func resolveAsset(_ reference: String) async throws(ApplicationError) -> AssetInfo { try await base.resolveAsset(reference) }
+    func importAsset(from fileURL: URL, category: AssetCategory, name: String?) async throws(ApplicationError) -> CatalogAssetImport {
+        try await base.importAsset(from: fileURL, category: category, name: name)
+    }
+    func renameAsset(_ id: UUID, to name: String) async throws(ApplicationError) -> AssetInfo { try await base.renameAsset(id, to: name) }
+    func setAssetCategory(_ id: UUID, to category: AssetCategory) async throws(ApplicationError) -> AssetInfo {
+        try await base.setAssetCategory(id, to: category)
+    }
+    func deleteAsset(_ id: UUID) async throws(ApplicationError) -> [PersistedBinding] { try await base.deleteAsset(id) }
+    func bindAsset(_ assetId: UUID?, slotId: String, preset: PresetReference?) async throws(ApplicationError) {
+        try await base.bindAsset(assetId, slotId: slotId, preset: preset)
+    }
+    func listBindings() async -> CatalogBindingList { await base.listBindings() }
+    func inspectSource(_ source: SourceReference) async throws(ApplicationError) -> SourceInspection { try await base.inspectSource(source) }
+    func validate(_ request: ExportRequest) async throws(ApplicationError) -> ValidationResult { try await base.validate(request) }
+    func renderPreview(_ request: ExportPreviewRequest) async throws(ApplicationError) -> ExportPreview { try await base.renderPreview(request) }
+    func addSource(_ fileURL: URL) async throws(ApplicationError) -> PhotoSource { try await base.addSource(fileURL) }
+    func sources() async -> [PhotoSource] { await base.sources() }
+    func start() async { await base.start() }
+    func pause() async { await base.pause() }
+    func cancel(_ job: JobID) async throws(ApplicationError) { try await base.cancel(job) }
+    func retry(_ job: JobID) async throws(ApplicationError) -> AttemptID { try await base.retry(job) }
+    func status(_ job: JobID) async throws(ApplicationError) -> JobSnapshot { try await base.status(job) }
+    func jobs() async -> [JobSnapshot] { await base.jobs() }
+    func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest? { try await base.manifest(job) }
+    func setMaxConcurrentJobs(_ count: Int) async { await base.setMaxConcurrentJobs(count) }
+    func setMemoryBudget(_ bytes: Int64?) async { await base.setMemoryBudget(bytes) }
+    func removeStaleStaging(in destinationRoot: URL) async -> [URL] { await base.removeStaleStaging(in: destinationRoot) }
+    func events() async -> AsyncStream<JobEvent> { await base.events() }
+    func waitUntilFinished(_ jobs: [JobID]) async -> [JobSnapshot] { await base.waitUntilFinished(jobs) }
+}
+
+/// 闸门：`pass()` 一直等到 `open()`。`arrivals` 是到过闸门的次数，`returns` 由测试自己记（例如已经返回的调用数）。
+actor Gate {
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private(set) var arrivals = 0
+    private(set) var returns = 0
+
+    func pass() async {
+        arrivals += 1
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for continuation in waiting { continuation.resume() }
+        waiting = []
+    }
+
+    func noteReturn() { returns += 1 }
+}
+
+/// 加锁的值（在 @Sendable 闭包里记录观察到的东西）。
+final class Locked<Value: Sendable>: Sendable {
+    private let storage: Mutex<Value>
+
+    init(_ value: Value) { storage = Mutex(value) }
+
+    var value: Value {
+        get { storage.withLock { $0 } }
+        set { storage.withLock { $0 = newValue } }
+    }
+}
+
+/// 轮询到条件成立，最多 `seconds` 秒。
+func eventually(within seconds: Int = 20, _ condition: () async -> Bool) async throws {
+    let deadline = ContinuousClock.now + .seconds(seconds)
+    while !(await condition()) {
+        guard ContinuousClock.now < deadline else { throw TestFailure("\(seconds) 秒内条件没有成立") }
+        try await Task.sleep(for: .milliseconds(5))
+    }
+}
+
 /// 用指定渲染器（校验、预览仍用真实渲染模块）组装服务。
 func serviceFactory(renderer: any JobRenderer) -> CLIEnvironment.ServiceFactory {
     { options throws(ApplicationError) in

@@ -41,11 +41,12 @@ public struct PresetColor: Hashable, Sendable, Codable {
     /// 默认背景 `#FAFAF8`（§2.2）。
     public static let defaultBackground = PresetColor(hex: "#FAFAF8")
 
-    /// 十六进制格式是否合法。
+    /// 十六进制格式是否合法。只认 ASCII 数字和字母：`Character.isHexDigit` 对全角的「０」「Ａ」也为真，
+    /// 渲染时却解析不了。
     public var isValidHex: Bool {
         guard hex.first == "#" else { return false }
         let digits = hex.dropFirst()
-        return digits.count == 6 && digits.allSatisfy(\.isHexDigit)
+        return digits.count == 6 && digits.allSatisfy { $0.isASCII && $0.isHexDigit }
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable { case colorSpace, hex }

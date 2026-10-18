@@ -19,7 +19,7 @@ public struct RootCommand: AsyncParsableCommand {
 }
 
 public enum PhotoFrameCLI {
-    public static let version = "0.9.0"
+    public static let version = "0.9.1"
 
     /// 解析并运行一条命令，返回退出码。`arguments` 不含程序名。
     public static func run(_ arguments: [String], environment: CLIEnvironment) async -> Int32 {
@@ -69,8 +69,9 @@ struct CommandContext {
 
     func log(_ text: String) { env.stderr.line(text) }
 
-    func warn(_ warnings: [ApplicationWarning], prefix: String = "") {
-        guard !json else { return }
+    /// `--json` 时警告在结果 JSON 里，这里不再写；`evenWithJSON` 用于结果 JSON 里没有的警告（例如读预设时的警告）。
+    func warn(_ warnings: [ApplicationWarning], prefix: String = "", evenWithJSON: Bool = false) {
+        guard !json || evenWithJSON else { return }
         for w in warnings { log("warning: \(prefix)[\(w.code)] \(w.message)") }
     }
 

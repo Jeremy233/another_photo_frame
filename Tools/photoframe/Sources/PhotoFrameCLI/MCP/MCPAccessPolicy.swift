@@ -53,6 +53,11 @@ public struct MCPAccessPolicy: Sendable {
         let lexical = try Self.lexicalPath(text, argument: argument)
         guard Self.lexicallyContains(readRoots, lexical) else { throw .notAllowed(argument, read: true) }
         guard let real = Self.realPath(lexical) else {
+            // 不存在时也按真实路径判断：最深的已存在祖先（经目录链接可能在白名单外）不在白名单内就与「存在但在外面」报同样的错，
+            // 不泄露白名单以外的文件是否存在。
+            guard let existing = Self.existingAncestor(lexical), Self.contains(readRoots, existing.real, real: true) else {
+                throw .notAllowed(argument, read: true)
+            }
             throw ApplicationError(code: "source.not_found", message: "找不到文件：\(lexical)")
         }
         guard Self.contains(readRoots, real, real: true) else { throw .notAllowed(argument, read: true) }
@@ -92,41 +97,74 @@ public struct MCPAccessPolicy: Sendable {
     }
 
     private func writablePath(_ lexical: String, argument: String) throws(ApplicationError) -> URL {
+        guard let existing = Self.existingAncestor(lexical), Self.contains(writeRoots, existing.real, real: true) else {
+            throw .notAllowed(argument, read: false)
+        }
+        return existing.missing.reduce(URL(filePath: existing.real, directoryHint: .isDirectory)) {
+            $0.appending(path: $1, directoryHint: .isDirectory)
+        }
+    }
+
+    /// 最深的已存在祖先的真实路径，以及其后还不存在的各段。路径上有悬空的符号链接时为 nil：
+    /// 它不存在但占着名字，不能当成「还没创建」，也不知道指向哪里。
+    private static func existingAncestor(_ lexical: String) -> (real: String, missing: [String])? {
         var existing = lexical
         var missing: [String] = []
-        while Self.realPath(existing) == nil {
-            // 悬空的符号链接：不存在但占着名字，不能当成「还没创建」。
+        while true {
+            if let real = realPath(existing) { return (real, missing) }
             var st = stat()
-            if lstat(existing, &st) == 0 { throw .notAllowed(argument, read: false) }
+            if lstat(existing, &st) == 0 || existing == "/" { return nil }
             missing.insert((existing as NSString).lastPathComponent, at: 0)
             existing = (existing as NSString).deletingLastPathComponent
         }
-        guard let real = Self.realPath(existing), Self.contains(writeRoots, real, real: true) else {
-            throw .notAllowed(argument, read: false)
-        }
-        return missing.reduce(URL(filePath: real, directoryHint: .isDirectory)) { $0.appending(path: $1, directoryHint: .isDirectory) }
     }
 
     // MARK: - 错误信息里的路径
 
     /// 把字符串里白名单以外的绝对路径换成占位符（错误信息、警告都经过这里，§11.4「返回安全错误」）。
     /// `photoframe://…` 这类 URI 保留；`file:` URL 按路径处理。
+    ///
+    /// 路径在哪里结束只能估计（目录名、文件名可以含空格和括号）：
+    /// - 以白名单目录（用户写的形式或真实路径，长的优先）开头、后面是结尾、`/` 或标点时，整个目录都算在路径里，即使它含空格或括号；
+    /// - 之后用空格隔开、含 `/` 的词也算在路径里（`<目录>/My Photos/a.jpg`），遇到中文标点、引号、换行或新的绝对路径为止；
+    /// - 整条路径在白名单内才原样保留；否则连同后面直到标点为止的词一起隐藏（宁可多藏，不能少藏）。
     func redact(_ text: String) -> String {
         guard text.contains("/") else { return text }
         let ns = text as NSString
+        let roots = redactionRoots
         var out = ""
         var last = 0
         for match in Self.pathPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
-            let token = ns.substring(with: match.range)
-            let isURI = match.range(at: 1).location != NSNotFound && !token.lowercased().hasPrefix("file:")
-            if isURI {
-                out += token
-            } else {
-                let path = token.lowercased().hasPrefix("file:") ? (URL(string: token)?.path ?? token) : token
-                out += isVisible(path) ? token : "<路径已隐藏>"
+            let start = match.range.location
+            guard start >= last else {
+                // 已经并入前一个路径。续接只在空白或标点处结束，不会只并入半个；万一如此，剩下的部分按隐藏处理。
+                if NSMaxRange(match.range) > last {
+                    out += Self.hiddenPath
+                    last = NSMaxRange(match.range)
+                }
+                continue
             }
-            last = match.range.location + match.range.length
+            out += ns.substring(with: NSRange(location: last, length: start - last))
+            let token = ns.substring(with: match.range)
+            if match.range(at: 1).location != NSNotFound {
+                if token.lowercased().hasPrefix("file:") {
+                    out += isVisible(URL(string: token)?.path ?? token) ? token : Self.hiddenPath
+                } else {
+                    out += token
+                }
+                last = NSMaxRange(match.range)
+                continue
+            }
+            let base = Self.rootEnd(in: text, ns, at: start, roots: roots) ?? NSMaxRange(match.range)
+            let (pathEnd, wordsEnd) = Self.continuation(in: text, ns, after: base)
+            let path = ns.substring(with: NSRange(location: start, length: pathEnd - start))
+            if isVisible(ns.substring(with: NSRange(location: start, length: base - start))), isVisible(path) {
+                out += path
+                last = pathEnd
+            } else {
+                out += Self.hiddenPath
+                last = wordsEnd
+            }
         }
         return out + ns.substring(from: last)
     }
@@ -136,9 +174,53 @@ public struct MCPAccessPolicy: Sendable {
         return Self.lexicallyContains(readRoots + writeRoots, standardized)
     }
 
+    /// 白名单目录的两种写法，长的在前（一个目录是另一个加空格的前缀时先匹配长的）。
+    private var redactionRoots: [String] {
+        Set((readRoots + writeRoots).flatMap { [$0.given, $0.real] }).sorted { $0.utf16.count > $1.utf16.count }
+    }
+
+    static let hiddenPath = "<路径已隐藏>"
+
+    /// `start` 处以白名单目录开头、目录后面是结尾、`/` 或标点（不是空白：`<目录> 2/x` 可能是旁边的另一个目录）时，
+    /// 返回目录及其后到下一个空白或标点为止的位置；否则为 nil。
+    private static func rootEnd(in text: String, _ ns: NSString, at start: Int, roots: [String]) -> Int? {
+        for root in roots {
+            let found = ns.range(of: root, options: .anchored, range: NSRange(location: start, length: ns.length - start))
+            guard found.location != NSNotFound else { continue }
+            let end = NSMaxRange(found)
+            guard end == ns.length || rootBoundary.contains(ns.character(at: end)) else { continue }
+            let run = pathRun.firstMatch(in: text, options: .anchored, range: NSRange(location: end, length: ns.length - end))
+            return end + (run?.range.length ?? 0)
+        }
+        return nil
+    }
+
+    /// `base` 之后用空格隔开的词：返回（含 `/` 的最后一个词的结尾，全部词的结尾）。
+    private static func continuation(in text: String, _ ns: NSString, after base: Int) -> (path: Int, words: Int) {
+        let range = NSRange(location: base, length: ns.length - base)
+        guard let match = continuationPattern.firstMatch(in: text, options: [.anchored, .withTransparentBounds], range: range),
+              match.range.length > 0 else { return (base, base) }
+        let words = NSMaxRange(match.range)
+        let slash = ns.range(of: "/", options: .backwards, range: NSRange(location: base, length: words - base))
+        guard slash.location != NSNotFound else { return (base, words) }
+        let space = ns.rangeOfCharacter(from: .whitespaces, options: [], range: NSRange(location: slash.location, length: words - slash.location))
+        return (space.location == NSNotFound ? words : space.location, words)
+    }
+
     /// 第 1 组是 `scheme://…` 形式的 URI；否则是以 `/` 开头、前面不是字母数字的一串非空白字符（遇到常见的中英文标点结束）。
     private static let pathPattern = try! NSRegularExpression(
         pattern: #"([A-Za-z][A-Za-z0-9+.-]*:/+[^\s"'，。；、：（）()<>\[\]{}]*)|(?<![\p{L}\p{N}_.~-])/[^\s"'，。；、：（）()<>\[\]{}]*"#)
+
+    /// 与 `pathPattern` 相同的「一串非空白、非标点字符」。
+    private static let pathRun = try! NSRegularExpression(pattern: #"[^\s"'，。；、：（）()<>\[\]{}]*"#)
+
+    /// 白名单目录后面可以是什么（不含空白）。
+    private static let rootBoundary = Set(#"/"'，。；、：（）()<>[]{}"#.utf16)
+
+    /// 续接的词：用空格或制表符隔开，遇到换行、中文标点、引号、尖括号停下（都是 `pathPattern` 的分隔符，续接不会只并入半个路径）。
+    /// 词里可以有括号；`/` 前面必须是字母、数字、`_.~-` 或右括号（`Trip (2024)/a.jpg`），否则是新的路径或 URI，整个词都不算。
+    private static let continuationPattern = try! NSRegularExpression(
+        pattern: #"(?:[\t\p{Zs}]*(?:[^\s"'，。；、：（）<>/]|(?<=[\p{L}\p{N}_.~)\]}-])/)+(?=[\s"'，。；、：（）<>]|$))*"#)
 
     // MARK: - 工具
 

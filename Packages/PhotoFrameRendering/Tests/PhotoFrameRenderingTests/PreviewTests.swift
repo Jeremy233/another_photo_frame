@@ -304,6 +304,71 @@ struct PreviewTests {
         }
     }
 
+    // MARK: - 解码缓存
+
+    @Test("预览复用解码：只改不影响照片尺寸的参数时不重新解码，位图与新渲染器逐像素相同")
+    func decodeCacheReuse() async throws {
+        let src = try Self.source(PixelSize(width: 1300, height: 480))
+        let renderer = PhotoFrameRenderer()
+        let light = makePreset(layers: [Self.layers[0]])
+        let dark = makePreset(background: "#202020", layers: [Self.layers[0]])
+        _ = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: light, size: .maxLongEdge(720)))
+        let cached = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: dark, size: .maxLongEdge(720)))
+        #expect(renderer.previewSources.decodeCount == 1)
+        let fresh = try await PhotoFrameRenderer().renderPreview(PreviewRequest(sourceURL: src, preset: dark, size: .maxLongEdge(720)))
+        #expect(draw8(cached.pages[0].image).bytes == draw8(fresh.pages[0].image).bytes)
+        #expect(cached.warnings == fresh.warnings)
+        #expect(cached.diagnostics == fresh.diagnostics)
+
+        // 照片尺寸变了（边距不同）：按新的尺寸重新解码。
+        _ = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: makePreset(width: 2160, height: 2880),
+                                                            size: .maxLongEdge(2880)))
+        #expect(renderer.previewSources.decodeCount == 2)
+    }
+
+    @Test("源文件改了之后预览重新解码，不用旧的解码结果")
+    func decodeCacheInvalidation() async throws {
+        let src = try Self.source(PixelSize(width: 1300, height: 480))
+        let renderer = PhotoFrameRenderer()
+        let preset = makePreset()
+        let before = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: preset, size: .maxLongEdge(720)))
+        try writeGradientPhoto(width: 600, height: 900, to: src)
+        let after = try await renderer.renderPreview(PreviewRequest(sourceURL: src, preset: preset, size: .maxLongEdge(720)))
+        #expect(renderer.previewSources.decodeCount == 2)
+        #expect(after.diagnostics.sourcePixelSize == PixelSize(width: 600, height: 900))
+        #expect(after.pages[0].photoRect != before.pages[0].photoRect)
+    }
+
+    @Test("导出不经过预览的解码缓存")
+    func exportBypassesDecodeCache() async throws {
+        let src = try Self.source(PixelSize(width: 1300, height: 480))
+        let renderer = PhotoFrameRenderer()
+        for _ in 0..<2 {
+            let job = RenderJob(sourceURL: src, preset: makePreset(), outputDirectory: try makeTempDirectory())
+            _ = try await renderer.render(job: job)
+        }
+        #expect(renderer.previewSources.decodeCount == 0)
+    }
+
+    @Test("解码缓存按份数与字节数淘汰，超过上限的单份不缓存")
+    func decodeCacheEviction() throws {
+        let src = try Self.source(PixelSize(width: 400, height: 300))
+        let decoder = SourceDecoder(context: WorkingColor.makeContext())
+        let cache = DecodedSourceCache(capacity: 2, byteLimit: 1 << 30)
+        for long in [100, 200, 300, 100] {
+            _ = try cache.source(src, neededSize: PixelSize(width: long, height: long), override: nil, decoder: decoder)
+        }
+        #expect(cache.decodeCount == 4) // 100 已被 300 挤出
+        _ = try cache.source(src, neededSize: PixelSize(width: 300, height: 300), override: nil, decoder: decoder)
+        #expect(cache.decodeCount == 4)
+
+        let tiny = DecodedSourceCache(capacity: 2, byteLimit: 16)
+        for _ in 0..<2 {
+            _ = try tiny.source(src, neededSize: PixelSize(width: 100, height: 100), override: nil, decoder: decoder)
+        }
+        #expect(tiny.decodeCount == 2)
+    }
+
     // MARK: - 取消
 
     @Test("取消：任务已取消时抛出 CancellationError，渲染器之后照常可用")
