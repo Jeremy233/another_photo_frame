@@ -27,7 +27,8 @@ public struct FitLayout: Hashable, Sendable, Codable {
         guard canvas.isPositive else { throw .invalidCanvas(canvas) }
         guard source.isPositive else { throw .invalidSource(source) }
         guard minimumMargin >= 0 else { throw .invalidMargin(minimumMargin) }
-        guard canvas.width - 2 * minimumMargin > 0, canvas.height - 2 * minimumMargin > 0 else {
+        // 即 W − 2m > 0；写成 m < W − m，边距极大时不溢出。
+        guard minimumMargin < canvas.width - minimumMargin, minimumMargin < canvas.height - minimumMargin else {
             throw .marginTooLarge(margin: minimumMargin, canvas: canvas)
         }
 

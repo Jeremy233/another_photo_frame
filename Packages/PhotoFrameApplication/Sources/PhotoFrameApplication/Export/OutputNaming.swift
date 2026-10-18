@@ -67,7 +67,14 @@ public struct OutputNaming: Hashable, Sendable, Codable {
         return Self.sanitize(name)
     }
 
+    /// 一组输出按位置排的项数，用作 ``fileName(for:format:outputCount:)`` 的 `outputCount`：最大轮播位置 + 1。
+    /// 有封面时就是输出个数；不输出封面的全景从 1 起，比个数多 1，补位才够最大的序号用。
+    public static func positionCount(of roles: some Sequence<JobOutputRole>) -> Int {
+        (roles.map(\.carouselPosition).max() ?? -1) + 1
+    }
+
     /// 输出文件名：`00_Cover.jpg`、`01_Slide.jpg`…。序号至少两位；超过 99 项时按总数补位。
+    /// `outputCount` 是位置数（序号 0…outputCount − 1），见 ``positionCount(of:)``。
     public static func fileName(for role: JobOutputRole, format: OutputSettings.Format, outputCount: Int) -> String {
         let width = max(2, String(max(outputCount - 1, 0)).count)
         let number = String(role.carouselPosition)
@@ -84,6 +91,21 @@ public struct OutputNaming: Hashable, Sendable, Codable {
         case .jpeg: "jpg"
         case .png: "png"
         }
+    }
+
+    /// 判断两个作品目录会不会落到同一个位置用的键。不区分大小写的卷（macOS 默认的 APFS）上
+    /// `Badlands_Panorama` 和 `BADLANDS_Panorama` 是同一个目录，按大小写折叠后比较。
+    public static func collisionKey(for directory: URL, caseSensitive: Bool) -> String {
+        caseSensitive ? directory.path : directory.path.folding(options: [.caseInsensitive], locale: nil)
+    }
+
+    /// `directory`（或它最近的已存在的上级目录）所在的卷是否区分大小写。读不到时按不区分处理（更保守）。
+    public static func volumeIsCaseSensitive(_ directory: URL) -> Bool {
+        var url = directory.standardizedFileURL
+        while !FileManager.default.fileExists(atPath: url.path), url.path != "/" {
+            url = url.deletingLastPathComponent()
+        }
+        return (try? url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]))?.volumeSupportsCaseSensitiveNames ?? false
     }
 
     /// 第 `version` 个版本的目录名：1 为原名，2 起加 `_v<n>`。

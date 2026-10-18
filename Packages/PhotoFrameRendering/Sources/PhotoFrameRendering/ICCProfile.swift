@@ -8,8 +8,11 @@ import Foundation
 /// Lightroom 自己的 SDR 版本一致，所以把这类参数曲线改写成 4096 点采样曲线（`curv`）再交给 ColorSync。
 struct ICCProfile {
     struct Tag {
-        var signature: String
+        /// 文件里的 4 字节签名，重建时原样写回（非 ASCII 字节转成 String 会变成 3 字节的 U+FFFD，标签表就错位了）。
+        var rawSignature: Data
         var data: Data
+        /// 查找用（只和 ASCII 签名比较）。
+        var signature: String { String(decoding: rawSignature, as: UTF8.self) }
     }
 
     var header: Data
@@ -25,7 +28,7 @@ struct ICCProfile {
             let o = 132 + i * 12
             let offset = d.be32(o + 4), length = d.be32(o + 8)
             guard offset >= 0, length >= 0, offset + length <= d.count else { return nil }
-            tags.append(Tag(signature: d.fourCC(o), data: d.subdata(in: offset..<offset + length)))
+            tags.append(Tag(rawSignature: d.subdata(in: o..<o + 4), data: d.subdata(in: offset..<offset + length)))
         }
         header = d.subdata(in: 0..<128)
         self.tags = tags
@@ -70,7 +73,7 @@ struct ICCProfile {
         var curv = Data("curv".utf8) + Data(count: 4)
         curv.appendBE32(samples.count)
         for s in samples { curv.append(UInt8(s >> 8)); curv.append(UInt8(s & 0xFF)) }
-        let newTags = tags.map { ["rTRC", "gTRC", "bTRC"].contains($0.signature) ? Tag(signature: $0.signature, data: curv) : $0 }
+        let newTags = tags.map { ["rTRC", "gTRC", "bTRC"].contains($0.signature) ? Tag(rawSignature: $0.rawSignature, data: curv) : $0 }
         return Self.build(header: header, tags: newTags)
     }
 
@@ -89,7 +92,7 @@ struct ICCProfile {
                 body += tag.data
                 written[tag.data] = offset
             }
-            table += Data(tag.signature.utf8)
+            table += tag.rawSignature
             table.appendBE32(offset)
             table.appendBE32(tag.data.count)
         }
@@ -151,7 +154,7 @@ struct ICCProfile {
     var linearized: Data {
         var identity = Data("curv".utf8) + Data(count: 4)
         identity.appendBE32(0)
-        let newTags = tags.map { ["rTRC", "gTRC", "bTRC"].contains($0.signature) ? Tag(signature: $0.signature, data: identity) : $0 }
+        let newTags = tags.map { ["rTRC", "gTRC", "bTRC"].contains($0.signature) ? Tag(rawSignature: $0.rawSignature, data: identity) : $0 }
         return Self.build(header: header, tags: newTags)
     }
 

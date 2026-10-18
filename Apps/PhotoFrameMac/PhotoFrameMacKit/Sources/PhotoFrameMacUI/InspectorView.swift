@@ -13,9 +13,14 @@ struct InspectorView: View {
     var body: some View {
         VStack(spacing: 0) {
             ColumnHeader { header }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) { content }
-                    .padding(12)
+            if workbench.inspectorSubject == .none {
+                // 与预览区、批次列表的空状态同一种样式，在整栏里垂直居中。
+                EmptyState(title: "没有可检查的内容", symbol: "slider.horizontal.3", description: Self.startHint)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) { content }
+                        .padding(12)
+                }
             }
         }
         .background(Palette.panel)
@@ -31,8 +36,6 @@ struct InspectorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            // 与预览标题栏的「成品 | 原图」同为小号。
-            .controlSize(.small)
         case .source: Text("源图")
         case .location: Text("位置")
         case .none: EmptyView()
@@ -42,11 +45,7 @@ struct InspectorView: View {
     @ViewBuilder private var content: some View {
         switch workbench.inspectorSubject {
         case .none:
-            VStack(spacing: 10) {
-                Text("没有可检查的内容").font(.title3).foregroundStyle(.secondary)
-                Text(Self.startHint).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, minHeight: 200)
+            EmptyView()
         case .source(let id):
             // 顺序都是：信息卡、「警告」、提示条、分节。
             if let item = workbench.sourceItem(id) {
@@ -61,7 +60,7 @@ struct InspectorView: View {
             PresetInfoCard(workbench: workbench)
             issues
             if case .preset(let id) = workbench.inspectorSubject, workbench.presetEditor?.isReadOnly == true {
-                NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改。") {
+                NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改") {
                     Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
@@ -73,18 +72,22 @@ struct InspectorView: View {
             Group { tab }
                 .allowsHitTesting(editable)
                 .opacity(editable ? 1 : 0.75)
+            // 「预览」只影响预览，不改预设：只读的内置预设也能切换（与预览的「显示」菜单一致）。
+            if workbench.inspectorTab == .panorama, workbench.field(\.panorama.enabled) == .single(true) {
+                PanoramaPreviewSection(workbench: workbench)
+            }
         }
     }
 
-    /// 任务校验的错误和警告，以及预览的提示（预览区本身不显示提示）。
+    /// 任务校验的错误和警告、源图检查的提示，以及预览的提示（预览区本身不显示提示）。
     @ViewBuilder private var issues: some View {
         let issues = workbench.inspectorIssues
         if !issues.isEmpty {
-            InspectorSection("警告", key: "warnings") { JobIssueList(issues: issues) }
+            InspectorSection(issues.contains(where: \.isError) ? "错误和警告" : "警告", key: "warnings") { JobIssueList(issues: issues) }
         }
     }
 
-    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上来创建任务。"
+    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上来创建任务"
 
     @ViewBuilder private var tab: some View {
         switch workbench.inspectorTab {
@@ -98,18 +101,20 @@ struct InspectorView: View {
 
 // MARK: - 共用的版式
 
-/// 每栏顶部一行（28 pt）：放分段控件（小号，与预览标题栏一致）、按钮或标题，居中。
+/// 每栏顶部一行（28 pt）：放分段控件、按钮或标题，居中。参照 Compressor：每一栏、每个界面都是同一种底色，
+/// 控件都是小号（与预览标题栏的「成品 | 原图」一样），标题与预览标题同一字号。
 struct ColumnHeader<Content: View>: View {
     @ViewBuilder var content: Content
 
-    /// 内容为空（例如 Inspector 没有选中任何东西）时也占满 28 pt，分隔线不会被顶到工具栏下面。
+    /// 内容为空（例如右栏没有选中任何东西）时也占满 28 pt，分隔线不会被顶到工具栏下面。
     var body: some View {
         VStack(spacing: 0) {
             Color.clear
-                .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
-                .overlay { content.controlSize(.regular) }
+                .frame(maxWidth: .infinity, minHeight: BarMetrics.height, maxHeight: BarMetrics.height)
+                .overlay { content.controlSize(.small).font(.callout) }
             Hairline()
         }
+        .background(Palette.panel)
     }
 }
 
@@ -128,8 +133,8 @@ struct NoticeBar<Action: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.accentColor.opacity(0.18), in: .rect(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) }
+        .background(Color.accentColor.opacity(0.18), in: .rect(cornerRadius: GroupStyle.cornerRadius))
+        .overlay { RoundedRectangle(cornerRadius: GroupStyle.cornerRadius).strokeBorder(Color.accentColor.opacity(0.5), lineWidth: 1) }
     }
 }
 
@@ -172,7 +177,7 @@ struct InspectorSection<Content: View>: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, InspectorMetrics.groupPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.group, in: .rect(cornerRadius: 8))
+                    .background(Palette.group, in: .rect(cornerRadius: GroupStyle.cornerRadius))
             }
         }
     }
@@ -213,6 +218,8 @@ enum InspectorMetrics {
     static let groupPadding: CGFloat = 8
     /// 小号复选框的方框 + 间距，说明文字从这里开始，与复选框的文字对齐。
     static let checkboxTextInset: CGFloat = 22
+    /// 弹出菜单、素材菜单的宽度上限（值的一列放得下时都是这个宽度）。
+    static let controlWidth: CGFloat = 180
 }
 
 /// 一行：左列右对齐的标签 + 右列的值，按首行基线对齐，最小高度一致。
@@ -294,11 +301,14 @@ struct InspectorPicker<Selection: Hashable, Options: View>: View {
         self.options = options()
     }
 
+    /// 不按内容定宽：同一分节的菜单一样宽、右边缘对齐（参照 Compressor），上限防止长名字把右栏撑宽。
+    /// macOS 26 的菜单不会被 `frame` 拉宽，要 `buttonSizing(.flexible)`。
     var body: some View {
         LabeledContent(title) {
             Picker(title, selection: $selection) { options }
                 .labelsHidden()
-                .fixedSize()
+                .buttonSizing(.flexible)
+                .frame(maxWidth: InspectorMetrics.controlWidth, alignment: .leading)
         }
     }
 }
@@ -329,26 +339,21 @@ struct InfoCard<Actions: View>: View {
     var title: String
     var lines: [String]
     var badge: String?
+    var badgeHelp: String?
     @ViewBuilder var actions: Actions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 16)
+                Image(systemName: symbol).foregroundStyle(Palette.icon).frame(width: 16)
                 // 一行放不下时中间省略（文件名的扩展名还在），悬停看全名。
                 Text(title).font(.body.weight(.semibold)).lineLimit(1).truncationMode(.middle).help(title)
                 Spacer()
-                if let badge {
-                    Text(badge)
-                        .font(.subheadline.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.fill.secondary, in: .rect(cornerRadius: 4))
-                }
+                if let badge { Badge(text: badge).help(badgeHelp ?? "") }
             }
             VStack(alignment: .leading, spacing: 4) {
-                // 路径等长的行最多两行、中间省略，不逐字折成很多行。
-                ForEach(lines, id: \.self) { Text($0).lineLimit(2).truncationMode(.middle).help($0) }
+                // 路径等长的行单行、中间省略，悬停看全文。
+                ForEach(lines, id: \.self) { Text($0).lineLimit(1).truncationMode(.middle).help($0) }
             }
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -358,7 +363,7 @@ struct InfoCard<Actions: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Palette.group, in: .rect(cornerRadius: 8))
+        .background(Palette.group, in: .rect(cornerRadius: GroupStyle.cornerRadius))
     }
 }
 
@@ -408,7 +413,10 @@ private struct PresetInfoCard: View {
             }
             lines.append("输出：\(preset.output.format.rawValue.uppercased())，\(range)，\(preset.output.colorSpace)")
             if case .jobs(let ids) = workbench.inspectorSubject, let outputs = workbench.job(ids[0])?.validation?.outputs, !outputs.isEmpty {
-                lines.append(outputs.count == 1 ? "1 张图" : "封面 + \(outputs.count - 1) 张切片")
+                // 页数含封面；没有封面的全景只写切片。
+                let slides = outputs.count { $0.role != .cover }
+                let hasCover = outputs.contains { $0.role == .cover }
+                lines.append(slides == 0 ? "\(outputs.count) 页" : hasCover ? "封面 + \(slides) 张切片" : "\(slides) 张切片")
             }
         }
         return lines
@@ -420,11 +428,17 @@ private struct PresetInfoCard: View {
             if let editor = workbench.presetEditor {
                 if !editor.isReadOnly {
                     Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
-                    Button("存储") { Task { await workbench.savePresetEdits() } }.disabled(!editor.isDirty)
+                    Button("存储") {
+                        // 先结束正在编辑的输入框，最后输入的值也存进去。
+                        endEditing()
+                        Task { await workbench.savePresetEdits() }
+                    }
+                    .disabled(!editor.isDirty)
                 }
             }
         case .jobs(let ids) where ids.count == 1:
             Button("存储为预设…") {
+                endEditing()
                 saving = RenameRequest(title: "存储为预设", name: workbench.editedPreset?.name ?? "", confirm: "存储") { name in
                     Task { await workbench.saveSelectedJobAsPreset(name: name) }
                 }
@@ -444,11 +458,12 @@ private struct LocationInspector: View {
 
     var body: some View {
         InfoCard(symbol: "folder", title: location.name, lines: [location.url.displayPath],
-                 badge: location.id == workbench.locations.defaultLocation?.id ? "默认" : nil) { EmptyView() }
+                 badge: location.id == workbench.locations.defaultLocation?.id ? "默认" : nil,
+                 badgeHelp: "新任务默认导出到这里") { EmptyView() }
         InspectorSection("位置属性") {
             InspectorTextField("名称", text: Binding(get: { location.name }, set: { workbench.renameLocation(location.id, to: $0) }))
             LabeledContent("路径") {
-                Text(location.url.displayPath).lineLimit(3).truncationMode(.middle)
+                Text(location.url.displayPath).lineLimit(1).truncationMode(.middle).help(location.url.displayPath)
             }
             InspectorRow { Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([location.url]) } }
             InspectorRow {
@@ -487,7 +502,8 @@ struct IntField: View {
     var body: some View {
         LabeledContent(title) {
             HStack(spacing: 4) {
-                TextField(title, value: $value, format: .number, prompt: Text("多个值"))
+                // 像素不分组（1080 而不是 1,080），与信息卡和其他地方的尺寸一致。
+                TextField(title, value: $value, format: .number.grouping(.never), prompt: Text("多个值"))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .frame(maxWidth: 90)
@@ -563,7 +579,8 @@ private struct CanvasTab: View {
             }
             if workbench.field(\.canvas.mode) == .single(.crop) {
                 InspectorPicker("裁切对齐", selection: cropAnchor) {
-                    ForEach(OverlayAnchor.allCases, id: \.self) { Text($0.title).tag($0) }
+                    ForEach(OverlayAnchor.allCases, id: \.self) { Text($0.title).tag(OverlayAnchor?.some($0)) }
+                    if cropAnchor.wrappedValue == nil { Text("多个值").tag(OverlayAnchor?.none) }
                 }
             }
             ColorField(title: "背景色", value: workbench.binding(\.canvas.background))
@@ -577,16 +594,21 @@ private struct CanvasTab: View {
         return "\(w / g):\(h / g)"
     }
 
-    /// 裁切范围在照片上的位置（`canvas.crop.anchor`，0…1）。
-    private var cropAnchor: Binding<OverlayAnchor> {
+    /// 裁切范围在照片上的位置（`canvas.crop.anchor`，0…1）。多个任务不同时为 nil，显示「多个值」。
+    private var cropAnchor: Binding<OverlayAnchor?> {
         func position(_ a: OverlayAlignment) -> Double { a == .start ? 0 : a == .center ? 0.5 : 1 }
         func alignment(_ v: Double) -> OverlayAlignment { v < 0.25 ? .start : v > 0.75 ? .end : .center }
         return Binding(
             get: {
-                let anchor = workbench.field(\.canvas.crop).value??.anchor ?? Pair(0.5, 0.5)
-                return OverlayAnchor(horizontal: alignment(anchor.first), vertical: alignment(anchor.second))
+                let anchors = workbench.editedPresets.map { preset in
+                    let anchor = preset.canvas.crop?.anchor ?? Pair(0.5, 0.5)
+                    return OverlayAnchor(horizontal: alignment(anchor.first), vertical: alignment(anchor.second))
+                }
+                guard let first = anchors.first, anchors.allSatisfy({ $0 == first }) else { return nil }
+                return first
             },
-            set: { a in
+            set: { anchor in
+                guard let a = anchor else { return }
                 workbench.edit { preset in
                     var crop = preset.canvas.crop ?? CropSettings()
                     crop.anchor = Pair(position(a.horizontal), position(a.vertical))
@@ -603,38 +625,65 @@ private struct PanoramaTab: View {
 
     var body: some View {
         InspectorSection("全景", checkboxes: true) {
-            Toggle("全景分割", isOn: workbench.binding(\.panorama.enabled, default: false))
-            Toggle("封面", isOn: workbench.binding(\.panorama.cover, default: true))
+            MixedToggle(title: "全景分割", workbench: workbench, path: \.panorama.enabled)
+            MixedToggle(title: "封面", workbench: workbench, path: \.panorama.cover)
         }
         if workbench.field(\.panorama.enabled) == .single(true) {
             InspectorSection("切片") {
                 InspectorPicker("张数", selection: manual) {
-                    Text("自动").tag(false)
-                    Text("手动").tag(true)
+                    Text("自动").tag(Bool?.some(false))
+                    Text("手动").tag(Bool?.some(true))
+                    if workbench.slideCountIsManual == .mixed { Text("多个值").tag(Bool?.none) }
                 }
                 if case .single(.fixed(let n)) = workbench.field(\.panorama.tileCount) {
-                    InspectorRow { Stepper("\(n) 张", value: fixedCount(n), in: 1...35) }
+                    // 只能比自动张数多（D-11），最多到平台的轮播上限。
+                    let range = workbench.manualSlideCountRange ?? n...n
+                    InspectorRow { Stepper("\(n) 张切片", value: fixedCount(n), in: min(n, range.lowerBound)...max(n, range.upperBound)) }
                 }
                 IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
-            }
-            InspectorSection("预览", checkboxes: true) {
-                Toggle("显示接缝位置", isOn: Bindable(workbench.preview).showsSeams)
             }
         }
     }
 
-    /// 只允许手动改多（D-11）：切到手动时从自动算出的张数开始。
-    private var manual: Binding<Bool> {
-        Binding(
-            get: { if case .single(.fixed) = workbench.field(\.panorama.tileCount) { true } else { false } },
-            set: { on in
-                let slides = max(workbench.preview.roles.count - 1, 1)
-                workbench.setField(\.panorama.tileCount, on ? .fixed(slides) : .auto)
-            })
+    /// 切到手动时每个任务从它自己的自动张数开始（D-11）。
+    private var manual: Binding<Bool?> {
+        Binding(get: { workbench.slideCountIsManual.value }, set: { if let on = $0 { workbench.setSlideCountManual(on) } })
     }
 
     private func fixedCount(_ n: Int) -> Binding<Int> {
         Binding(get: { n }, set: { workbench.setField(\.panorama.tileCount, .fixed($0)) })
+    }
+}
+
+/// 「全景」里只影响预览的设置：不改预设，所以不受只读限制。
+private struct PanoramaPreviewSection: View {
+    let workbench: Workbench
+
+    var body: some View {
+        InspectorSection("预览", checkboxes: true) {
+            Toggle("显示接缝位置", isOn: Bindable(workbench.preview).showsSeams)
+        }
+    }
+}
+
+/// 多个任务的值不同时显示混合状态（–）的复选框；点一下全部改成同一个值。
+struct MixedToggle: View {
+    let title: String
+    let workbench: Workbench
+    let path: WritableKeyPath<ExportPreset, Bool>
+
+    var body: some View {
+        // 每个正在编辑的预设一个绑定：值不同时系统的复选框显示混合状态。写入时改全部（值相同的再写一次不算改动）。
+        let count = max(workbench.editedPresets.count, 1)
+        let sources = (0..<count).map { index in
+            Binding<Bool>(
+                get: {
+                    let presets = workbench.editedPresets
+                    return presets.indices.contains(index) ? presets[index][keyPath: path] : false
+                },
+                set: { workbench.setField(path, $0) })
+        }
+        Toggle(title, sources: sources, isOn: \.self)
     }
 }
 
@@ -652,8 +701,8 @@ private struct OutputTab: View {
             }
             if workbench.field(\.output.format) == .single(.jpeg) {
                 LabeledContent("质量") {
-                    Slider(value: quality, in: 1...100, step: 1) { Text("质量") } minimumValueLabel: { Text("1").font(.callout) } maximumValueLabel: { Text("100").font(.callout) }
-                        .labelsHidden()
+                    SliderWithValue(value: quality, range: 1...100, step: 1,
+                                    text: workbench.field(\.output.quality).value.map(String.init) ?? "多个值")
                 }
             }
             InspectorPicker("动态范围", selection: workbench.binding(\.output.dynamicRange)) {
@@ -663,14 +712,15 @@ private struct OutputTab: View {
                 if workbench.field(\.output.dynamicRange) == .mixed { Text("多个值").tag(OutputSettings.DynamicRange?.none) }
             }
             if let result = workbench.autoRangeResult {
-                LabeledContent("实际输出") { Text(result).foregroundStyle(.secondary) }
+                // 只读的值与其他值一样用主文字色（标签已经是灰色）。
+                LabeledContent("实际输出") { Text(result) }
             }
         }
         InspectorSection("元数据", checkboxes: true) {
-            Toggle("保留拍摄参数", isOn: workbench.binding(\.output.metadata.keepShootingInfo, default: false))
-            Toggle("保留作者和版权", isOn: workbench.binding(\.output.metadata.keepAuthorAndCopyright, default: false))
-            Toggle("保留 GPS", isOn: workbench.binding(\.output.metadata.keepGps, default: false))
-            InspectorCheckboxNote(text: "照片里的位置会随图片一起公开", color: .orange)
+            MixedToggle(title: "保留拍摄参数", workbench: workbench, path: \.output.metadata.keepShootingInfo)
+            MixedToggle(title: "保留作者和版权", workbench: workbench, path: \.output.metadata.keepAuthorAndCopyright)
+            MixedToggle(title: "保留 GPS", workbench: workbench, path: \.output.metadata.keepGps)
+            InspectorCheckboxNote(text: "源图里的拍摄地点会随导出的图片一起公开", color: Palette.warning)
         }
         if case .jobs = workbench.inspectorSubject {
             JobOutputSection(workbench: workbench)
@@ -679,6 +729,28 @@ private struct OutputTab: View {
 
     private var quality: Binding<Double> {
         Binding(get: { Double(workbench.field(\.output.quality).value ?? 100) }, set: { workbench.setField(\.output.quality, Int($0)) })
+    }
+}
+
+/// 滑块和它右边的当前值（质量、不透明度两个滑块同样处理）。值与附近的单位标签同为 13 pt。
+struct SliderWithValue: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double>
+    var step: Double?
+    /// 显示的值；多个任务不同时是「多个值」。
+    var text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                if let step { Slider(value: $value, in: range, step: step) } else { Slider(value: $value, in: range) }
+            }
+            .labelsHidden()
+            Text(text)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 44, alignment: .trailing)
+        }
     }
 }
 

@@ -82,11 +82,12 @@ extension PresetCommand {
             let reference = ctx.presetReference(preset)
             let entry = try await ctx.call { () async throws(ApplicationError) in try await service.resolvePreset(reference) }
             let value = try await ctx.call { () async throws(ApplicationError) in try PresetContent.value(entry.preset, at: path) }
+            // 读预设时的警告不在结果 JSON 里：--json 时也写到 stderr。
+            ctx.warn(entry.warnings, evenWithJSON: true)
             if json {
                 let summary = CatalogPresetSummary(entry, catalog: try? PlatformCatalogStore.builtIn())
                 ctx.emit(PresetGetJSON(preset: PresetJSON(summary), path: path, value: value))
             } else {
-                ctx.warn(entry.warnings)
                 ctx.env.stdout.line(JSONOutput.encode(value))
             }
         }
@@ -107,7 +108,8 @@ extension PresetCommand {
         @Argument(help: ArgumentHelp("预设：presetId、名称或短名称。", valueName: "预设"))
         var preset: String
 
-        @Argument(help: ArgumentHelp("成对的字段路径和值。", valueName: "路径 值"))
+        /// `.allUnrecognized`：负数（`-1`、`-0.5`）也是值，不当成选项；`--unset`、`--json` 照常可以写在任何位置。
+        @Argument(parsing: .allUnrecognized, help: ArgumentHelp("成对的字段路径和值。", valueName: "路径 值"))
         var assignments: [String] = []
 
         @Option(name: .customLong("unset"), help: ArgumentHelp("删除字段或数组元素。可重复。", valueName: "路径"))
@@ -118,6 +120,10 @@ extension PresetCommand {
 
         func validate() throws {
             guard assignments.count.isMultiple(of: 2) else { throw ValidationError("路径和值要成对出现。") }
+            // 字段路径不会以 - 开头：在路径的位置上出现的是写错的选项（值可以是负数）。
+            if let option = stride(from: 0, to: assignments.count, by: 2).lazy.map({ assignments[$0] }).first(where: { $0.hasPrefix("-") }) {
+                throw ValidationError("未知选项：\(option)")
+            }
             guard !assignments.isEmpty || !unset.isEmpty else { throw ValidationError("至少需要一项修改。") }
         }
 

@@ -110,12 +110,25 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
             result = try await renderer.renderPreview(PreviewRequest(
                 job: job, size: .maxLongEdge(options.maxLongEdge), pages: options.pages,
                 color: options.dynamicRange == .sdr ? .sRGB : .gainMap))
-            let pages = try result.pages.map(previewImage)
+            try Task.checkCancellation()
+            let pages = try previewImages(result.pages)
             return ExportPreview(pages: pages, roles: result.roles.map(JobOutputRole.init),
                                  warnings: result.warnings.map(ApplicationWarning.init))
         } catch {
             throw Self.mapped(error)
         }
+    }
+
+    /// 各页同时编码（全景长卷、CLI / MCP 预览一次有好几页）。每页的字节、顺序与逐页编码相同；
+    /// 有页失败时抛出页码最小的那个错误。
+    private func previewImages(_ pages: [PreviewPage]) throws -> [PreviewImage] {
+        guard pages.count > 1 else { return try pages.map(previewImage) }
+        let results = Mutex([Result<PreviewImage, any Error>?](repeating: nil, count: pages.count))
+        DispatchQueue.concurrentPerform(iterations: pages.count) { i in
+            let result = Result { try previewImage(pages[i]) }
+            results.withLock { $0[i] = result }
+        }
+        return try results.withLock { $0 }.map { try $0!.get() }
     }
 
     /// HDR 页编码成 gain map JPEG（D-106），其余是 sRGB PNG。

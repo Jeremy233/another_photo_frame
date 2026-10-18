@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import PhotoFrameApplication
 import PhotoFrameCore
+import Synchronization
 
 /// `photoframe export <图片...> --preset … --output <目录>`（§11.3）。
 ///
@@ -68,16 +69,18 @@ struct ExportCommand: AsyncParsableCommand {
             } catch {
                 throw ctx.fail(error)
             }
-            ctx.warn(entry.warnings, prefix: "\(entry.preset.name): ")
+            // 读预设时的警告不在结果 JSON 里：--json 时也写到 stderr。
+            ctx.warn(entry.warnings, prefix: "\(entry.preset.name): ", evenWithJSON: true)
             if !presets.contains(where: { $0.presetId == entry.preset.presetId }) { presets.append(entry.preset) }
         }
 
-        // 2. 源图
+        // 2. 源图（按给出顺序，重复的只算一次；成千上万张时用集合判断重复）
         var sourceIds: [SourceID] = []
+        var seenSources: Set<SourceID> = []
         for image in images {
             do {
                 let source = try await service.addSource(env.resolvePath(image))
-                if !sourceIds.contains(source.sourceId) { sourceIds.append(source.sourceId) }
+                if seenSources.insert(source.sourceId).inserted { sourceIds.append(source.sourceId) }
             } catch {
                 throw ctx.fail(error)
             }
@@ -152,6 +155,15 @@ struct ExportCommand: AsyncParsableCommand {
         let events = await service.events()
         let printer: Task<Void, Never>? = quiet ? nil : Task { await ProgressPrinter(sink: env.stderr, expected: expected).consume(events) }
 
+        // 中断处理在提交前登记：提交期间的第一次 Ctrl-C 也走「取消任务、清理临时目录」，而不是因为还没有处理直接退出。
+        // 提交前收到的中断，等提交返回后再取消这些任务。
+        let submitted = SubmittedJobs()
+        env.interrupts.onInterrupt {
+            guard let ids = submitted.ids else { return }
+            Task {
+                for id in ids { try? await service.cancel(id) }
+            }
+        }
         let ids: [JobID]
         do {
             ids = try await service.submit(request)
@@ -159,10 +171,9 @@ struct ExportCommand: AsyncParsableCommand {
             printer?.cancel()
             throw ctx.fail(error)
         }
-        env.interrupts.onInterrupt {
-            Task {
-                for id in ids { try? await service.cancel(id) }
-            }
+        submitted.ids = ids
+        if env.interrupts.isTriggered {
+            for id in ids { try? await service.cancel(id) }
         }
         let records = await service.waitUntilFinished(ids)
         await printer?.value
@@ -188,5 +199,16 @@ struct ExportCommand: AsyncParsableCommand {
             }
         }
         if status != .success { throw CLIExit(status: status) }
+    }
+}
+
+/// 已提交的任务。中断处理（在信号队列上执行）和提交返回后的代码都会读写，用锁保护。
+private final class SubmittedJobs: Sendable {
+    private let value = Mutex<[JobID]?>(nil)
+
+    /// 还没有提交（或提交失败）时为 nil。
+    var ids: [JobID]? {
+        get { value.withLock { $0 } }
+        set { value.withLock { $0 = newValue } }
     }
 }

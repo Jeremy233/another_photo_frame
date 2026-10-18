@@ -25,6 +25,17 @@ public enum SourceColorOverride: String, Hashable, Sendable, Codable, CaseIterab
     case adobeRGB
     case proPhoto
     case rec2020
+
+    /// 给人看的名字：GUI 的「按此解释」、源图的 ICC 一行、警告都用这一个。
+    public var displayName: String {
+        switch self {
+        case .sRGB: "sRGB"
+        case .displayP3: "Display P3"
+        case .adobeRGB: "Adobe RGB"
+        case .proPhoto: "ProPhoto RGB"
+        case .rec2020: "Rec. 2020"
+        }
+    }
 }
 
 /// 一个渲染任务：一张源图 × 一个预设快照。
@@ -264,7 +275,7 @@ public struct RenderError: Error, Hashable, Sendable, CustomStringConvertible {
 
     static func unsupportedFormat(_ what: String) -> RenderError {
         RenderError(code: "render.unsupported_format", message: "不支持的输入格式：\(what)",
-                    hint: "V1 支持 JPEG、PNG、TIFF（D-02）；HEIC 请先在后期软件中导出为 JPEG 或 TIFF")
+                    hint: "目前支持 JPEG、PNG、TIFF；HEIC 请先在后期软件中导出为 JPEG 或 TIFF")
     }
 
     static func decodeFailed(_ url: URL, _ why: String) -> RenderError {

@@ -331,6 +331,87 @@ struct MCPToolTests {
         #expect(leftovers.isEmpty)
     }
 
+    @Test("并发的 create_export_job 一起也不超过 --max-active-jobs")
+    func concurrentQueueLimit() async throws {
+        var limits = MCPLimits()
+        limits.maxActiveJobs = 2
+        let gate = Gate()
+        // 通过检查的调用在 submit 前被拦住，直到每个调用都有了结果（拦在闸门前或已经返回）。
+        let h = try await MCPHarness.start(limits: limits, renderer: HoldingRenderer(),
+                                           wrap: { HookedService($0) { _ in await gate.pass() } })
+        defer { Task { await gate.open(); await h.stop() } }
+        let photos = try (0..<6).map { try h.photo("in/P\($0).jpg") }
+        let calls = photos.map { photo in
+            Task {
+                let reply = await h.direct(.createExportJob, exportArguments([photo], output: h.outputs))
+                await gate.noteReturn()
+                return reply
+            }
+        }
+        try await eventually { await gate.arrivals + gate.returns == photos.count }
+        await gate.open()
+        var replies: [ToolReply] = []
+        for call in calls { replies.append(await call.value) }
+        let accepted = replies.filter(\.ok)
+        #expect(accepted.count == 2, "\(replies.map(\.text))")
+        #expect(replies.filter { !$0.ok }.allSatisfy { $0.code == "mcp.queue_full" }, "\(replies.map(\.text))")
+        #expect(try await h.call("get_job_status")["jobs"]?.arrayValue?.count == 2)
+        // 名额满时再来一个同样拒绝
+        #expect(await h.direct(.createExportJob, exportArguments([photos[0]], output: h.outputs)).code == "mcp.queue_full")
+    }
+
+    @Test("退出时先等正在提交的 create_export_job 登记任务再全部取消；之后不再创建任务")
+    func shutdownWaitsForSubmission() async throws {
+        let gate = Gate()
+        let h = try await MCPHarness.start(renderer: HoldingRenderer(), wrap: { HookedService($0) { _ in await gate.pass() } })
+        defer { Task { await gate.open(); await h.stop() } }
+        let url = try h.photo("in/A.jpg")
+        let creating = Task { await h.direct(.createExportJob, exportArguments([url], output: h.outputs)) }
+        try await eventually { await gate.arrivals == 1 }
+
+        let stopped = Gate()
+        let stopping = Task {
+            await h.photoframe.shutdown()
+            await stopped.noteReturn()
+        }
+        // 提交还没返回：shutdown 不能结束（否则这个任务会在取消之后才登记，进程退出时留下临时目录）
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(await stopped.returns == 0)
+
+        await gate.open()
+        let created = await creating.value
+        #expect(created.ok, "\(created.text)")
+        await stopping.value
+        let jobId = try #require(JobID(created["jobs"]?.arrayValue?.first?.objectValue?["jobId"]?.stringValue ?? ""))
+        #expect(try await h.service.status(jobId).status == .canceled)
+        let staging = h.outputs.appending(path: ".photoframe-staging")
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? []).isEmpty)
+
+        let late = await h.direct(.createExportJob, exportArguments([url], output: h.outputs))
+        #expect(late.code == "mcp.shutting_down", "\(late.text)")
+    }
+
+    @Test("preview_export 不传 maxEdge：默认 1200，但不超过 --max-preview-edge")
+    func previewDefaultEdge() async throws {
+        var limits = MCPLimits()
+        limits.maxPreviewEdge = 400
+        let small = try await MCPHarness.start(limits: limits)
+        defer { Task { await small.stop() } }
+        let url = try small.photo("in/Wide.jpg", width: 900, height: 300)
+        let args: [String: Value] = ["image": .string(url.path), "preset": .string("instagram-standard"), "pages": .array([.int(0)])]
+        let clamped = try await small.call("preview_export", args)
+        #expect(clamped.ok, "\(clamped.text)")
+        let page = clamped["files"]?.arrayValue?.first?.objectValue ?? [:]
+        #expect(page["width"]?.intValue == 300 && page["height"]?.intValue == 400, "\(clamped.text)")
+
+        let h = try await MCPHarness.start()
+        defer { Task { await h.stop() } }
+        let other = try h.photo("in/Wide.jpg", width: 900, height: 300)
+        let full = try await h.call("preview_export", args.merging(["image": .string(other.path)]) { $1 })
+        #expect(full.ok, "\(full.text)")
+        #expect(full["files"]?.arrayValue?.first?.objectValue?["height"]?.intValue == 1200, "\(full.text)")
+    }
+
     @Test("resources：列表、访问范围、预设、字段说明；不能读任意文件")
     func resources() async throws {
         let h = try await MCPHarness.start()

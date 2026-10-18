@@ -267,7 +267,8 @@ public actor JobQueue {
             transition(id, attemptId, to: .writing)
             // 发布在独立的 Task 里做文件操作，不占用队列；它只看取消标志，不响应 Task 取消。
             let exporter = self.exporter
-            let protectedSources = records.values.map(\.spec.source.fileURL)
+            // 同一张源图的多个任务只算一次：覆盖检查对每个路径都要做文件身份比对。
+            let protectedSources = Array(Set(records.values.map(\.spec.source.fileURL)))
             staging = nil  // publish 无论成败都会清理临时目录
             let manifest = try await Task.detached {
                 try exporter.publish(
@@ -299,8 +300,9 @@ public actor JobQueue {
             removeStaleStaging(in: root)
         }
 
+        var resolver = LazySlotResolver(configuration)
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            configuration.currentSlotResolver(), preset: spec.preset, bindings: spec.assetBindings, source: spec.source.fileURL)
+            &resolver, preset: spec.preset, bindings: spec.assetBindings, source: spec.source.fileURL)
         warnings += slotWarnings
         if !warnings.isEmpty {
             update(id, attemptId) { $0.warnings += warnings }

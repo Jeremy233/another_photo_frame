@@ -122,23 +122,27 @@ public enum SlotResolutionWarning: Hashable, Sendable {
 
     public var message: String {
         switch self {
-        case .optionalSlotMissing(let s, let layers): "可选素材 \(s) 未绑定，跳过图层 \(layers.joined(separator: ", "))"
-        case .staleBinding(let s, let scope, _): "素材槽 \(s) 的\(scope.label)绑定指向已删除的素材"
-        case .incompatibleFormat(let s, let scope, _, let f): "素材槽 \(s) 的\(scope.label)绑定是 \(f.rawValue)，该槽不接受这种格式"
-        case .unusedJobBinding(let s): "本任务绑定的素材槽 \(s) 没有被预设使用"
-        case .cameraMatchUnbound(let s, let layer): "图层 \(layer) 按相机匹配到素材槽 \(s)，但它没有可用的素材，改用下一个候选"
-        case .cameraUnknown(let layers): "源图没有相机品牌和型号，图层 \(layers.joined(separator: ", ")) 使用默认素材"
-        case .cameraNoMatch(let layer): "这台相机没有匹配的相机图标，跳过图层 \(layer)"
+        case .optionalSlotMissing(let s, let layers): "可选素材槽\(quoted(s))没有绑定素材，跳过图层\(quoted(layers))"
+        case .staleBinding(let s, let scope, _): "素材槽\(quoted(s))的\(scope.label)绑定指向已删除的素材"
+        case .incompatibleFormat(let s, let scope, _, let f): "素材槽\(quoted(s))的\(scope.label)绑定是 \(f.rawValue)，这个素材槽不接受这种格式"
+        case .unusedJobBinding(let s): "单任务绑定的素材槽\(quoted(s))没有被预设使用"
+        case .cameraMatchUnbound(let s, let layer): "图层\(quoted(layer))按相机匹配到素材槽\(quoted(s))，但它没有可用的素材，改用下一个候选"
+        case .cameraUnknown(let layers): "源图没有相机品牌和型号，图层\(quoted(layers))使用默认素材"
+        case .cameraNoMatch(let layer): "这台相机没有匹配的相机图标，跳过图层\(quoted(layer))"
         }
     }
 }
+
+/// 消息里的素材槽 ID、图层 ID 用「」括起来（GUI 按 ID 换成图层的名字）。
+private func quoted(_ id: String) -> String { "「\(id)」" }
+private func quoted(_ ids: [String]) -> String { ids.map(quoted).joined(separator: "、") }
 
 extension BindingScope {
     var label: String {
         switch self {
         case .job: "单任务"
         case .presetLocal: "预设本地"
-        case .userGlobal: "用户全局"
+        case .userGlobal: "用户默认"
         }
     }
 }
@@ -151,8 +155,8 @@ public struct SlotResolutionError: Error, Hashable, Sendable {
     public var warnings: [SlotResolutionWarning]
 
     public var code: String { "slot.missing_required" }
-    public var message: String { "缺少必需素材：\(missingRequiredSlots.joined(separator: ", "))" }
-    public var hint: String { "在素材库中导入素材，并绑定到这些素材槽（本任务、此预设或全局默认）" }
+    public var message: String { "缺少必需的素材：素材槽\(quoted(missingRequiredSlots))没有绑定素材" }
+    public var hint: String { "在素材库中导入素材，并绑定到这些素材槽（单任务、预设本地或用户默认）" }
 }
 
 /// 一个已解析的 slot。

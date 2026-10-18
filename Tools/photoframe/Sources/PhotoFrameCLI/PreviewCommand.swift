@@ -104,7 +104,7 @@ enum PreviewFiles {
     ) throws(ApplicationError) -> [URL] {
         let workName = OutputNaming().workName(source: source, preset: preset)
         let targets = preview.pages.map { page in
-            directory.appending(path: "\(workName)_preview_" + OutputNaming.fileName(for: page.role, format: page.format, outputCount: preview.roles.count))
+            directory.appending(path: "\(workName)_preview_" + OutputNaming.fileName(for: page.role, format: page.format, outputCount: OutputNaming.positionCount(of: preview.roles)))
         }
         if !overwrite, let existing = targets.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
             throw ApplicationError(code: "preview.file_exists", message: "预览文件已存在：\(existing.path)",

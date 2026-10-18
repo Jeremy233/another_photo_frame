@@ -48,11 +48,11 @@ macOS 26 或更高版本，Apple Silicon（M 系列芯片）。
 
 ### 快速上手
 
-1. **加入照片**：把 JPEG、PNG 或 TIFF 拖进窗口中间，或点底栏的「＋」。
-2. **选预设**：从左栏「预设」里把一个预设（比如「Instagram Panorama」）拖到照片上，就为这张照片创建了一个导出任务。一张照片可以加多个预设。
+1. **添加图片**：把 JPEG、PNG 或 TIFF 图片拖进窗口中间，或点底栏的「＋」。加进来的图片叫「源图」。
+2. **选预设**：从左栏「预设」里把一个预设（比如「Instagram Panorama」）拖到源图上，或点源图右边的「添加」，就为这张源图创建了一个导出任务。一张源图可以加多个预设。
 3. **调整**：选中任务，在右栏的「画布 / 全景 / 图层 / 输出」里修改尺寸、留白、背景色、切片张数、水印、输出格式等。修改只影响这个任务；点「存储为预设」可以保存成你自己的预设。
 4. **预览**：中间上方是成品预览，可以切换封面、每张切片和全景长卷，切换「成品 / 原图」和 SDR / HDR。
-5. **导出**：在底栏选择导出位置（默认 `~/Pictures/Social Exports`），点「开始批处理」。进度在「活跃」里，完成后在「已完成」里可以在 Finder 中显示。
+5. **导出**：在底栏的「位置」里选择输出位置（默认 `~/Pictures/Social Exports`），点「开始批处理」。进度在「活跃」里，完成后在「已完成」里可以在 Finder 中显示。
 
 导出的文件按平台和作品整理：
 
@@ -65,7 +65,7 @@ Social Exports/
         └── 02_Slide.jpg
 ```
 
-右栏的「警告」会提示需要注意的地方，比如照片不够宽只需要两张切片、作品目录已经存在（会自动另存为 `_v2`，也可以选择覆盖）。
+右栏的「警告」会提示需要注意的地方，比如照片不够宽、只需要两张切片。同名的作品目录已经存在时，任务列表「作品目录」一列显示提示图标，开始批处理时会询问：保留两者（新的另存为 `_v2`）还是覆盖。
 
 ### 内置预设
 
@@ -153,11 +153,11 @@ macOS 26 or later on Apple Silicon (M-series).
 
 ### Quick start
 
-1. **Add photos**: drag JPEG, PNG or TIFF files into the middle of the window, or click "＋" in the bottom bar.
-2. **Pick presets**: drag a preset (for example "Instagram Panorama") from the Presets list on the left onto a photo to create an export job. A photo can have several presets.
+1. **Add images**: drag JPEG, PNG or TIFF files into the middle of the window, or click "＋" in the bottom bar. Added images are called sources.
+2. **Pick presets**: drag a preset (for example "Instagram Panorama") from the Presets list on the left onto a source, or use Add next to the source, to create an export job. A source can have several presets.
 3. **Adjust**: select a job and change size, margins, background, slide count, watermarks or output format in the Canvas / Panorama / Layers / Output tabs on the right. Changes apply to that job only; "Save as Preset" keeps them as your own preset.
 4. **Preview**: the top of the middle column shows the result. Switch between the cover, each slide and the full panorama strip, between finished and original, and between SDR and HDR.
-5. **Export**: choose a location in the bottom bar (default `~/Pictures/Social Exports`) and click Start Batch. Progress shows under Active; finished jobs under Completed can be revealed in Finder.
+5. **Export**: choose an output location under Location in the bottom bar (default `~/Pictures/Social Exports`) and click Start Batch. Progress shows under Active; finished jobs under Completed can be revealed in Finder.
 
 Exports are organized by platform and work:
 
@@ -170,7 +170,7 @@ Social Exports/
         └── 02_Slide.jpg
 ```
 
-The Warnings section on the right points out anything to check, such as a photo that only needs two slides, or a folder that already exists (it is saved as `_v2`, or you can choose to overwrite).
+The Warnings section on the right points out anything to check, such as a photo that only needs two slides. When a work folder with the same name already exists, the job's Work Folder column shows a warning icon and Start Batch asks whether to keep both (the new one is saved as `_v2`) or overwrite.
 
 ### Built-in presets
 

@@ -71,7 +71,7 @@ probe（读属性：尺寸、方向）
 | 步骤 | 做法 | 依据 |
 |---|---|---|
 | 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
-| 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 34675 | 坑 1 |
+| 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 与 BigTIFF 的 34675（单个标签越界只跳过它，不影响找 ICC） | 坑 1 |
 | 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖（只对缺 ICC 的源图生效；有 ICC 时忽略并警告 `source.override_ignored`） | D-04 |
 | 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
 | 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
@@ -81,7 +81,7 @@ probe（读属性：尺寸、方向）
 
 | 源 | 识别 | SDR 输出 | HDR headroom |
 |---|---|---|---|
-| gain map JPEG（ISO 21496-1 / Apple） | ImageIO 辅助数据 | 文件底图（不 tone map） | 文件元数据（CI 展开后的 `contentHeadroom`） |
+| gain map JPEG（ISO 21496-1 / Apple） | ImageIO 辅助数据（先看容器属性里列出的辅助图像，没列出再读辅助数据，免得为判定解码整张 gain map） | 文件底图（不 tone map） | 文件元数据（CI 展开后的 `contentHeadroom`） |
 | Lightroom「最大化兼容性」TIFF | 自己解析 SubIFD（Photometric 52553、标签 52557） | IFD0 主图 | 元数据两个 headroom 取大者（Lightroom 32 位文件会写反） |
 | PQ / HLG PNG、TIFF | 颜色空间使用 ITU-R 2100 传递函数 | `CIToneMapHeadroom`，source = 画面峰值，target = 1 | 画面峰值 |
 | 浮点 TIFF，峰值 > 1 | `IsFloat` 且数据超过 SDR 白 | 同上 | 画面峰值 |
@@ -118,9 +118,11 @@ probe（读属性：尺寸、方向）
 
 ### 2.4 受限 SVG（D-09）
 
-支持 `svg`、`g`、`path`（全部命令，含圆弧）、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；属性 `fill`、`stroke`、`stroke-width`、各种 `opacity`、`fill-rule`、线帽线接、`transform`、`style` 中的同名声明。
+支持 `svg`、`g`、`path`（全部命令，含圆弧）、`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`；属性 `fill`、`stroke`、`stroke-width`、各种 `opacity`（组的 `opacity` 也乘进子元素自己写的 `fill-opacity` / `stroke-opacity`）、`fill-rule`、线帽线接、`stroke-miterlimit`（默认 4，与 SVG 规范相同）、`color`（`currentColor` 取它，初始黑色；`inherit` 才取上级的值）、`display: none`（整个子树不画，不警告）、`visibility`（继承，`visible` 可以重新显示）、`transform`、`style` 中的同名声明。
+颜色：几个命名色、`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`、`rgb()`（数字或百分比）；认不出的颜色沿用上级的值并警告。嵌套的 `svg` 按 `g` 画，它的 x / y / width / height / viewBox 忽略并警告。
+超出范围的数（`1e999`、`inf`、`nan`）当作无效参数，所在图形跳过并警告；半径、坐标极大导致圆弧计算溢出时画成直线。
 规则只有一份（D-87）：元素集合用 PhotoFrameStorage 的 `AssetValidator.SVGPolicy`，上限用 `AssetImportLimits.default`（D-85），与素材导入相同。
-整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY、处理指令、`SVGPolicy.forbiddenElements`（`script`、`foreignObject`、`image`、`use`、`iframe`、`style`、`feImage`、`a`、动画元素…）、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 8 MiB、50 000 个元素或 64 层嵌套。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
+整个文件拒绝（`render.svg_rejected`）：DOCTYPE / ENTITY（整个文件不分大小写地查，与素材导入相同；UTF-16 等编码查不到时由 XML 解析的实体声明回调拦下）、处理指令、`SVGPolicy.forbiddenElements`（`script`、`foreignObject`、`image`、`use`、`iframe`、`style`、`feImage`、`a`、动画元素…）、任何 `href`、`on*` 属性、`url(` / `javascript:` / `data:` 取值、超过 8 MiB、50 000 个元素或 64 层嵌套。`title`、`desc`、`metadata` 忽略；其他元素（渐变、文字、滤镜）连同子树跳过并警告 `overlay.svg_partial`。
 
 ### 2.5 `metadataText` 占位符
 
@@ -133,6 +135,7 @@ probe（读属性：尺寸、方向）
 ### 2.6 编码与元数据（§6.8、D-06）
 
 - SDR：CI 把页面渲染成 sRGB 8-bit（超出 sRGB 的颜色逐通道截断），再交给 ImageIO 编码（坑 3：只有 sRGB 8-bit 输入时 ImageIO 不改像素）。JPEG 质量 = `quality / 100`（默认 Q100）。
+- 多页导出时，CI 渲染仍由任务线程按页顺序做；ImageIO 编码、补 ICC 和写文件交给后台串行队列（`EncodePipeline`），渲染下一页时前几页还在编码。同时编码的页数最多 4 页，在途的 8-bit 位图合计不超过 64 MB（画布很大时退回逐页）。结果按页序取回：进度、警告、出错时报的错误和取消、出错时的清理都与逐页执行相同，写出的字节也相同。后台用串行队列（GCD 的 overcommit 线程），协作线程池被同时进行的任务占满时编码也一定有线程（全局并发队列在这种情况下会死锁，测试覆盖）。HDR 页面（CI 一步完成渲染和编码）仍逐页做。
 - HDR（只支持 JPEG）：`CIContext.jpegRepresentation` + `.hdrImage`，HDR 图显式 `settingContentHeadroom(源 headroom)`，`.hdrGainMapAsRGB`（坑 4、5、17）。源图不是 HDR 时按 SDR 输出并警告 `output.hdr_source_not_hdr`；HDR + PNG 报 `render.hdr_format_unsupported`。
 - ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
 - 元数据默认全部不写出；方向不写（像素已校正）。三个独立开关（预设 `output.metadata`）：
@@ -155,6 +158,9 @@ probe（读属性：尺寸、方向）
 - **颜色**：`.sRGB`（默认，§6.6 的输出预览）与 SDR 导出编码前的像素相同；HDR 输出时是文件里的 SDR 底图。`.extendedRange` 是 extended sRGB 半浮点，输出写 HDR 时为 HDR 页面并带 content headroom，否则是同一 SDR 页面但不截断色域外颜色（不能用来软打样 SDR 文件）。`.gainMap`（D-106，服务的 HDR 预览用）：`image` 与 `.sRGB` 相同，输出写 HDR 的页另给 `hdrImage`（同 `.extendedRange`），由 `gainMapJPEG` 编码成与 HDR 导出同一种格式的 gain map JPEG。
 - **一致性**：缩放系数为 1 时，`.sRGB` 预览与 PNG 导出逐像素相同（测试验证）。
 - **取消**：在阶段之间和每一页之前检查，抛出 `CancellationError`；不写任何文件。参数变化时 GUI 取消旧的预览任务即可。
+- **解码缓存**（§12.1「缩略图缓存」）：同一个渲染器上的预览复用解码结果，按源文件（路径、大小、修改时间、文件号）、
+  解码长边（由所需尺寸决定）和输入色彩空间覆盖识别，最近的 2 份、总共不超过 256 MB。只改图层、背景、输出设置，
+  或翻到同一预设的另一页时不再解码，像素与重新解码相同。导出不用这个缓存。
 - 错误：预览尺寸无效（≤ 0、NaN）报 `render.invalid_preview_size`；其余与导出相同。
 
 ## 3. 测试（Swift Testing）
@@ -173,6 +179,9 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
 | `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
+| `DecodeTests` | 坏标签不藏 ICC、BigTIFF 的 ICC、切片与整份数据结果相同、兼容 TIFF 查表还原与逐采样逐位相同、峰值取值与排序相同、降级时警告不重复、Rec. 2020 覆盖也做坑 20 改写、灰度图诊断、非 ASCII ICC 标签、快门 / 光圈 / ISO 文字、损坏的 EXIF 数值 |
+| `EncodePipelineTests` | 任务数多于核数时不卡住且字节相同、中间一页写不出时报这一页并清理、在途页数按画布大小限制 |
+| `RestrictedSVGTests` | 极大数值不崩溃、currentColor、display / visibility、组透明度、长前言后的 DOCTYPE 与 UTF-16 实体、#RRGGBBAA 与 rgb(%)、颜色警告、斜接上限、嵌套 svg 警告 |
 | `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange 与 gainMap、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 
 更新黄金文件：`PHOTOFRAME_RECORD_GOLDEN=1 swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build" --filter Golden`，再检查 JSON 的 diff。
@@ -206,7 +215,6 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 
 ## 5. 尚未实现
 
-- 预览缓存（§12.1「缩略图缓存」）：每次 `renderPreview` 都重新解码源图。只改图层或背景时可以复用解码结果，留给 GUI／Application 层按需要加。
 - gain map JPEG 的 HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样。
 - PQ / HLG / 浮点源的画面峰值在降采样后的解码图上统计，预览很小时峰值可能略低于导出，tone map 后的 SDR 预览会稍有差别。
 - 超出 sRGB 色域的感知映射（目前逐通道截断，§6.9、坑 11）。

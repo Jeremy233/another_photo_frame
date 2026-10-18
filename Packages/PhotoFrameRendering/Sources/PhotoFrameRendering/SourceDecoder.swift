@@ -29,6 +29,8 @@ struct DecodedSource {
     var author: AuthorInfo
     var transformSteps: [String]
     var warnings: [RenderWarning]
+    /// 解码出的位图占用的字节数（gain map JPEG 的 HDR 版本由 CI 按需展开，不计入）。预览的解码缓存按它限制总量。
+    var pixelBytes = 0
 
     var displaySize: PixelSize { SourceImage(storedSize: storedSize, orientation: orientation).displaySize }
 }
@@ -78,8 +80,10 @@ struct SourceDecoder {
         if format == .tiff {
             do {
                 if let gm = try GainMapTIFF.detect(data) {
-                    try decodeGainMapTIFF(gm, into: &out, step: max(1, longSource / (2 * longNeeded)), override: override)
-                    return out
+                    // 在副本上尝试：失败（D-69 降级）时不留下这次尝试追加的警告（inout 参数在抛错时也会写回）。
+                    var attempt = out
+                    try decodeGainMapTIFF(gm, into: &attempt, step: max(1, longSource / (2 * longNeeded)), override: override)
+                    return attempt
                 }
             } catch {
                 out.warnings.append(RenderWarning(
@@ -88,8 +92,10 @@ struct SourceDecoder {
             }
         }
 
-        let hasGainMap = CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
-            || CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
+        // gain map 只对 JPEG 生效。先看容器属性有没有列出 gain map（只解析文件结构）；没列出时再读辅助数据确认，
+        // 它会解码整张 gain map（4500 万像素的源图要 0.1–0.2 秒），没有 gain map 的文件几乎不花时间。
+        let listsGainMap = format == .jpeg && Self.listsGainMap(src)
+        let hasGainMap = format == .jpeg && (listsGainMap || Self.hasGainMapAuxiliaryData(src))
 
         var cg = try decodeCGImage(src, url: url, longEdge: decodeLong, sourceLong: longSource)
         cg = try applyProfilePolicy(cg, embedded: embedded, override: override, into: &out)
@@ -99,15 +105,20 @@ struct SourceDecoder {
             cg = try toRGBAh(cg)
             out.transformSteps.append("float source → RGBAh（CG，extended，不截断）")
         }
+        out.pixelBytes = cg.bytesPerRow * cg.height
         var image = CIImage(cgImage: cg)
         if !CGImageSourceThumbnailAppliedOrientation(decodedLong: decodeLong, sourceLong: longSource) {
             image = image.oriented(CGImagePropertyOrientation(rawValue: UInt32(orientation.rawValue)) ?? .up)
         }
         image = image.translatedToOrigin()
 
-        if hasGainMap, format == .jpeg {
-            // gain map JPEG：底图就是摄影师确认过的 SDR 版本（§6.7 第 1 条）；HDR 由 CI 展开。
-            guard let hdr = CIImage(contentsOf: url, options: [.expandToHDR: true, .applyOrientationProperty: true]) else {
+        // gain map JPEG：底图就是摄影师确认过的 SDR 版本（§6.7 第 1 条）；HDR 由 CI 展开。
+        // 只凭容器属性判定时，展开失败或没有余量再读辅助数据确认一次，结论与只看辅助数据时相同：
+        // 辅助数据也读不出 gain map 就当作没有 gain map，继续下面的判定。
+        let expanded = hasGainMap
+            ? CIImage(contentsOf: url, options: [.expandToHDR: true, .applyOrientationProperty: true]) : nil
+        if hasGainMap, !listsGainMap || (expanded?.contentHeadroom ?? 1) > 1 || Self.hasGainMapAuxiliaryData(src) {
+            guard let hdr = expanded else {
                 throw .decodeFailed(url, "无法展开 gain map")
             }
             out.sdr = image
@@ -150,6 +161,26 @@ struct SourceDecoder {
         return out
     }
 
+    /// 容器属性（`kCGImagePropertyFileContentsDictionary`）里第一张图有没有列出 gain map 辅助图像。
+    /// 只解析文件结构，不解码像素。
+    static func listsGainMap(_ src: CGImageSource) -> Bool {
+        guard let props = CGImageSourceCopyProperties(src, nil) as? [CFString: Any],
+              let contents = props[kCGImagePropertyFileContentsDictionary] as? [CFString: Any],
+              let images = contents[kCGImagePropertyImages] as? [[CFString: Any]],
+              let auxiliary = images.first?[kCGImagePropertyAuxiliaryData] as? [[CFString: Any]]
+        else { return false }
+        return auxiliary.contains { item in
+            guard let type = item[kCGImagePropertyAuxiliaryDataType] as? String else { return false }
+            return type == kCGImageAuxiliaryDataTypeISOGainMap as String || type == kCGImageAuxiliaryDataTypeHDRGainMap as String
+        }
+    }
+
+    /// ImageIO 能读出 ISO 21496-1 或 Apple gain map 辅助数据（会解码 gain map）。
+    static func hasGainMapAuxiliaryData(_ src: CGImageSource) -> Bool {
+        CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
+            || CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeHDRGainMap) != nil
+    }
+
     // MARK: - 解码
 
     private func decodeCGImage(_ src: CGImageSource, url: URL, longEdge: Int, sourceLong: Int) throws(RenderError) -> CGImage {
@@ -175,44 +206,54 @@ struct SourceDecoder {
         _ cg: CGImage, embedded: Bool, override: SourceColorOverride?, into out: inout DecodedSource
     ) throws(RenderError) -> CGImage {
         let current = cg.colorSpace
+        let profileMissing = Self.profileMissing
+        // 坑 20 / D-58：TRC 为 BT.709 / BT.2020 逆 OETF 参数曲线时改写成采样曲线。嵌入的 ICC 和覆盖（Rec. 2020）都要改。
+        func rewritingTRC(_ space: CGColorSpace?) -> CGImage? {
+            guard let data = space?.copyICCData() as Data?, let icc = ICCProfile(data), let p = icc.bt709FamilyParametricTRC,
+                  let fixed = CGColorSpace(iccData: icc.replacingTRC(samples: ICCProfile.sampledCurve(p)) as CFData),
+                  let retagged = cg.copy(colorSpace: fixed)
+            else { return nil }
+            out.transformSteps.append("ICC TRC 为 BT.709/2020 逆 OETF 参数曲线 → 改写为 4096 点采样曲线（PoC 坑 20）")
+            return retagged
+        }
         // 覆盖只用于没有颜色描述的源图（§6.2「无 ICC 策略」、D-04）；文件自带 ICC 时以文件为准，忽略覆盖并警告。
         if let override, embedded {
             out.warnings.append(Self.overrideIgnored(override, embedded: WorkingColor.describe(current)))
         } else if let override {
-            guard current?.model == .rgb, let retagged = cg.copy(colorSpace: WorkingColor.space(for: override)) else {
-                out.warnings.append(RenderWarning(code: "source.override_ignored", message: "非 RGB 图像，忽略输入色彩空间覆盖"))
+            let space = WorkingColor.space(for: override)
+            guard current?.model == .rgb, let retagged = cg.copy(colorSpace: space) else {
+                // 非 RGB：覆盖用不上，与没有覆盖时一样按缺少颜色描述处理（像素保持原颜色空间）。
+                out.warnings.append(RenderWarning(code: "source.override_ignored", message: "源图不是 RGB 图像，忽略指定的输入色彩空间"))
+                out.warnings.append(profileMissing)
                 out.sourceProfile = WorkingColor.describe(current)
+                out.sourceProfileOrigin = "assumedSRGB"
                 return cg
             }
-            out.sourceProfile = override.rawValue
+            out.sourceProfile = override.displayName
             out.sourceProfileOrigin = "override"
-            out.transformSteps.append("输入色彩空间覆盖为 \(override.rawValue)")
-            return retagged
+            out.transformSteps.append("输入色彩空间覆盖为 \(override.displayName)")
+            return rewritingTRC(space) ?? retagged
         }
         if !embedded {
-            out.sourceProfile = "sRGB IEC61966-2.1"
+            // 非 RGB 图像保留自己的颜色空间（不改标签），诊断里写它本身，不写 sRGB。
+            out.sourceProfile = current?.model == .rgb ? "sRGB IEC61966-2.1" : WorkingColor.describe(current)
             out.sourceProfileOrigin = "assumedSRGB"
-            out.warnings.append(RenderWarning(
-                code: "source.profile_missing", message: "Source profile missing — assumed sRGB（源图没有颜色描述，按 sRGB 解释）"))
+            out.warnings.append(profileMissing)
             if current?.model == .rgb, current?.name != CGColorSpace.sRGB, let tagged = cg.copy(colorSpace: WorkingColor.sRGB) {
                 return tagged
             }
             return cg
         }
         out.sourceProfile = WorkingColor.describe(current)
-        if let data = current?.copyICCData() as Data?, let icc = ICCProfile(data), let p = icc.bt709FamilyParametricTRC,
-           let fixed = CGColorSpace(iccData: icc.replacingTRC(samples: ICCProfile.sampledCurve(p)) as CFData),
-           let retagged = cg.copy(colorSpace: fixed)
-        {
-            out.transformSteps.append("ICC TRC 为 BT.709/2020 逆 OETF 参数曲线 → 改写为 4096 点采样曲线（PoC 坑 20）")
-            return retagged
-        }
-        return cg
+        return rewritingTRC(current) ?? cg
     }
+
+    /// 没有 ICC（D-04）：GUI、CLI、MCP 都显示这一句。
+    static let profileMissing = RenderWarning(code: "source.profile_missing", message: "源图没有 ICC，按 sRGB 解释")
 
     static func overrideIgnored(_ override: SourceColorOverride, embedded: String) -> RenderWarning {
         RenderWarning(code: "source.override_ignored",
-                      message: "源文件自带颜色描述（\(embedded)），忽略输入色彩空间覆盖 \(override.rawValue)：覆盖只用于没有 ICC 的源图（D-04）")
+                      message: "源图自带 ICC（\(embedded)），忽略指定的输入色彩空间 \(override.displayName)：它只用于没有 ICC 的源图")
     }
 
     private func decodeGainMapTIFF(
@@ -227,8 +268,7 @@ struct SourceDecoder {
         } else if iccData == nil {
             iccData = WorkingColor.sRGB.copyICCData() as Data?
             out.sourceProfileOrigin = "assumedSRGB"
-            out.warnings.append(RenderWarning(
-                code: "source.profile_missing", message: "Source profile missing — assumed sRGB（源图没有颜色描述，按 sRGB 解释）"))
+            out.warnings.append(Self.profileMissing)
         }
         guard let iccData, let icc = ICCProfile(iccData), let trc = icc.trcFunctions,
               let linearSpace = CGColorSpace(iccData: icc.linearized as CFData),
@@ -238,8 +278,7 @@ struct SourceDecoder {
         let isFloatBase = (try? gm.file.int(gm.base, 339)) == 3
         // 浮点底图本来就是线性值（Lightroom 32 位「Linear Rec. 2020」）；整数底图按 ICC 曲线自己线性化（绕开坑 20）。
         let r = try gm.reconstruct(step: step) { v, c in isFloatBase ? v : trc[c](v) }
-        func image(_ px: [Float16]) throws -> CIImage {
-            let bytes = px.withUnsafeBufferPointer { Data(buffer: $0) }
+        func image(_ bytes: Data) throws -> CIImage {
             let info = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.floatComponents.rawValue
                 | CGImageByteOrderInfo.order16Little.rawValue
             guard let provider = CGDataProvider(data: bytes as CFData),
@@ -253,6 +292,7 @@ struct SourceDecoder {
         }
         out.sdr = try image(r.sdr)
         out.hdr = try image(r.hdr)
+        out.pixelBytes = 2 * r.width * r.height * 8
         out.hdrKind = .gainMapTIFF
         out.headroom = gm.metadata.headroom
         out.hasEmbeddedProfile = gm.file.bytes(gm.base, 34675) != nil
@@ -291,9 +331,35 @@ struct SourceDecoder {
         }
         var maxima = [Float](repeating: 0, count: w * h)
         for i in 0..<(w * h) { maxima[i] = max(px[4 * i], px[4 * i + 1], px[4 * i + 2]) }
-        maxima.sort()
         let index = min(maxima.count - 1, Int((Double(maxima.count - 1) * 0.9995).rounded()))
-        return max(1, Double(maxima[index]))
+        // 只要排序后第 index 个值（与 `maxima.sorted()[index]` 相同），不排序整个数组：最小堆保留最大的 n − index 个值，
+        // 堆顶就是它。有 NaN 时比较不成全序，仍按原来的排序取值，结果不变。
+        func sortedValue(at index: Int) -> Float {
+            if maxima.contains(where: \.isNaN) { return maxima.sorted()[index] }
+            let k = maxima.count - index
+            var heap = [Float]()
+            heap.reserveCapacity(k)
+            for x in maxima {
+                if heap.count < k {
+                    heap.append(x)
+                    var i = heap.count - 1
+                    while i > 0, heap[(i - 1) / 2] > heap[i] { heap.swapAt(i, (i - 1) / 2); i = (i - 1) / 2 }
+                } else if x > heap[0] {
+                    heap[0] = x
+                    var i = 0
+                    while true {
+                        let child = 2 * i + 1
+                        var m = i
+                        if child < k, heap[child] < heap[m] { m = child }
+                        if child + 1 < k, heap[child + 1] < heap[m] { m = child + 1 }
+                        if m == i { break }
+                        heap.swapAt(i, m); i = m
+                    }
+                }
+            }
+            return heap[0]
+        }
+        return max(1, Double(sortedValue(at: index)))
     }
 }
 

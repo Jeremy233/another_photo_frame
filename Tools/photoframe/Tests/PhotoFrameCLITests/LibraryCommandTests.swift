@@ -159,6 +159,27 @@ struct LibraryCommandTests {
         #expect(await runCLI(["asset", "bindings"], in: box.root).stdout.value.isEmpty)
     }
 
+    @Test("文字表格按字符对齐：emoji、组合字符不被截断；只有 ASCII / 常用汉字时输出不变")
+    func tableAlignment() async throws {
+        let out = Capture()
+        let env = CLIEnvironment(stdout: out.sink, stderr: Capture().sink, currentDirectory: URL(filePath: "/"))
+        CLIEnvironment.$current.withValue(env) {
+            let ctx = CommandContext(command: "test", json: false)
+            ctx.printTable([["a📷📷", "Cafe\u{301}", "x"], ["bbbb", "Tea", "y"]])
+            ctx.printTable([["ab", "c"], ["d", "efg"], ["中文", "z"]])
+        }
+        #expect(out.lines == ["a📷📷   Cafe\u{301}  x", "bbbb  Tea   y", "ab  c", "d   efg", "中文  z"])
+        #expect(!out.value.unicodeScalars.contains("\u{FFFD}"))
+
+        // 预设名称最长、又含 emoji：preset list 里完整出现
+        let box = try Sandbox()
+        let name = "📷 Summer Trip to the Mountains 🏔️"
+        #expect(await runCLI(["preset", "duplicate", "xhs-standard", "--name", name], in: box.root).status == 0)
+        let list = await runCLI(["preset", "list"], in: box.root)
+        #expect(list.stdout.lines.last?.contains("\(name)  user") == true, "\(list.stdout.value)")
+        #expect(!list.stdout.value.unicodeScalars.contains("\u{FFFD}"))
+    }
+
     @Test("端到端：导入素材 → 绑定 → 用带素材槽的预设导出 → 成品里有图层")
     func assetOverlayEndToEnd() async throws {
         let box = try Sandbox()

@@ -21,10 +21,12 @@ extension Workbench {
                 added.append(source.sourceId)
                 inspect(source.sourceId)
             } catch {
-                failures.append("\(url.lastPathComponent)：\(error.message)")
+                failures.append("\(url.lastPathComponent)：\(error.displayText)")
             }
         }
-        if !failures.isEmpty { alert = WorkbenchAlert(title: "有图片没有添加", message: failures.joined(separator: "\n")) }
+        // 右栏在编辑左栏的预设、批次原来是空的时，预览要用刚加入的源图。
+        if !added.isEmpty { refreshPreview() }
+        if !failures.isEmpty { alert = WorkbenchAlert(title: "有图片没有添加", message: WorkbenchAlert.paragraph(failures)) }
         return added
     }
 
@@ -37,12 +39,14 @@ extension Workbench {
             case .success(let inspection): sources[i].inspection = inspection
             case .failure(let error): sources[i].inspectionError = error
             }
+            // 检查结果不是预览内容的一部分，内容没变时不会重新渲染。
+            refreshPreview()
         }
     }
 
     /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
     public func setColorOverride(_ value: SourceColorOverride?, for id: SourceID) {
-        guard let i = sources.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = sources.firstIndex(where: { $0.id == id }), sources[i].colorOverride != value else { return }
         sources[i].colorOverride = value
         scheduleValidation(sources[i].jobs.map(\.id))
         refreshPreview()
@@ -52,7 +56,11 @@ extension Workbench {
 
     /// 为这些源图各创建一个任务（把预设拖到源图上，或按钮）。
     public func addJobs(preset presetId: UUID, to sourceIds: [SourceID]) async {
-        guard !sourceIds.isEmpty, let destination = locations.defaultLocation?.url else { return }
+        guard !sourceIds.isEmpty else { return }
+        guard let destination = locations.defaultLocation?.url else {
+            alert = WorkbenchAlert(title: "无法添加任务", message: "没有输出位置：请先在左栏「位置」里添加一个。")
+            return
+        }
         await perform("无法添加任务") {
             let preset = try await service.resolvePreset(reference(presetId)).preset
             var created: [UUID] = []
@@ -69,40 +77,78 @@ extension Workbench {
 
     /// 选中的源图（选中任务时取它所属的源图）；工具栏「应用预设」用。
     public var targetSourceIds: [SourceID] {
-        sources.map(\.id).filter { id in
-            selection.contains(.source(id)) || sourceItem(id)?.jobs.contains { selection.contains(.job($0.id)) } == true
+        let selection = self.selection
+        return sources.compactMap { item in
+            selection.contains(.source(item.id)) || item.jobs.contains { selection.contains(.job($0.id)) } ? item.id : nil
         }
     }
 
-    /// 删除选中的源图（连同它的任务）和任务。
-    public func removeSelection() {
-        sources.removeAll { selection.contains(.source($0.id)) }
-        for i in sources.indices { sources[i].jobs.removeAll { selection.contains(.job($0.id)) } }
-        selection = []
+    /// 从批次里移除这些源图（连同它们的任务）和任务（右键菜单作用于右键点到的行，⌫ 作用于选择）。不删文件。
+    public func remove(_ items: Set<BatchItemID>) {
+        guard !items.isEmpty else { return }
+        let sourceCount = sources.count
+        sources.removeAll { items.contains(.source($0.id)) }
+        for i in sources.indices where sources[i].jobs.contains(where: { items.contains(.job($0.id)) }) {
+            sources[i].jobs.removeAll { items.contains(.job($0.id)) }
+        }
+        // 没被移除的仍然选中。
+        selection = selection.filter { item in
+            switch item {
+            case .source(let id): sourceItem(id) != nil
+            case .job(let id): job(id) != nil
+            }
+        }
+        if sources.count != sourceCount { sourcesDidLeave() }
     }
 
-    /// 复制选中的任务（第 10 节）。
-    public func duplicateSelectedJobs() {
+    /// 移除选中的源图和任务（⌫）。
+    public func removeSelection() {
+        remove(selection)
+    }
+
+    /// 这些行涉及的任务，按列表顺序：选中的任务，加上选中的源图下面的全部任务。
+    public func jobIds(in items: Set<BatchItemID>) -> [UUID] {
+        sources.flatMap { item in
+            item.jobs.filter { items.contains(.source(item.id)) || items.contains(.job($0.id)) }.map(\.id)
+        }
+    }
+
+    /// 复制这些任务（第 10 节），选中复制出来的任务。
+    public func duplicateJobs(_ ids: Set<UUID>) {
         var created: [UUID] = []
         for s in sources.indices {
-            for job in sources[s].jobs where selection.contains(.job(job.id)) {
+            for job in sources[s].jobs where ids.contains(job.id) {
                 var copy = job
                 copy.id = UUID()
                 sources[s].jobs.append(copy)
                 created.append(copy.id)
             }
         }
+        guard !created.isEmpty else { return }
         scheduleValidation(created)
         selection = Set(created.map(BatchItemID.job))
     }
 
-    /// 改任务的输出位置（把位置拖到任务上，或右栏「输出」）。拖到源图上时改它的全部任务。
-    public func setDestination(_ url: URL, for item: BatchItemID) {
-        let ids: [UUID] = switch item {
-        case .job(let id): [id]
-        case .source(let id): sourceItem(id)?.jobs.map(\.id) ?? []
-        }
-        updateJobs(ids) { $0.destination = url }
+    /// 复制选中的任务（⌘D）。
+    public func duplicateSelectedJobs() {
+        duplicateJobs(Set(selectedJobIds))
+    }
+
+    /// 改这些行的输出位置：任务本身，以及源图下面的全部任务（右键菜单「位置」、把位置拖到行上）。
+    public func setDestination(_ url: URL, for items: Set<BatchItemID>) {
+        updateJobs(jobIds(in: items)) { $0.destination = url }
+    }
+
+    /// 拖放或菜单作用于哪些行：落在选中的行上时是全部选中的行（§4.2：拖到多选中的一项等于拖到全部），否则只是这一行。
+    public func targets(for item: BatchItemID) -> Set<BatchItemID> {
+        selection.contains(item) ? selection : [item]
+    }
+
+    /// 用预设给源图创建任务（把预设拖到源图上，或源图头部的「添加」菜单）：
+    /// 这张源图是选中的源图之一时，给全部选中的源图各建一个（与拖放一致）。
+    public func addJobs(preset presetId: UUID, onto sourceId: SourceID) async {
+        let targets = targetSourceIds.contains(sourceId) ? targetSourceIds : [sourceId]
+        await addJobs(preset: presetId, to: targets)
     }
 
     /// 右栏「输出」改选中任务的位置。
@@ -117,7 +163,7 @@ extension Workbench {
 
     /// 选中任务共同的任务级字段（位置、命名），不同时为「多个值」。
     public func jobField<Value: Equatable>(_ path: KeyPath<DraftJob, Value>) -> FieldValue<Value> {
-        let values = selectedJobIds.compactMap(job).map { $0[keyPath: path] }
+        let values = selectedJobs().map { $0[keyPath: path] }
         guard let first = values.first else { return .none }
         return values.allSatisfy { $0 == first } ? .single(first) : .mixed
     }
@@ -133,24 +179,24 @@ extension Workbench {
             }
             guard let sourceId else { return false }
             // 拖到选中的多张源图之一时，对全部选中的源图生效（§4.2）。
-            let targets = targetSourceIds.contains(sourceId) ? targetSourceIds : [sourceId]
-            await addJobs(preset: id, to: targets)
+            await addJobs(preset: id, onto: sourceId)
             return true
         case .location(let id):
             guard let location = location(id) else { return false }
-            setDestination(location.url, for: item)
+            setDestination(location.url, for: targets(for: item))
             return true
         case .asset:
             return false
         }
     }
 
-    /// 从 Finder 拖入文件；拖到某张源图上的图片同样作为新源图加入。
+    /// 从 Finder 拖入文件；拖到某张源图上的图片同样作为新源图加入。不支持的文件（例如 HEIC）与「添加图片」一样汇总提示。
+    /// 返回是否有可以加入的图片。
     public func dropFiles(_ urls: [URL]) async -> Bool {
-        let images = urls.filter { PhotoSource.supportedExtensions.contains($0.pathExtension.lowercased()) }
-        guard !images.isEmpty else { return false }
-        await addSources(images)
-        return true
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return false }
+        await addSources(files)
+        return files.contains { PhotoSource.supportedExtensions.contains($0.pathExtension.lowercased()) }
     }
 
     // MARK: 素材绑定
@@ -159,9 +205,9 @@ extension Workbench {
 
     /// 图层占位符当前绑定的素材和来源层级（D-14：单任务 > 预设本地 > 用户默认）。只用于显示，真正的解析在服务里。
     public func binding(for slotId: String) -> (assetId: UUID, level: BindingLevel)? {
-        switch inspectorSubject {
-        case .jobs(let ids):
-            let jobs = ids.compactMap(job)
+        let (subject, jobs) = inspected()
+        switch subject {
+        case .jobs:
             guard jobs.count == 1, let job = jobs.first else { return nil }
             if let asset = job.assetBindings[slotId] { return (asset, .job) }
             return persistedBinding(slotId, presetId: job.basePreset.presetId)
@@ -184,10 +230,14 @@ extension Workbench {
         case .jobs(let ids):
             updateJobs(ids) { $0.assetBindings[slotId] = assetId }
         case .preset(let id):
+            // 预设本地绑定存在库里、只认已存储的素材槽：新加的图层要先存储预设。
+            if let editor = presetEditor, !editor.entry.preset.assetSlots.contains(where: { $0.slotId == slotId }) {
+                alert = WorkbenchAlert(title: "无法绑定素材", message: "这个图层还没有存储：先点「存储」存储预设，再给新图层绑定素材。")
+                return
+            }
             await perform("无法绑定素材") {
                 try await service.bindAsset(assetId, slotId: slotId, preset: reference(id))
-                bindings = await service.listBindings().bindings
-                refreshPreview()
+                setLibrary(bindings: await service.listBindings().bindings)
             }
         case .source, .location, .none:
             break
@@ -198,13 +248,27 @@ extension Workbench {
 
     /// 把选中任务改过的参数存成新的用户预设（§4.2 `Save as Preset`）。任务改为基于新预设。
     public func saveSelectedJobAsPreset(name: String) async {
-        guard let id = selectedJobIds.first, let job = job(id) else { return }
+        guard let id = selectedJobIds.first else { return }
+        await saveJobAsPreset(id, name: name)
+    }
+
+    /// 把这个任务改过的参数存成新的用户预设（右键菜单作用于右键点到的任务）。
+    public func saveJobAsPreset(_ id: UUID, name: String) async {
+        guard let job = job(id) else { return }
+        let content = job.preset
         await perform("无法存储为预设") {
-            let saved = try await service.savePreset(job.preset, name: name)
+            let saved = try await service.savePreset(content, name: name)
             let stored = try await service.resolvePreset(reference(saved.presetId)).preset
+            // 新预设有新的 presetId，原预设的本地绑定对它不起作用，任务的成品会变（例如签名不见了）：
+            // 像「复制」一样（D-84）把新预设也有的素材槽的本地绑定复制过去。复制不了的（素材已删除等）跳过，导出时本来也会回退。
+            let slots = Set(stored.assetSlots.map(\.slotId))
+            for binding in await service.listBindings().bindings where binding.presetId == content.presetId && slots.contains(binding.slotId) {
+                try? await service.bindAsset(binding.assetId, slotId: binding.slotId, preset: reference(saved.presetId))
+            }
+            // 存储期间又改过的任务保留改动（显示为已修改），只把它的基准换成新预设。
             updateJobs([id]) {
                 $0.basePreset = stored
-                $0.preset = stored
+                if $0.preset == content { $0.preset = stored }
             }
             await refreshLibrary()
         }
@@ -233,28 +297,43 @@ extension Workbench {
     }
 
     private func updateJobsQuietly(_ id: UUID, _ body: (inout DraftJob) -> Void) {
-        for s in sources.indices {
-            if let j = sources[s].jobs.firstIndex(where: { $0.id == id }) { body(&sources[s].jobs[j]) }
-        }
+        modifyJobs([id], body)
     }
 
     // MARK: 开始批处理
 
+    /// 开始批处理时的一个任务：当时的任务和导出请求（请求里有当时源图的色彩空间设置）。
+    /// 校验和提交都用这一份；提交前与列表里现在的任务比较，校验之后改过的不提交旧内容。
+    struct BatchEntry {
+        var job: DraftJob
+        /// 默认策略（加版本号）的请求。
+        var request: ExportRequest
+    }
+
+    /// 「当前」里全部任务的快照。
+    private func batchSnapshot() -> [BatchEntry] {
+        allJobs.map { BatchEntry(job: $0, request: request(for: $0)) }
+    }
+
     /// 底栏「开始批处理」：校验全部任务 → 目标目录已存在时请用户确认（D-49）→ 提交 → 开始派发。
     /// 没有新任务时只是继续暂停的队列。
     public func startBatch() async {
-        let drafts = allJobs
-        guard !drafts.isEmpty else {
+        // 校验、提交都要等后端；这期间再点一次（连按 ⌘↩）不重复提交。
+        guard !isStartingBatch else { return }
+        isStartingBatch = true
+        defer { isStartingBatch = false }
+        let batch = batchSnapshot()
+        guard !batch.isEmpty else {
             await resumeQueue()
             return
         }
-        guard let items = await validateForSubmit(drafts, policy: .versionSuffix) else { return }
-        let warned = zip(drafts, items).filter { !$0.1.warnings.isEmpty }
+        guard let items = await validateForSubmit(batch, policy: .versionSuffix) else { return }
+        let warned = zip(batch, items).filter { !$0.1.warnings.isEmpty }
         if !warned.isEmpty, settings.reviewsWarningsBeforeStart {
-            warningPrompt = WarningPrompt(jobIds: warned.map(\.0.id), warningCount: warned.map(\.1.warnings.count).reduce(0, +))
+            warningPrompt = WarningPrompt(jobIds: warned.map(\.0.job.id), warningCount: warned.map(\.1.warnings.count).reduce(0, +))
             return
         }
-        await confirmOverwritesAndSubmit(drafts, items: items)
+        await confirmOverwritesAndSubmit(batch, items: items)
     }
 
     /// 用户对警告询问的回答。`dontAskAgain`：以后不再询问（设置里可以改回来）。
@@ -267,24 +346,29 @@ extension Workbench {
             return
         case .review:
             mode = .current
-            if let first = prompt.jobIds.first { selection = [.job(first)] }
+            // 右栏可能正在显示左栏的预设：选择没变时也要切回这个任务。
+            if let first = prompt.jobIds.first { showInInspector([.job(first)]) }
         case .proceed:
-            let drafts = allJobs
-            guard let items = await validateForSubmit(drafts, policy: .versionSuffix) else { return }
-            await confirmOverwritesAndSubmit(drafts, items: items)
+            guard !isStartingBatch else { return }
+            isStartingBatch = true
+            defer { isStartingBatch = false }
+            let batch = batchSnapshot()
+            guard let items = await validateForSubmit(batch, policy: .versionSuffix) else { return }
+            await confirmOverwritesAndSubmit(batch, items: items)
         }
     }
 
     /// 作品目录已存在时先确认（D-49），否则直接提交。
-    private func confirmOverwritesAndSubmit(_ drafts: [DraftJob], items: [ValidationItem]) async {
-        let conflicts: [OverwritePrompt.Conflict] = zip(drafts, items).compactMap { job, item in
+    private func confirmOverwritesAndSubmit(_ batch: [BatchEntry], items: [ValidationItem]) async {
+        let conflicts: [OverwritePrompt.Conflict] = zip(batch, items).compactMap { entry, item in
+            let job = entry.job
             guard let source = sourceItem(job.sourceId)?.source else { return nil }
             let name = job.naming.workName(source: source, preset: job.preset)
             guard item.directory.lastPathComponent != name else { return nil }
             return .init(jobId: job.id, directory: item.directory.deletingLastPathComponent().appending(path: name))
         }
         if conflicts.isEmpty {
-            await submit(drafts, overwriting: [])
+            await submit(batch, overwriting: [])
         } else {
             overwritePrompt = OverwritePrompt(conflicts: conflicts)
         }
@@ -294,68 +378,94 @@ extension Workbench {
     public func resolveOverwrite(_ choice: OverwriteChoice) async {
         guard let prompt = overwritePrompt else { return }
         overwritePrompt = nil
-        let drafts = allJobs
+        guard choice != .cancel, !isStartingBatch else { return }
+        isStartingBatch = true
+        defer { isStartingBatch = false }
+        let batch = batchSnapshot()
         switch choice {
         case .cancel:
             return
         case .keepBoth:
-            await submit(drafts, overwriting: [])
+            await submit(batch, overwriting: [])
         case .overwrite:
             let ids = Set(prompt.conflicts.map(\.jobId))
-            let targets = drafts.filter { ids.contains($0.id) }
+            let targets = batch.filter { ids.contains($0.job.id) }
             guard let items = await validateForSubmit(targets, policy: .overwrite) else { return }
-            let directories = items.map(\.directory.path)
+            // 每个任务单独校验，同一批里的撞名在这里查。不区分大小写的卷（macOS 默认）上只差大小写的目录是同一个。
+            let directories = items.map {
+                OutputNaming.collisionKey(for: $0.directory, caseSensitive: OutputNaming.volumeIsCaseSensitive($0.directory))
+            }
             guard Set(directories).count == directories.count else {
                 alert = WorkbenchAlert(title: "无法覆盖", message: "有两个任务要覆盖同一个作品目录，请修改其中一个的位置或命名。")
                 return
             }
-            await submit(drafts, overwriting: ids)
+            await submit(batch, overwriting: ids)
         }
     }
 
     /// 逐个校验；有错误时弹出提示并返回 nil。
-    private func validateForSubmit(_ drafts: [DraftJob], policy: ConflictPolicy) async -> [ValidationItem]? {
+    private func validateForSubmit(_ batch: [BatchEntry], policy: ConflictPolicy) async -> [ValidationItem]? {
         var items: [ValidationItem] = []
         var problems: [String] = []
-        for job in drafts {
+        for entry in batch {
             do throws(ApplicationError) {
-                guard let item = try await service.validate(request(for: job, policy: policy)).items.first else { continue }
+                guard let item = try await service.validate(entry.request.with(policy)).items.first else { continue }
                 items.append(item)
-                updateJobsQuietly(job.id) { $0.validation = item }
-                problems += item.errors.map { "\(item.sourceURL.lastPathComponent) · \(item.presetName)：\($0.message)" }
+                // 校验期间改过的任务不写这份结果（改动本身会重新校验）。
+                if let live = job(entry.job.id), request(for: live) == entry.request {
+                    updateJobsQuietly(entry.job.id) { $0.validation = item }
+                }
+                problems += item.errors.map { "\(item.sourceURL.lastPathComponent) · \(item.presetName)：\($0.displayText)" }
             } catch {
-                problems.append(error.message)
+                problems.append(error.displayText)
             }
         }
-        guard problems.isEmpty, items.count == drafts.count else {
-            alert = WorkbenchAlert(title: "无法开始批处理", message: problems.joined(separator: "\n"))
+        guard problems.isEmpty, items.count == batch.count else {
+            alert = WorkbenchAlert(title: "无法开始批处理", message: WorkbenchAlert.paragraph(problems))
             return nil
         }
         return items
     }
 
-    private func submit(_ drafts: [DraftJob], overwriting: Set<UUID>) async {
-        if runJobIds.allSatisfy({ id in jobs.first { $0.jobId == id }?.status.isTerminal ?? true }) { runJobIds = [] }
-        var submitted: Set<UUID> = []
-        await perform("提交任务失败") {
-            for job in drafts {
-                let ids = try await service.submit(request(for: job, policy: overwriting.contains(job.id) ? .overwrite : .versionSuffix))
-                runJobIds += ids
-                submitted.insert(job.id)
+    private func submit(_ batch: [BatchEntry], overwriting: Set<UUID>) async {
+        let statuses = Dictionary(jobs.map { ($0.jobId, $0.status) }, uniquingKeysWith: { first, _ in first })
+        if runJobIds.allSatisfy({ statuses[$0]?.isTerminal ?? true }) { runJobIds = [] }
+        var submitted: [UUID: ExportRequest] = [:]
+        await perform("无法提交任务") {
+            for entry in batch {
+                // 按列表里现在的任务提交：校验之后删掉的跳过；改过的（影响导出的内容变了）留在「当前」，不提交改动前的内容。
+                guard let live = job(entry.job.id), request(for: live) == entry.request else { continue }
+                let policy: ConflictPolicy = overwriting.contains(entry.job.id) ? .overwrite : .versionSuffix
+                runJobIds += try await service.submit(entry.request.with(policy))
+                submitted[entry.job.id] = entry.request
             }
         }
-        // 已提交的任务离开「当前」；任务都提交了的源图也一起移走（与 Compressor 提交批处理后清空一致）。
-        let emptied = Set(drafts.filter { submitted.contains($0.id) }.map(\.sourceId))
-        for i in sources.indices { sources[i].jobs.removeAll { submitted.contains($0.id) } }
+        // 已提交的任务离开「当前」，提交期间又改过的留下；任务都提交了的源图也一起移走（与 Compressor 提交批处理后清空一致）。
+        let removed = Set(submitted.compactMap { id, request in job(id).map { self.request(for: $0) } == request ? id : nil })
+        let emptied = Set(batch.filter { removed.contains($0.job.id) }.map(\.job.sourceId))
+        for i in sources.indices where sources[i].jobs.contains(where: { removed.contains($0.id) }) {
+            sources[i].jobs.removeAll { removed.contains($0.id) }
+        }
+        let sourceCount = sources.count
         sources.removeAll { $0.jobs.isEmpty && emptied.contains($0.id) }
         selection = selection.filter { item in
-            if case .job(let id) = item { return !submitted.contains(id) }
+            if case .job(let id) = item { return !removed.contains(id) }
             if case .source(let id) = item { return sourceItem(id) != nil }
             return true
         }
+        if sources.count != sourceCount { sourcesDidLeave() }
         await refreshJobs()
         await resumeQueue()
         // 与 Compressor 一致：提交后切到「活跃」看进度（D-108，设置里可关，D-114）。
         if !submitted.isEmpty, settings.switchesToActiveAfterStart { mode = .active }
+    }
+}
+
+private extension ExportRequest {
+    /// 同一个请求换一种作品目录冲突策略。
+    func with(_ policy: ConflictPolicy) -> ExportRequest {
+        var request = self
+        request.destination.conflictPolicy = policy
+        return request
     }
 }

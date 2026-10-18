@@ -19,6 +19,8 @@ struct SettingsView: View {
         .frame(width: 500)
         .fixedSize()
         .background(Palette.panel)
+        // 标签工具栏与主窗口的工具栏同一种中性灰，不用随壁纸染色的系统材质（D-105）。
+        .toolbarBackground(Palette.toolbar, for: .windowToolbar)
     }
 }
 

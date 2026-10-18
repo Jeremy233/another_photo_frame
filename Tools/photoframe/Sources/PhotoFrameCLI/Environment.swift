@@ -13,8 +13,9 @@ public final class TextSink: Sendable {
     public func write(_ text: String) { writer(text) }
     public func line(_ text: String = "") { writer(text + "\n") }
 
-    public static let standardOutput = TextSink { FileHandle.standardOutput.write(Data($0.utf8)) }
-    public static let standardError = TextSink { FileHandle.standardError.write(Data($0.utf8)) }
+    // 用会抛错的写入：`mcp serve` 忽略 SIGPIPE，读端关闭时这里得到 EPIPE（丢掉这次输出），而不是 Objective-C 异常。
+    public static let standardOutput = TextSink { try? FileHandle.standardOutput.write(contentsOf: Data($0.utf8)) }
+    public static let standardError = TextSink { try? FileHandle.standardError.write(contentsOf: Data($0.utf8)) }
 }
 
 /// 中断（Ctrl-C）通知。可执行文件把 SIGINT / SIGTERM 接到 `trigger()`；测试直接调用。

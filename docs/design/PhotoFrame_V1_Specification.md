@@ -333,7 +333,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 - Lightroom 勾选"最大化兼容性"导出的 HDR TIFF，结构是 SDR 主图加 SubIFD 里的 ISO 21496-1 gain map。Apple ImageIO 读不到其中的 HDR，V1 自己解析 SubIFD 还原 HDR。暂时无法解析时（例如压缩的 TIFF），按 SDR 读入，并提示"HDR 部分未读取"。
 - 32 位浮点 TIFF：支持，读入后先转成 `RGBAh` 再交给渲染引擎。
 
-**无 ICC 策略【建议】：** 默认解释为 sRGB，并在 Inspector / 日志显示 `Source profile missing — assumed sRGB`；用户可针对**源文件或任务**显式选择另一个输入色彩空间。不得把“无 profile”默默标记为准确的 sRGB 摄影数据。扫描照片尤其需要人工检查。
+**无 ICC 策略【建议】：** 默认解释为 sRGB，并在右栏 / 日志显示「源图没有 ICC，按 sRGB 解释」（警告 `source.profile_missing`）；用户可针对**源文件或任务**显式选择另一个输入色彩空间。不得把“无 profile”默默标记为准确的 sRGB 摄影数据。扫描照片尤其需要人工检查。
 
 ### 6.3 推荐处理管线（具体 API 实现待验证）
 
@@ -1093,7 +1093,7 @@ photoframe mcp serve
 - [x] **D-72** 一次 `export` 多张图、多个预设时先校验全部任务，任何一个有问题就什么都不写；校验通过后个别任务失败，其余照常完成，退出码 6。备选：有一个失败就取消剩下的任务。【已确定 2026-10-16】
 - [x] **D-73** 加了 `--overwrite` 又有两个任务指向同一个作品目录时，校验阶段报 `request.duplicate_output`，什么都不写。备选：第二个任务自动加版本后缀。【已确定 2026-10-16】
 - [x] **D-74** CLI 提供 `preview` 命令（D-08），把预览写成 sRGB PNG，文件名如 `Badlands_Panorama_preview_00_Cover.png`；目标已存在时拒绝，`--overwrite` 时替换。备选：CLI 不提供预览。【已确定 2026-10-16】（HDR 页的预览格式由 D-120 修改）
-- [x] **D-75** D-04 的源图色彩空间覆盖现在就实现：任务记录加字段，CLI 的 `export` / `preview` 加 `--assume-profile srgb|display-p3|adobe-rgb`，只对缺 ICC 的源图生效。备选：以后再做，先只警告并按 sRGB 处理。【已确定 2026-10-16】
+- [x] **D-75** D-04 的源图色彩空间覆盖现在就实现：任务记录加字段，CLI 的 `export` / `preview` 加 `--assume-profile srgb|display-p3|adobe-rgb`，只对缺 ICC 的源图生效。备选：以后再做，先只警告并按 sRGB 处理。【已确定 2026-10-16】（2026-10-18 补充 `prophoto-rgb`、`rec2020`，MCP `assumeProfile` 相同：与 GUI「按此解释」的五个选项一致，GUI 里设置的任务都能用 CLI / MCP 复现）
 - [x] **D-76** `--preset` 和库里查找预设用同一套规则：以 `.photoframe` 结尾或含 `/` 的按文件；是 UUID 的按 ID；其余按名称，不区分大小写，空格、下划线、连字符等价（`instagram-panorama` = `Instagram Panorama`）；匹配到多个时报错。只保留一份实现（预设库的 `find`）。备选：只认 ID 和文件。【已确定 2026-10-16】
 - [x] **D-77** CLI `--json` 输出里没有值的字段直接省略，不写 `null`。备选：始终写出字段，值为 `null`。【已确定 2026-10-16】
 - [x] **D-78** 本地库（预设、素材、绑定）的根目录放在 App Group 共享容器 `~/Library/Group Containers/<App Group ID>/Library/Application Support/AnotherPhotoFrame/`，GUI 开不开沙盒，GUI、CLI、MCP 都共用一个库。App Group ID 随签名方式（D-21）一起确定，现在用占位值。备选：`~/Library/Application Support/AnotherPhotoFrame/`（GUI 以后开沙盒时需要迁移）。【已确定 2026-10-16】（未签名时的回退由 D-124 修改）
@@ -1136,7 +1136,7 @@ photoframe mcp serve
 - [x] **D-110** App Sandbox 暂不开启，与签名方式（D-21）一起决定：只在 GitHub 发布可以不开，上 Mac App Store 必须开（届时导出位置用 security-scoped bookmark 保存权限）。备选：现在就按开沙盒实现。【已确定 2026-10-16】
 - [x] **D-111** V1 实现「相机图标按 EXIF 自动匹配」和「EXIF 文字字体样式」：预设加字段，渲染支持，界面接上。备选：放到 V2，V1 手动绑定相机图标、EXIF 文字只用默认字体。【已确定 2026-10-16】【已实现】
 - [x] **D-112** 强调色（选中、按钮）跟随系统设置，不用 Compressor 的紫色，也避免复制 Compressor 的视觉品牌。备选：固定一个强调色。【已确定 2026-10-16】
-- [x] **D-113** 主窗口最小宽度 1120 pt（更窄时三栏最小宽度之和放不下，会导致崩溃）。备选：更窄的窗口自动收起侧栏。【已确定 2026-10-16】
+- [x] **D-113** 主窗口最小宽度 900 pt：三栏的最小宽度之和是 880 pt（左栏 200 + 中栏 420 + 右栏 260），加上分隔线放得下。三栏改用自己封装的 AppKit 分栏（`ColumnSplit`）之后，窗口放不下记住的栏宽时左右栏按比例缩向最小宽度，不再崩溃，所以不需要原来的 1120 pt。备选：更窄的窗口自动收起侧栏。【已确定 2026-10-16；2026-10-18 改为 900 pt】
 - [x] **D-114** V1 提供 ⌘, 设置窗口，放并发数和内存预算（D-53）、「提交后是否切到活跃」等少量选项。备选：先只用默认值。【已确定 2026-10-16】【已实现】
 - [x] **D-115** GUI 工程结构：`Apps/PhotoFrameMac/project.yml` 用 XcodeGen 生成 `.xcodeproj`，生成结果一起提交（CI 和其他人不用另装 XcodeGen）；工程只负责打包 `.app`（Info.plist、entitlements、签名）；界面和状态代码放在本地包 `PhotoFrameMacKit`（`PhotoFrameMacModel` 不依赖 SwiftUI，可直接 `swift test`；`PhotoFrameMacUI` 是界面）。没有 Team ID 时不带 App Group entitlement，本地库退回同一个 Group Containers 路径（D-78）。备选：手写 Xcode 工程，界面代码直接放在 App target 里。【已确定 2026-10-16】
 - [x] **D-116** 相机规则的匹配：品牌按 EXIF Make「包含」该文字、不分大小写（`Nikon` 匹配 `NIKON CORPORATION`）；型号必须相同，但 EXIF Model 开头的品牌名可省略（`EOS R5` 匹配 `Canon EOS R5`）。带型号的规则优先于只写品牌的规则，同组内按数组顺序。备选：严格按数组顺序，第一条匹配即用。【已确定 2026-10-16】

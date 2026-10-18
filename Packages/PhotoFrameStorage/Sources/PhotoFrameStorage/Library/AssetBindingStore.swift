@@ -147,6 +147,8 @@ public struct AssetBindingStore: Sendable {
         let file = FileContents(storageFormat: Self.storageFormatVersion, presetLocal: table.presetLocal, userGlobal: table.userGlobal)
         let data: Data
         do { data = try LibraryFiles.jsonEncoder.encode(file) } catch { throw .io("编码绑定失败：\(error)") }
+        // 与预设、asset.json 相同：超过读取上限的写进去也读不回来，不写。
+        try LibraryFiles.checkWritable(data, name: fileURL.lastPathComponent, maxBytes: Self.maxFileBytes)
         try LibraryFiles.atomicWrite(data, to: fileURL)
     }
 

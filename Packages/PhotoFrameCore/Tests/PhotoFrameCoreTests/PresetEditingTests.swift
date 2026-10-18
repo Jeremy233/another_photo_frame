@@ -53,4 +53,21 @@ struct PresetFieldPathTests {
         }
         #expect(throws: PresetEditError.noEdits) { try PresetEditor.apply([], to: manifest) }
     }
+
+    @Test("[id] 先按 layerId 找：前面的图层只是用了同名素材槽时不会被改到")
+    func layerIdBeforeSlotId() throws {
+        let manifest = try JSONDecoder().decode(JSONValue.self, from: Data("""
+            {"layers": [{"layerId": "badge", "slotId": "logo", "opacity": 1}, {"layerId": "logo", "slotId": "logo-file", "opacity": 1}],
+             "assetSlots": [{"slotId": "logo"}, {"slotId": "logo-file"}]}
+            """.utf8))
+        let edited = try PresetEditor.apply([.set(PresetFieldPath(parsing: "layers[logo].opacity"), .number(0.5))], to: manifest)
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "layers[0].opacity"), in: edited) == .number(1))
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "layers[1].opacity"), in: edited) == .number(0.5))
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "layers[logo].layerId"), in: manifest) == .string("logo"))
+        let removed = try PresetEditor.apply([.remove(PresetFieldPath(parsing: "layers[logo]"))], to: manifest)
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "layers[0].layerId"), in: removed) == .string("badge"))
+        // 没有同名 layerId 时仍按 slotId 找。
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "layers[logo-file].layerId"), in: manifest) == .string("logo"))
+        #expect(try PresetEditor.value(at: PresetFieldPath(parsing: "assetSlots[logo].slotId"), in: manifest) == .string("logo"))
+    }
 }

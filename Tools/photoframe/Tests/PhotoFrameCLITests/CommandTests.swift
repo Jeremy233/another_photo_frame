@@ -347,6 +347,56 @@ struct ExportCommandTests {
         #expect(box.tree().isEmpty)
     }
 
+    @Test("提交期间按 Ctrl-C：中断处理已经登记（信号处理不会直接退出），提交后取消任务，退出码 130")
+    func interruptDuringSubmit() async throws {
+        let box = try Sandbox()
+        try box.photo("Badlands.jpg", width: 1200, height: 800)
+        let interrupts = InterruptMonitor()
+        let handledAtSubmit = Locked<Bool?>(nil)
+        let factory: CLIEnvironment.ServiceFactory = { options throws(ApplicationError) in
+            HookedService(try serviceFactory(renderer: HoldingRenderer())(options)) { _ in
+                // 信号处理按 hasHandlers 决定：有处理就取消任务，没有就立即 _exit(130)（留下临时目录）。
+                handledAtSubmit.value = interrupts.hasHandlers
+                interrupts.trigger()
+            }
+        }
+        let result = await runCLI(["export", "Badlands.jpg", "--preset", "xhs-standard", "--preset", "douyin-panorama", "-o", "Exports", "--json"],
+                                  in: box.root, interrupts: interrupts, service: factory)
+        #expect(handledAtSubmit.value == true)
+        #expect(result.status == PhotoFrameExitCode.interrupted.rawValue, "\(result.stderr.value)")
+        let jobs = try #require(try result.stdout.json()["jobs"] as? [[String: Any]])
+        #expect(jobs.count == 2 && jobs.allSatisfy { $0["status"] as? String == "canceled" })
+        #expect(box.tree().isEmpty, "\(box.tree())")
+    }
+
+    @Test("读预设时的警告：--json 时也写到 stderr（与不加 --json 时相同），stdout 的 JSON 不变")
+    func presetWarningsWithJSON() async throws {
+        let box = try Sandbox()
+        try box.photo("Badlands.jpg", width: 1200, height: 800)
+        let preset = ExportPreset(
+            name: "Spare Slot", canvas: CanvasSettings(width: 800, height: 800, background: PresetColor(hex: "#808080"), minMarginPx: 40, mode: .fit),
+            assetSlots: [AssetSlot(slotId: "spare", required: false, acceptedFormats: [.png])], output: OutputSettings(format: .png))
+        try PresetPackage.export(preset, to: box.root.appending(path: "Spare.photoframe"))
+        let warning = "[preset.unused_slot] assetSlots[0]：素材槽没有被任何图层使用：spare"
+        let export = ["export", "Badlands.jpg", "--preset", "Spare.photoframe", "-o", "Exports", "--dry-run"]
+
+        let text = await runCLI(export, in: box.root)
+        #expect(text.status == 0, "\(text.stderr.value)")
+        #expect(text.stderr.lines.contains("warning: Spare Slot: \(warning)"))
+        let json = await runCLI(export + ["--json"], in: box.root)
+        #expect(json.status == 0, "\(json.stderr.value)")
+        #expect(json.stderr.lines.contains("warning: Spare Slot: \(warning)"))
+        #expect(try json.stdout.json()["valid"] as? Bool == true)
+
+        let get = await runCLI(["preset", "get", "Spare.photoframe", "--json"], in: box.root)
+        #expect(get.status == 0, "\(get.stderr.value)")
+        #expect(get.stderr.lines == ["warning: \(warning)"])
+        #expect((try get.stdout.json()["value"] as? [String: Any])?["name"] as? String == "Spare Slot")
+        let plain = await runCLI(["preset", "get", "Spare.photoframe", "name"], in: box.root)
+        #expect(plain.stderr.lines == ["warning: \(warning)"])
+        #expect(plain.stdout.value == "\"Spare Slot\"\n")
+    }
+
     @Test("Ctrl-C：取消任务、清理临时目录，退出码 130")
     func interrupt() async throws {
         let box = try Sandbox()

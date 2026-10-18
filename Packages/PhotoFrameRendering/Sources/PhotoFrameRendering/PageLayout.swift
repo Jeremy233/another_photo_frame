@@ -27,7 +27,7 @@ struct PageLayout {
                 let p = preset.panorama
                 if canvas.mode == .crop {
                     warnings.append(RenderWarning(code: "render.crop_ignored_for_panorama",
-                                                  message: "全景模式始终不裁切（D-21），忽略画布的比例裁切设置"))
+                                                  message: "全景模式始终不裁切，忽略画布的比例裁切设置"))
                 }
                 let count: SlideCount = switch p.tileCount {
                 case .auto: .automatic
@@ -35,8 +35,14 @@ struct PageLayout {
                 }
                 let pano = try PanoramaLayout(
                     tile: canvas.size, source: source, coverMinimumMargin: canvas.minMarginPx,
-                    verticalMargin: p.verticalMarginPx, slideCount: count, maxCarouselItems: maxCarouselItems)
-                warnings += pano.warnings.map { RenderWarning(code: $0.code, message: $0.message) }
+                    verticalMargin: p.verticalMarginPx, slideCount: count, maxCarouselItems: maxCarouselItems,
+                    includesCover: p.cover)
+                warnings += pano.warnings.map { warning in
+                    if case .exceedsCarouselLimit(let total, let limit) = warning, !p.cover {
+                        return RenderWarning(code: warning.code, message: "\(total) 张切片，超过平台轮播上限 \(limit) 页")
+                    }
+                    return RenderWarning(code: warning.code, message: warning.message)
+                }
                 let pad: PresetColor = switch p.padColor {
                 case .canvasBackground: canvas.background
                 case .color(let c): c
@@ -118,15 +124,27 @@ struct PageLayout {
                     note(p, page: page.page)
                     result[page.page] = p
                 }
-                if !plan.missingPages.isEmpty {
-                    warnings.append(RenderWarning(
-                        code: "overlay.missing_pages",
-                        message: "指定页码超出实际页数：\(plan.missingPages.map(String.init).joined(separator: ", "))（D-44）",
-                        layerId: layer.layerId))
-                }
             }
         } catch {
             throw .overlay(error, layerId: layer.layerId)
+        }
+        // 要显示的页不存在时只提示（D-44）：指定页码超出实际页数（单页版式只有第 0 页），
+        // 或者图层只在封面、而全景不输出封面。
+        let existing = Set(pages.map(\.role.page))
+        switch geometry.visibility {
+        case .coverOnly where !existing.contains(0):
+            warnings.append(RenderWarning(
+                code: "overlay.missing_pages", message: "图层只显示在封面，但不输出封面", layerId: layer.layerId))
+        case .selectedSlides(let selected):
+            let missing = selected.filter { !existing.contains($0) }.sorted()
+            if !missing.isEmpty {
+                warnings.append(RenderWarning(
+                    code: "overlay.missing_pages",
+                    message: "指定页码超出实际页数：\(missing.map(String.init).joined(separator: "、"))",
+                    layerId: layer.layerId))
+            }
+        default:
+            break
         }
         return result
     }
@@ -223,8 +241,20 @@ extension PanoramaWarning {
         switch self {
         case .notLandscape(let r): "竖图或方图（比例 \(String(format: "%.3f", r))），全景切片通常没有意义"
         case .notWideEnough(let n): "照片不够宽：只需 \(n) 张切片"
-        case .exceedsCarouselLimit(let total, let limit): "封面 + 切片共 \(total) 张，超过平台轮播上限 \(limit) 张"
-        case .increasedSlideCount(let auto, let n): "手动张数 \(n) 多于自动张数 \(auto)，长卷两端补底色"
+        case .exceedsCarouselLimit(let total, let limit): "封面 + 切片共 \(total) 页，超过平台轮播上限 \(limit) 页"
+        case .increasedSlideCount(let auto, let n): "手动张数 \(n) 多于自动张数 \(auto)，长卷两端补背景色"
+        }
+    }
+}
+
+extension OverlayEdge {
+    /// 警告里的边名：上 / 下 / 左 / 右。
+    var title: String {
+        switch self {
+        case .top: "上"
+        case .bottom: "下"
+        case .left: "左"
+        case .right: "右"
         }
     }
 }
@@ -235,7 +265,7 @@ extension OverlayWarning {
         case .exceedsCanvas(let o): "图层超出画布（上 \(o.top) 左 \(o.left) 下 \(o.bottom) 右 \(o.right) px）"
         case .overlapsPhoto(let r): "图层遮挡照片：\(r)"
         case .insufficientMargin(let edge, let available, let required):
-            "\(edge.rawValue) 侧留白 \(available) px，放下图层需要 \(required) px"
+            "\(edge.title)侧留白 \(available) px，放下图层需要 \(required) px"
         }
     }
 }

@@ -18,7 +18,8 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 ```
 
 可执行文件在 `$TMPDIR/photoframe-build/release/photoframe`。建议复制到固定位置（例如 `~/bin/photoframe` 或 `/usr/local/bin/photoframe`），
-客户端配置里写**绝对路径**。
+客户端配置里写**绝对路径**。复制时连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹
+（只复制可执行文件，启动时找不到资源包会直接崩溃）。
 
 ## 配置目录白名单（D-100）
 
@@ -92,8 +93,10 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 
 ## 生命周期（§10.3）
 
-- 服务器随客户端启动，客户端关闭连接（stdin 结束）或发 SIGINT / SIGTERM 时退出。
-- **导出任务属于这个服务器进程**：`create_export_job` 立即返回 `jobId`，任务在后台执行；进程退出前取消本服务器创建的、尚未结束的任务，
+- 服务器随客户端启动，客户端关闭连接（stdin 结束）或发 SIGINT / SIGTERM 时退出。客户端不再读 stdout 时，写入失败但进程不会被
+  SIGPIPE 杀掉，stdin 结束后照常退出。
+- **导出任务属于这个服务器进程**：`create_export_job` 立即返回 `jobId`，任务在后台执行；进程退出前取消本服务器创建的、尚未结束的任务
+  （包括退出时正在提交的；退出开始后 `create_export_job` 报 `mcp.shutting_down`），
   并删除它们的临时目录（已经发布的作品目录保持完整）。所以客户端退出会中断正在进行的导出——要导出大批照片时请等任务结束。
 - 不同进程（GUI、CLI、另一个 MCP 服务器）之间不共享队列（D-13）；`get_job_status`、`cancel_export_job` 只能看到、取消本服务器创建的任务。
 
@@ -172,7 +175,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `presets` | string[]，必填，最多 64 | 预设引用；每张图 × 每个预设一个任务 |
 | `outputDirectory` | string，必填 | 输出根目录，在允许写入的目录内；不存在时创建 |
 | `overwrite` | bool，默认 false | 显式允许覆盖（D-49），见「覆盖」 |
-| `assumeProfile` | `srgb` / `display-p3` / `adobe-rgb` | 没有 ICC 的源图按什么解释（D-75） |
+| `assumeProfile` | `srgb` / `display-p3` / `adobe-rgb` / `prophoto-rgb` / `rec2020` | 没有 ICC 的源图按什么解释（D-75，与 GUI「按此解释」相同） |
 | `bindings` | object | 单任务素材绑定 `{slotId: assetId 或素材名称}`（D-14 最高优先级） |
 
 输出位置与 CLI 相同：`<outputDirectory>/<平台>/<源文件名>_<Standard|Panorama>[_vN]/00_Cover.jpg、01_Slide.jpg…`。
@@ -208,7 +211,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 |---|---|---|
 | `image` | string，必填 | 源图 |
 | `preset` | string，必填 | 预设引用 |
-| `maxEdge` | int，默认 1200 | 预览页长边，16…`--max-preview-edge`；不会大于导出尺寸 |
+| `maxEdge` | int，默认 1200（`--max-preview-edge` 更小时取它） | 预览页长边，16…`--max-preview-edge`；不会大于导出尺寸 |
 | `pages` | int[] | 只预览这些轮播页（0 = 封面，切片 k 为 k + 1，D-27），最多 12 页；默认前 12 页 |
 | `dynamicRange` | string，默认 `sdr` | `hdr` 时，导出实际写 HDR 的页是带 gain map 的 JPEG（D-106），见下 |
 | `outputDirectory` | string | 给了就写成文件（在允许写入的目录内）；省略时以图片内容直接返回（D-102） |
@@ -269,11 +272,11 @@ JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看
 | 未配置目录时拒绝 | 没有 `--allow-read` 就不读任何文件，没有 `--allow-write` 就不写任何文件 | `mcp.no_read_access`、`mcp.no_write_access` |
 | 只接受绝对路径 | 相对路径、空路径、控制字符、`.` / `..` 段都拒绝（不做规范化后再接受） | `mcp.invalid_path` |
 | 目录白名单 | 先按字面判断在不在白名单内，不在就**不碰文件系统**（不泄露文件是否存在）；再解析全部符号链接，真实路径也必须在白名单内。`/a/in-evil` 不算 `/a/in` 的子目录 | `mcp.path_not_allowed` |
-| 符号链接逃逸 | 文件链接、目录链接、悬空链接都按真实路径判断；输出目录中已存在的部分（包括平台子目录、要覆盖的作品目录）在写入前再查一次 | `mcp.path_not_allowed` |
+| 符号链接逃逸 | 文件链接、目录链接、悬空链接都按真实路径判断（输入不存在时按最深的已存在上级目录判断，与存在时报同样的错）；输出目录中已存在的部分（包括平台子目录、要覆盖的作品目录、临时目录 `.photoframe-staging`）在写入前再查一次 | `mcp.path_not_allowed` |
 | 硬链接 | 输入文件必须是普通文件且只有一个硬链接——另一个链接可能在白名单外，无法判断 | `mcp.hard_link_refused` |
 | 覆盖 | 默认绝不覆盖（作品目录加 `_v2`…，预览文件拒绝）。只有工具参数 `overwrite: true` 才覆盖；覆盖只替换本软件之前发布的作品目录（D-49 的全部检查照常进行），而且目标同样必须在允许写入的目录内 | `export.overwrite_refused`、`preview.file_exists` |
 | 资源上限 | 单文件大小、预览尺寸 / 页数 / 内联字节、未结束任务数、本次会话输出总量（见「配置」） | `mcp.file_too_large`、`mcp.limit_exceeded`、`mcp.queue_full`、`mcp.output_quota_exceeded` |
-| 安全错误信息 | 返回给客户端的所有字符串（错误、警告、结果）都经过过滤：白名单以外的绝对路径换成 `<路径已隐藏>` | |
+| 安全错误信息 | 返回给客户端的所有字符串（错误、警告、结果）都经过过滤：白名单以外的绝对路径换成 `<路径已隐藏>`。名字含空格时路径在哪里结束只能估计：白名单目录本身含空格、括号也整个保留；白名单以外的路径连同后面直到标点的词一起隐藏（宁可多藏） | |
 | 不返回素材路径 | `list_assets` 只有元信息 | |
 | 预设引用 | `preset` 参数只在预设库里按 ID / 名称查找，从不当作文件路径 | |
 | 预设库写入 | `update_preset` 只改库里已有的非内置预设，改完必须通过导入检查；MCP 不提供导入预设、导入素材、删除等操作 | |
@@ -285,7 +288,8 @@ JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看
 - 路径检查与实际读写之间存在时间差（TOCTOU）。如果有别的程序在这段时间里把白名单内的目录换成指向外面的符号链接，检查无法发现。
   威胁模型是「AI 客户端只能通过工具访问文件」，不防御本机上同时运行的恶意程序。
 - `update_preset` 写的是本地库（D-78、D-124），不在 `--allow-write` 范围内；它只能修改预设内容，不能写任意文件。
-- stdio 传输由 SDK 实现；客户端本身是用户启动的可信进程。
+- stdio 传输是本项目自己实现的（`MCPStdioTransport`：阻塞读写、不改文件描述符的模式；SDK 自带的会把 stdin / stdout 设成非阻塞并每 10 ms 轮询，
+  空闲时也占 CPU），协议由 SDK 处理；客户端本身是用户启动的可信进程。
 
 ### 本地 MCP ≠ 云端 AI 的完全隐私保证（§11.4）
 
@@ -301,6 +305,7 @@ PhotoFrame 自己**不上传任何照片或数据**，MCP 服务器也只在本�
 |---|---|
 | `mcp.invalid_arguments` | 参数缺失、类型不对，或有 schema 以外的参数 |
 | `mcp.invalid_root` | 启动参数里的目录不存在、不是目录、是相对路径或 `/`（启动失败，退出码 2） |
+| `mcp.shutting_down` | 服务器正在退出（stdin 已结束或收到 SIGINT / SIGTERM），不再创建导出任务 |
 | `preset.invalid_path`、`preset.path_not_found`、`preset.field_read_only`、`preset.invalid_edit` | 字段路径（D-93，CLI 同样使用） |
 
 未知工具名是协议错误（JSON-RPC `-32602`），不是工具结果。
@@ -313,10 +318,11 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 ```
 
 - `MCPToolTests`：进程内 MCP 客户端（SDK 的内存传输）调用每个工具的正常和错误路径，以及资源。
-- `MCPSecurityTests`：白名单、未配置目录、相对路径与 `..`、符号链接（文件、目录、悬空、平台子目录）、硬链接、覆盖授权、各项上限、
-  错误信息过滤。
+- `MCPSecurityTests`：白名单、未配置目录、相对路径与 `..`、符号链接（文件、目录、悬空、平台子目录、临时目录）、硬链接、覆盖授权、各项上限、
+  错误信息过滤（包括目录名、文件名含空格和括号）。
 - `MCPProcessTests`：子进程启动 `photoframe mcp serve`，通过真实 stdio 完成 initialize → tools/list → list_presets → create_export_job →
-  get_job_status → 文件落盘，检查 stdout 只有协议消息、关闭 stdin 后正常退出。
+  get_job_status → 文件落盘，检查 stdout 只有协议消息、关闭 stdin 后正常退出。`MCPStdioTests`：空闲时不占 CPU、不把 stdin / stdout
+  改成非阻塞；客户端不再读输出时不被 SIGPIPE 杀掉。
 - 测试图片全部用代码合成，写在系统临时目录里；测试的本地库也在临时目录里，不碰真实的 App Group 库。
 
 ## 相关决策

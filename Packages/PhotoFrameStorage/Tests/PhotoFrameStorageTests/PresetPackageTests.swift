@@ -30,12 +30,46 @@ func manifestJSON(_ preset: ExportPreset) -> String {
     String(decoding: try! PresetSchema.encode(preset), as: UTF8.self)
 }
 
+/// 改用 zlib 之前的逐字节查表实现，用来核对 ``CRC32/checksum(_:)``。
+private func bytewiseCRC32(_ data: Data) -> UInt32 {
+    let table: [UInt32] = (0..<256).map { i in
+        var c = UInt32(i)
+        for _ in 0..<8 { c = (c & 1) != 0 ? 0xEDB8_8320 ^ (c >> 1) : c >> 1 }
+        return c
+    }
+    var crc: UInt32 = 0xFFFF_FFFF
+    for byte in data {
+        crc = table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+    }
+    return crc ^ 0xFFFF_FFFF
+}
+
 @Suite("ZIP 读写")
 struct ZipTests {
     @Test("CRC-32 已知值")
     func crc() {
         #expect(CRC32.checksum(Data("123456789".utf8)) == 0xCBF4_3926)
         #expect(CRC32.checksum(Data()) == 0)
+        #expect(CRC32.checksum(Data("a".utf8)) == 0xE8B7_BE43)
+        #expect(CRC32.checksum(Data("The quick brown fox jumps over the lazy dog".utf8)) == 0x414F_A339)
+    }
+
+    @Test("CRC-32 与逐字节查表的结果相同：大块随机数据、各种长度、下标不从 0 开始的切片")
+    func crcMatchesBytewise() {
+        var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+        let data = Data((0..<((1 << 20) + 13)).map { _ -> UInt8 in
+            state ^= state << 13
+            state ^= state >> 7
+            state ^= state << 17
+            return UInt8(truncatingIfNeeded: state)
+        })
+        #expect(CRC32.checksum(data) == bytewiseCRC32(data))
+        let slice = data[5..<(data.count - 3)]
+        #expect(CRC32.checksum(slice) == bytewiseCRC32(Data(slice)))
+        for n in 0..<70 {
+            let piece = data[(data.startIndex + 1)...].prefix(n)
+            #expect(CRC32.checksum(piece) == bytewiseCRC32(piece), "长度 \(n)")
+        }
     }
 
     @Test("压缩与存储条目都能往返")

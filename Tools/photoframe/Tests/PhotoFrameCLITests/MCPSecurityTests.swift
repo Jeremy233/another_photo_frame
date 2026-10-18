@@ -205,6 +205,123 @@ struct MCPSecurityTests {
         #expect(policy.redact("standard/panorama 与 1/250s") == "standard/panorama 与 1/250s")
     }
 
+    @Test("错误信息过滤：白名单目录含空格或括号、白名单内的名字含空格、白名单外含空格的路径")
+    func redactionAwkwardNames() throws {
+        let sandbox = try Sandbox()
+        let root = MCPAccessPolicy.realPath(sandbox.root.path)!
+        let spaced = root + "/Social Exports"
+        let paren = root + "/Photos (2024)"
+        let plain = root + "/in"
+        for dir in [spaced, paren, plain] { try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true) }
+        let policy = try MCPAccessPolicy(readRoots: [plain, paren], writeRoots: [spaced])
+
+        // 白名单内的路径原样保留：目录本身含空格、括号，或之后的名字含空格、括号
+        for text in [
+            spaced, "\"\(spaced)\"", "\(spaced)/Instagram/Badlands_Standard/00_Cover.jpg",
+            "已替换之前导出的 \(spaced)/Instagram/Badlands_Standard", "输出目录不可用：\(spaced)（权限）",
+            paren, "找不到文件：\(paren)/a.jpg", "\(paren)/Trip (2024)/a.jpg",
+            "\(spaced)/a b.jpg", "\(plain)/My Photo.jpg", "\(plain)/My Photos/a b.jpg", "\(plain)/Trip (2024)/IMG (1).jpg（权限）",
+            "拒绝覆盖 \(spaced)/Instagram/a_Standard：其中含有源文件 \(plain)/a b.jpg",
+        ] {
+            #expect(policy.redact(text) == text)
+        }
+        // 白名单外含空格的路径整条隐藏（以前只隐藏第一个空格之前的部分）
+        #expect(policy.redact("找不到源文件：/Users/someone/My Pictures/a b.jpg") == "找不到源文件：<路径已隐藏>")
+        #expect(policy.redact("/Users/someone/Trip (2024)/a.jpg（权限）") == "<路径已隐藏>（权限）")
+        // 与白名单目录只是前缀相同的旁边的目录、用 .. 走出去的路径：不显示
+        #expect(policy.redact("\(spaced) 2/x.jpg") == "<路径已隐藏>")
+        #expect(policy.redact("\(spaced)abc/x.jpg") == "<路径已隐藏>")
+        #expect(policy.redact("\(plain) 2/x.jpg") == "<路径已隐藏>")
+        #expect(policy.redact("\(paren)(1)/x.jpg") == "<路径已隐藏>")
+        #expect(policy.redact("\(spaced)/../secret/x y.jpg") == "<路径已隐藏>")
+        // 白名单内的路径之后的另一个路径单独判断
+        #expect(policy.redact("\(spaced)/a b.jpg 和 /etc/x y") == "\(spaced)/a b.jpg 和 <路径已隐藏>")
+    }
+
+    @Test("白名单目录含空格和括号时，工具结果和 photoframe://access 里的路径照常显示")
+    func awkwardRootsEndToEnd() async throws {
+        let h = try await MCPHarness.start(inputName: "My Photos", outputName: "Social Exports (2024)")
+        defer { Task { await h.stop() } }
+        let url = try h.photo("My Photos/Bad lands.jpg")
+        // 服务返回的路径可能是 /var/… 形式（/private/var 的另一种写法），按真实路径比较。
+        let inspected = try await h.call("inspect_image", ["path": .string(url.path)])
+        #expect(MCPAccessPolicy.realPath(inspected["image"]?.objectValue?["path"]?.stringValue ?? "") == url.path, "\(inspected.text)")
+
+        let validated = try await h.call("validate_export", exportArguments([url], output: h.outputs))
+        let job = validated["jobs"]?.arrayValue?.first?.objectValue ?? [:]
+        #expect(MCPAccessPolicy.realPath(job["source"]?.stringValue ?? "") == url.path, "\(validated.text)")
+        let directory = job["directory"]?.stringValue ?? ""
+        #expect(directory.hasPrefix("/") && directory.hasSuffix("/Social Exports (2024)/Instagram/Bad lands_Standard"), "\(validated.text)")
+        #expect(!validated.text.contains(MCPAccessPolicy.hiddenPath), "\(validated.text)")
+
+        let created = try await h.call("create_export_job", exportArguments([url], output: h.outputs))
+        let done = try await h.waitForJob(created["jobs"]?.arrayValue?.first?.objectValue?["jobId"]?.stringValue ?? "")
+        let cover = done["outputs"]?.arrayValue?.first?.objectValue?["path"]?.stringValue ?? ""
+        #expect(MCPAccessPolicy.realPath(cover) == h.outputs.appending(path: "Instagram/Bad lands_Standard/00_Cover.jpg").path, "\(done)")
+
+        let access = try await h.client.readResource(uri: MCPResources.access)
+        let accessText = access.first?.text ?? ""
+        let json = try JSONDecoder().decode(Value.self, from: Data(accessText.utf8)).objectValue ?? [:]
+        #expect(json["readDirectories"]?.arrayValue?.first?.stringValue == h.inputs.path)
+        #expect(json["writeDirectories"]?.arrayValue?.first?.stringValue == h.outputs.path)
+        #expect(!accessText.contains(MCPAccessPolicy.hiddenPath))
+    }
+
+    @Test("输出目录下的 .photoframe-staging 经链接指向白名单外：拒绝，外面的东西不写也不清理")
+    func stagingSymlink() async throws {
+        let h = try await MCPHarness.start()
+        defer { Task { await h.stop() } }
+        let url = try h.photo("in/Badlands.jpg")
+        // 外面有一个看起来像残留临时目录的旧目录（UUID 名字、超过 24 小时）
+        let stale = h.outside.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3 * 86_400)], ofItemAtPath: stale.path)
+        try FileManager.default.createSymbolicLink(at: h.outputs.appending(path: ".photoframe-staging"), withDestinationURL: h.outside)
+
+        expectRefused(try await h.call("validate_export", exportArguments([url], output: h.outputs)),
+                      "mcp.path_not_allowed", hiding: h.outside.path)
+        expectRefused(try await h.call("create_export_job", exportArguments([url], output: h.outputs)),
+                      "mcp.path_not_allowed", hiding: h.outside.path)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: h.outside.path) == [stale.lastPathComponent])
+        #expect(try await h.call("get_job_status")["jobs"]?.arrayValue?.isEmpty == true)
+
+        // 悬空的链接同样拒绝；指向白名单内部的链接可以用
+        let sub = h.outputs.appending(path: "sub")
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: sub.appending(path: ".photoframe-staging").path,
+                                                   withDestinationPath: h.outside.path + "/missing")
+        expectRefused(try await h.call("validate_export", exportArguments([url], output: sub)), "mcp.path_not_allowed", hiding: h.outside.path)
+        let inner = h.outputs.appending(path: "inner")
+        try FileManager.default.createDirectory(at: h.outputs.appending(path: "elsewhere"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: inner.appending(path: ".photoframe-staging"),
+                                                   withDestinationURL: h.outputs.appending(path: "elsewhere"))
+        let allowed = try await h.call("validate_export", exportArguments([url], output: inner))
+        #expect(allowed.ok && allowed["valid"]?.boolValue == true, "\(allowed.text)")
+    }
+
+    @Test("不存在的输入经目录链接指向白名单外：与存在时报同样的错，不泄露外面的文件是否存在")
+    func missingInputViaDirectoryLink() async throws {
+        let h = try await MCPHarness.start()
+        defer { Task { await h.stop() } }
+        try h.photo("outside/secret.jpg")
+        let dirLink = h.inputs.appending(path: "dir")
+        try FileManager.default.createSymbolicLink(at: dirLink, withDestinationURL: h.outside)
+        for name in ["secret.jpg", "missing.jpg", "sub/missing.jpg"] {
+            let path = dirLink.appending(path: name)
+            expectRefused(try await h.call("inspect_image", ["path": .string(path.path)]), "mcp.path_not_allowed", hiding: h.outside.path)
+            expectRefused(try await h.call("validate_export", exportArguments([path], output: h.outputs)),
+                          "mcp.path_not_allowed", hiding: h.outside.path)
+        }
+        // 悬空的文件链接：不知道指向哪里，同样拒绝
+        let dangling = h.inputs.appending(path: "dangling.jpg")
+        try FileManager.default.createSymbolicLink(atPath: dangling.path, withDestinationPath: h.outside.path + "/missing.jpg")
+        expectRefused(try await h.call("inspect_image", ["path": .string(dangling.path)]), "mcp.path_not_allowed", hiding: h.outside.path)
+        // 白名单内真的不存在：照常 source.not_found
+        let missing = try await h.call("inspect_image", ["path": .string(h.inputs.appending(path: "nope/missing.jpg").path)])
+        #expect(missing.code == "source.not_found")
+    }
+
     @Test("白名单目录本身必须存在且不能是 /")
     func invalidRoots() throws {
         #expect(throws: ApplicationError.self) { try MCPAccessPolicy(readRoots: ["/"], writeRoots: []) }

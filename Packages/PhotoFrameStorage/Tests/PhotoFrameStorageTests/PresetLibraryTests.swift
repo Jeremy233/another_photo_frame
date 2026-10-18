@@ -12,6 +12,14 @@ private func code(_ body: () throws(LibraryError) -> Void) -> String? {
     }
 }
 
+/// 加快速路径之前 `find` 对 UUID 的做法：读出整个库再查。用来核对快速路径的结果。
+private func findInListing(_ presets: PresetLibrary, _ id: UUID) -> Result<PresetEntry, LibraryError> {
+    let listing = presets.list()
+    if let e = listing.entry(id) { return .success(e) }
+    if listing.unreadableIds.contains(id) { return Result { () throws(LibraryError) in try presets.entry(id) } }
+    return .failure(.presetNotFound(id))
+}
+
 @Suite("预设库")
 struct PresetLibraryTests {
     let root = TempRoot()
@@ -53,9 +61,10 @@ struct PresetLibraryTests {
         #expect(fresh.entry(created.presetId)?.preset.canvas.minMarginPx == 90)
         #expect(fresh.entry(copy2.presetId) == nil)
         #expect(fresh.warnings.isEmpty)
-        // 只有正式文件，没有残留的临时文件。
-        #expect(root.allFiles().allSatisfy { $0.hasPrefix("Presets/") && !$0.contains(".tmp-") })
-        #expect(root.allFiles().count == 2)
+        // 只有正式文件，没有残留的临时文件（库根目录的 `.lock` 是修改时用的锁文件）。
+        let files = root.allFiles().filter { $0 != ".lock" }
+        #expect(files.allSatisfy { $0.hasPrefix("Presets/") && !$0.contains(".tmp") })
+        #expect(files.count == 2)
     }
 
     @Test("内置预设只读：修改、重命名、删除都拒绝，复制后可以改")
@@ -100,6 +109,107 @@ struct PresetLibraryTests {
         _ = try presets.add(samplePreset(name: "My  Landscape!"))
         #expect(code { () throws(LibraryError) in _ = try presets.find("my-landscape") } == "library.ambiguous_preset")
         #expect(code { () throws(LibraryError) in _ = try presets.find("nope") } == "library.preset_not_found")
+    }
+
+    @Test("引用的短名为空（只有 emoji 或符号）时不按短名匹配；完整名称仍能找到")
+    func findEmptySlug() throws {
+        let camera = try presets.add(samplePreset(name: "📷"))
+        #expect(PresetLibrary.slug(for: "🎞").isEmpty && camera.slug.isEmpty)
+        for reference in ["🎞", "!!", ""] {
+            #expect(throws: LibraryError.presetReferenceNotFound(reference)) { try presets.find(reference) }
+        }
+        #expect(try presets.find("📷") == camera)
+        _ = try presets.add(samplePreset(name: "🎥"))
+        #expect(try presets.find("📷") == camera)
+    }
+
+    @Test("按 UUID 查找：快速路径与读出整个库的结果完全相同（找到、损坏、缺失、文件名不规范）")
+    func findByIdMatchesListing() throws {
+        let dir = presets.directory
+        let user = try presets.add(samplePreset(name: "User"))
+        let imported = try presets.importPackage(try PresetPackage.export(samplePreset(name: "Imported"))).entry
+
+        // 带不认识的字段：条目的警告里有文件名。
+        func addUnknownField(_ url: URL) throws {
+            var object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+            var manifest = object["preset"] as! [String: Any]
+            manifest["futureThing"] = 1
+            object["preset"] = manifest
+            try JSONSerialization.data(withJSONObject: object).write(to: url)
+        }
+        let unknown = try presets.add(samplePreset(name: "Unknown")).presetId
+        try addUnknownField(presets.fileURL(unknown))
+
+        // 读不出来：缺字段、存储格式过新、文件名与 presetId 不符、不是 JSON。
+        let corrupt = UUID()
+        try Data(#"{"storageFormat": 1, "origin": "user"}"#.utf8).write(to: presets.fileURL(corrupt))
+        let newer = UUID()
+        try Data(#"{"storageFormat": 7}"#.utf8).write(to: presets.fileURL(newer))
+        let mismatch = UUID()
+        try FileManager.default.copyItem(at: presets.fileURL(user.presetId), to: presets.fileURL(mismatch))
+        let notJSON = UUID()
+        try Data("{ not json".utf8).write(to: presets.fileURL(notJSON))
+
+        // 与内置预设同 ID 的用户文件：仍然返回内置预设。
+        let builtIn = presets.list().builtIn[3].preset
+        try LibraryPresetFile(origin: .user, createdAt: Date(timeIntervalSince1970: 0), modifiedAt: Date(timeIntervalSince1970: 0))
+            .encode(builtIn).write(to: presets.fileURL(builtIn.presetId))
+
+        // 文件名不规范（list() 读不到或读到的文件名不同）：小写 UUID、大写扩展名、符号链接、隐藏、目录。
+        let lower = try presets.add(samplePreset(name: "Lower")).presetId
+        let lowerURL = dir.appending(path: "\(lower.uuidString.lowercased()).json")
+        #expect(rename(presets.fileURL(lower).path, lowerURL.path) == 0)
+        try addUnknownField(lowerURL)
+        let upperExtension = try presets.add(samplePreset(name: "Upper")).presetId
+        #expect(rename(presets.fileURL(upperExtension).path, dir.appending(path: "\(upperExtension.uuidString).JSON").path) == 0)
+        let linked = UUID()
+        try FileManager.default.createSymbolicLink(at: presets.fileURL(linked), withDestinationURL: presets.fileURL(user.presetId))
+        let hidden = try presets.add(samplePreset(name: "Hidden")).presetId
+        #expect(chflags(presets.fileURL(hidden).path, UInt32(UF_HIDDEN)) == 0)
+        let folder = UUID()
+        try FileManager.default.createDirectory(at: presets.fileURL(folder), withIntermediateDirectories: false)
+
+        // 卷不区分大小写时（macOS 默认）正常文件走快速路径。
+        let caseInsensitive = try dir.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames == false
+        for id in [user.presetId, imported.presetId, unknown, corrupt, newer, mismatch, notJSON] {
+            #expect(presets.hasCanonicalFile(id) == caseInsensitive)
+        }
+        for id in [lower, upperExtension, linked, hidden, folder, UUID()] {
+            #expect(!presets.hasCanonicalFile(id))
+        }
+
+        let all = [user.presetId, imported.presetId, unknown, corrupt, newer, mismatch, builtIn.presetId,
+                   lower, upperExtension, linked, hidden, folder, UUID()]
+        for id in all {
+            for reference in [id.uuidString, id.uuidString.lowercased()] {
+                let found = Result { () throws(LibraryError) in try presets.find(reference) }
+                #expect(found == findInListing(presets, id), "\(reference)")
+            }
+        }
+        // 不是 JSON 时原因里带着 NSError 的 userInfo，字典的打印顺序每次可能不同（以前就这样），不逐字比较原因。
+        for r in [Result { () throws(LibraryError) in try presets.find(notJSON.uuidString) }, findInListing(presets, notJSON)] {
+            guard case .failure(.unreadableItem(let id, let reason)) = r else {
+                Issue.record("应为 library.unreadable_item：\(r)")
+                continue
+            }
+            #expect(id == notJSON.uuidString && reason.hasPrefix("DecodingError.dataCorrupted"))
+        }
+
+        // 几个结果本身。
+        #expect(try presets.find(user.presetId.uuidString) == user)
+        #expect(try presets.find(imported.presetId.uuidString).origin == .imported)
+        #expect(try presets.find(unknown.uuidString).warnings.map(\.item) == ["\(unknown.uuidString).json"])
+        #expect(try presets.find(lower.uuidString).warnings.map(\.item) == [lowerURL.lastPathComponent])
+        #expect(try presets.find(builtIn.presetId.uuidString).origin == .builtIn)
+        #expect(throws: LibraryError.unreadableItem(id: corrupt.uuidString, reason: "读写文件失败：缺少 preset 字段")) {
+            try presets.find(corrupt.uuidString)
+        }
+        for id in [newer, mismatch] {
+            #expect(code { () throws(LibraryError) in _ = try presets.find(id.uuidString) } == "library.unreadable_item")
+        }
+        for id in [upperExtension, linked, hidden, folder] {
+            #expect(throws: LibraryError.presetNotFound(id)) { try presets.find(id.uuidString) }
+        }
     }
 
     // MARK: 导入导出
@@ -180,6 +290,27 @@ struct PresetLibraryTests {
         #expect(try presets.importPackage(builtInData).entry.presetId != builtIn.presetId)
     }
 
+    @Test("不同进程同时改名和修改同一个预设：两边的修改都保留")
+    func concurrentRenameAndEdit() throws {
+        let margin = try PresetFieldPath(parsing: "canvas.minMarginPx")
+        // 两个实例模拟 GUI 与 CLI / MCP 两个进程（锁文件各自打开，与跨进程相同）。
+        let a = PresetLibrary(root: root.url, platforms: testCatalog)
+        let b = PresetLibrary(root: root.url, platforms: testCatalog)
+        for round in 0..<60 {
+            let copy = try presets.duplicate(presets.list().builtIn[0].presetId, name: "Race \(round)")
+            DispatchQueue.concurrentPerform(iterations: 2) { i in
+                if i == 0 {
+                    _ = try? a.rename(copy.presetId, to: "Renamed \(round)")
+                } else {
+                    _ = try? b.edit(copy.presetId, [.set(margin, .number(Double(100 + round)))])
+                }
+            }
+            let result = try presets.entry(copy.presetId).preset
+            #expect(result.name == "Renamed \(round)", "第 \(round) 轮改名丢了")
+            #expect(result.canvas.minMarginPx == 100 + round, "第 \(round) 轮修改丢了")
+        }
+    }
+
     @Test("逐项修改（D-93）：通过与导入相同的检查后原子写入；失败时不改文件；内置只读")
     func edit() throws {
         let copy = try presets.duplicate(presets.list().builtIn[0].presetId, name: "Mine")
@@ -204,7 +335,7 @@ struct PresetLibraryTests {
 
         let builtIn = presets.list().builtIn[0].presetId
         #expect(code { () throws(LibraryError) in _ = try presets.edit(builtIn, [.set(margin, .number(80))]) } == "library.builtin_read_only")
-        #expect(root.allFiles().filter { $0.contains(".tmp-") }.isEmpty)
+        #expect(root.allFiles().filter { $0.contains(".tmp") }.isEmpty)
     }
 
     @Test("导入失败的包不写任何文件")
@@ -266,7 +397,9 @@ struct PresetLibraryTests {
         try FileManager.default.copyItem(at: dir.appending(path: "\(good.presetId.uuidString).json"),
                                          to: dir.appending(path: "\(mismatchId.uuidString).json"))
         try Data("x".utf8).write(to: dir.appending(path: "notes.json"))
+        // 崩溃留下的临时文件：旧版本的命名和现在的命名。
         try Data("partial".utf8).write(to: dir.appending(path: ".\(UUID().uuidString).json.tmp-123"))
+        try Data("partial".utf8).write(to: dir.appending(path: ".pf-\(UUID().uuidString).tmp"))
 
         let listing = presets.list()
         #expect(listing.user.map(\.presetId) == [good.presetId])
@@ -327,6 +460,48 @@ struct PresetLibraryTests {
         #expect(try Data(contentsOf: url) == before)
         #expect(try FileManager.default.contentsOfDirectory(atPath: presets.directory.path) == [url.lastPathComponent])
         #expect(try presets.entry(entry.presetId).name == "Before")
+    }
+
+    @Test("原子写：目标文件名有 250 个字符也能写入，不留临时文件")
+    func longFileName() throws {
+        let entry = try presets.add(samplePreset())
+        let dir = root.url.appending(path: "out", directoryHint: .isDirectory)
+        let url = dir.appending(path: String(repeating: "a", count: 239) + ".photoframe")
+        #expect(url.lastPathComponent.utf16.count == 250)
+        try presets.exportPackage(entry.presetId, to: url)
+        #expect(try PresetPackage.importPreset(PresetPackage.readFile(at: url)).preset == entry.preset)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == [url.lastPathComponent])
+    }
+
+    @Test("存盘后会超过读取上限的预设不写入：导入、新增、替换都报错，已有文件不变")
+    func oversizedStoredFile() throws {
+        // manifest 本身不到 1 MiB，能通过导入检查；存盘时多一层缩进，超过 1 MiB。
+        var big = samplePreset(name: "Big")
+        big.extensions["x-padding"] = .array(Array(repeating: .number(0), count: 120_000))
+        #expect(try PresetSchema.encode(big).count < PresetLibrary.maxFileBytes)
+        let package = try PresetPackage.export(big)
+
+        do {
+            _ = try presets.importPackage(package)
+            Issue.record("应拒绝")
+        } catch {
+            #expect(error.code == "library.io")
+            #expect(error.message.hasPrefix("读写文件失败：写入 "))
+            #expect(error.message.hasSuffix(" 字节，超过上限 \(PresetLibrary.maxFileBytes) 字节"))
+        }
+        #expect(code { () throws(LibraryError) in _ = try presets.add(big) } == "library.io")
+        #expect(root.allFiles().isEmpty)
+
+        // 替换同 ID 的已有预设失败时，原文件不变。
+        var small = big
+        small.extensions = [:]
+        let existing = try presets.add(small)
+        let before = try Data(contentsOf: presets.fileURL(existing.presetId))
+        #expect(code { () throws(LibraryError) in _ = try presets.importPackage(package, onConflict: .replace) } == "library.io")
+        #expect(try Data(contentsOf: presets.fileURL(existing.presetId)) == before)
+        #expect(root.allFiles() == ["Presets/\(existing.presetId.uuidString).json"])
+        let listing = presets.list()
+        #expect(listing.user.map(\.presetId) == [existing.presetId] && listing.warnings.isEmpty)
     }
 
     @Test("原子写：并发保存同一个预设，结果总是某一次完整的内容")

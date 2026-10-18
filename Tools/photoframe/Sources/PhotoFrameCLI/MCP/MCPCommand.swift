@@ -82,8 +82,11 @@ struct MCPCommand: AsyncParsableCommand {
 
             let server = await photoframe.makeServer()
             env.interrupts.onInterrupt { Task { await server.stop() } }
+            // 客户端不再读 stdout / stderr 时，写入返回 EPIPE（发送失败），而不是被 SIGPIPE 直接杀掉：
+            // 这样 stdin 结束后照常取消本服务器的任务、清理临时目录。
+            signal(SIGPIPE, SIG_IGN)
             do {
-                try await server.start(transport: StdioTransport(output: Self.protocolOutput()))
+                try await server.start(transport: MCPStdioTransport(output: Self.protocolOutput()))
             } catch {
                 throw ctx.fail(ApplicationError(code: "mcp.transport", message: "无法启动 stdio：\(error)"), status: .internalError)
             }
