@@ -102,6 +102,8 @@ enum Palette {
     static let preview = Color(white: 0.09)
     /// 分组框、源图头部。
     static let group = Color(white: 0.176)
+    /// 自己画的选中底色（源图头部）：与列表自带的选中高亮同一种颜色。
+    static let selection = Color(nsColor: .selectedContentBackgroundColor)
     /// 分隔线、描边。
     static let line = Color.black
     /// 行图标（预设、位置、文件夹…）：所有列表和表格都是中性灰。用具体的颜色而不是层级样式 `.secondary`：

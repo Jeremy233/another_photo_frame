@@ -31,7 +31,7 @@ struct BatchList: View {
             if workbench.sources.isEmpty {
                 EmptyState(
                     title: "拖入图片", symbol: "photo.on.rectangle.angled",
-                    description: "1. 从 Finder 拖入 JPEG、PNG 或 TIFF 图片，或点下面的按钮\n2. 把左栏的预设拖到源图上，创建导出任务\n3. 选中任务，在右栏修改设置，然后点「开始批处理」",
+                    description: "1. 从 Finder 拖入 JPEG、PNG 或 TIFF 图片，或点下面的按钮\n2. 把左栏的预设拖到源图上，或选中源图（⌘A 全选）后点预设，创建导出任务\n3. 选中任务，在右栏修改设置，然后点「开始批处理」",
                     alignment: .leading
                 ) {
                     Button("添加图片…") { workbench.isAddingImages = true }
@@ -87,6 +87,8 @@ struct BatchList: View {
         // 右键菜单作用于右键点到的行（点到选中的行时是全部选中的行），与「活跃」「已完成」两个表格一致；空白处没有菜单。
         .contextMenu(forSelectionType: BatchItemID.self) { items in menu(for: items) }
         .onDeleteCommand { workbench.removeSelection() }
+        // ⌘A 选中全部源图和任务；⌘ 点按、⇧ 点按是列表自带的多选。
+        .onCommand(#selector(NSResponder.selectAll(_:))) { workbench.selectAll() }
     }
 
     @ViewBuilder private func menu(for items: Set<BatchItemID>) -> some View {
@@ -110,11 +112,19 @@ struct BatchList: View {
         }
     }
 
-    /// 源图头部用分组底色；拖动预设或图片悬停时用强调色高亮（参照 Compressor 的拖放高亮）。
+    /// 源图头部用分组底色，选中时用选中的底色（自定义的行底色盖住了列表自己的选中高亮）；
+    /// 拖动预设或图片悬停时用强调色高亮（参照 Compressor 的拖放高亮）。
     private func sourceBackground(_ id: SourceID) -> some View {
         let isTargeted = targeted == .source(id)
+        let fill: AnyShapeStyle = if isTargeted {
+            AnyShapeStyle(Color.accentColor.opacity(0.25))
+        } else if workbench.selection.contains(.source(id)) {
+            AnyShapeStyle(Palette.selection)
+        } else {
+            AnyShapeStyle(Palette.group)
+        }
         return RoundedRectangle(cornerRadius: GroupStyle.cornerRadius)
-            .fill(isTargeted ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(Palette.group))
+            .fill(fill)
             .overlay {
                 if isTargeted { RoundedRectangle(cornerRadius: GroupStyle.cornerRadius).strokeBorder(Color.accentColor, lineWidth: 2) }
             }
