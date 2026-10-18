@@ -52,3 +52,6 @@ xcuserdata/
 
 # 本机签名设置（Team ID）
 Apps/PhotoFrameMac/Config/Signing.local.xcconfig
+
+# macOS Finder 元数据（放在最后，避免被上面的例外规则重新包含）
+.DS_Store
