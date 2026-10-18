@@ -116,6 +116,9 @@ public final class Workbench {
     @ObservationIgnored var appliedJobEvents = 0
     /// 「开始批处理」正在校验或提交：这期间再点一次（或连按 ⌘↩）不重复提交。
     @ObservationIgnored var isStartingBatch = false
+    /// 退出时选了「完成后退出」：活跃的任务做完后调用 `onReadyToQuit`。
+    public internal(set) var isWaitingToQuit = false
+    @ObservationIgnored public var onReadyToQuit: (@MainActor () -> Void)?
 
     // MARK: 提示
 
