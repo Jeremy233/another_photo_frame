@@ -17,7 +17,9 @@ struct ParsingTests {
         #expect(command.overwrite && command.dryRun && command.json && command.quiet)
         #expect(command.jobs == 2)
         #expect(command.assumeProfile == nil)
-        for (value, expected) in [("srgb", AssumedProfile.srgb), ("display-p3", .displayP3), ("adobe-rgb", .adobeRGB)] {
+        for (value, expected) in [
+            ("srgb", AssumedProfile.srgb), ("display-p3", .displayP3), ("adobe-rgb", .adobeRGB), ("prophoto-rgb", .proPhotoRGB), ("rec2020", .rec2020),
+        ] {
             let parsed = try #require(try RootCommand.parseAsRoot(
                 ["export", "a.png", "--preset", "x", "-o", "o", "--assume-profile", value]) as? ExportCommand)
             #expect(parsed.assumeProfile == expected)

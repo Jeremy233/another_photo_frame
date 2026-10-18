@@ -12,7 +12,7 @@ enum SourceFileFormat: String {
         if b.count >= 4, (b[0..<4] == [0x49, 0x49, 0x2A, 0x00] || b[0..<4] == [0x4D, 0x4D, 0x00, 0x2A]) { return .tiff }
         if b.count >= 4, (b[0..<4] == [0x49, 0x49, 0x2B, 0x00] || b[0..<4] == [0x4D, 0x4D, 0x00, 0x2B]) { return .tiff } // BigTIFF
         if b.count >= 12, String(decoding: b[4..<8], as: UTF8.self) == "ftyp" {
-            throw .unsupportedFormat("HEIC / HEIF（V1 不支持，D-02）")
+            throw .unsupportedFormat("HEIC / HEIF（暂不支持）")
         }
         throw .unsupportedFormat("无法识别的文件头")
     }

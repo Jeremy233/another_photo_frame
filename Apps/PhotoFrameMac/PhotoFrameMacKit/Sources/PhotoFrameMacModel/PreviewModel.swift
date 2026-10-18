@@ -88,11 +88,35 @@ public final class PreviewModel {
     /// 有切片时才有全景长卷。
     public var hasStrip: Bool { roles.count > 1 }
 
+    /// 当前页在页面列表（`roles`）里的位置；全景长卷或还没渲染出来时为 nil。
+    /// 页码栏按它翻页：不输出封面的全景没有第 0 页，轮播位置不能直接当下标用。
+    public var pageIndex: Int? {
+        guard case .page(let n) = page else { return nil }
+        return roles.firstIndex { $0.carouselPosition == n }
+    }
+
+    /// ‹ › 能不能往这个方向翻（长卷时不能）。
+    public func canStep(_ delta: Int) -> Bool {
+        guard let index = pageIndex else { return false }
+        return roles.indices.contains(index + delta)
+    }
+
+    public func step(_ delta: Int) {
+        guard canStep(delta), let index = pageIndex else { return }
+        page = .page(roles[index + delta].carouselPosition)
+    }
+
+    /// 一份预设打开时显示的第一页：封面；不输出封面的全景是第 1 张切片。
+    static func firstPage(_ preset: ExportPreset?) -> PreviewPage {
+        guard let panorama = preset?.panorama, panorama.enabled, !panorama.cover else { return .page(0) }
+        return .page(1)
+    }
+
     func update(_ subject: PreviewSubject?) {
         guard subject != self.subject else { return }
         let sameSource = subject?.sourceId == self.subject?.sourceId
         self.subject = subject
-        if !sameSource { page = .page(0) }
+        if !sameSource { page = Self.firstPage(subject?.preset) }
         render()
     }
 
@@ -215,13 +239,13 @@ public final class PreviewModel {
                 let index = preview.pages.firstIndex { $0.role.carouselPosition == n }
                 pageImage = index.map { preview.pages[$0] }
                 pageDisplayImage = index.flatMap { rendered.images[$0] }
-                // 改参数后页数变少：回到封面。
-                if pageImage == nil, n != 0 { self.page = .page(0) }
+                // 没有这一页（改参数后页数变少，或关掉了封面）：回到第一页（有封面时是封面，否则第 1 张切片）。
+                if pageImage == nil, let first = roles.first?.carouselPosition, first != n { self.page = .page(first) }
             case .strip:
                 strip = preview.pages
                 stripImages = rendered.images
                 stripThumbnail = rendered.stripThumbnail
-                if !hasStrip { self.page = .page(0) }
+                if !hasStrip { self.page = .page(roles.first?.carouselPosition ?? 0) }
             }
         case .failure(let failure):
             error = failure
@@ -327,10 +351,11 @@ extension Workbench {
     /// 动态范围选「跟随源图」（D-125）时，预览的这张源图实际会导出成什么；不是 auto 或没有源图时为 nil。
     public var autoRangeResult: String? {
         guard let output = editedPreset?.output, output.dynamicRange == .auto,
-              let id = previewSubject?.sourceId, let hdr = sourceItem(id)?.inspection?.hdr else { return nil }
-        let sourceHasHDR = hdr.kind != "none" && (hdr.headroom.map { $0 > 1.01 } ?? true)
-        if output.effectiveDynamicRange(sourceHasHDR: sourceHasHDR) == .hdr { return "HDR（源图是 HDR）" }
-        return output.format == .jpeg ? "SDR（源图不是 HDR）" : "SDR（PNG 不支持 HDR）"
+              let id = previewSubject?.sourceId, let range = sourceItem(id)?.dynamicRange else { return nil }
+        if output.effectiveDynamicRange(sourceHasHDR: range == .hdr) == .hdr { return "HDR（源图是 HDR）" }
+        if output.format != .jpeg { return "SDR（PNG 不支持 HDR）" }
+        // 标为 HDR、但没有超出 SDR 的高光（D-62）：与后端警告一致，不说「源图不是 HDR」。
+        return range == .taggedWithoutHighlights ? "SDR（源图标为 HDR，但没有超出 SDR 的高光）" : "SDR（源图不是 HDR）"
     }
 }
 

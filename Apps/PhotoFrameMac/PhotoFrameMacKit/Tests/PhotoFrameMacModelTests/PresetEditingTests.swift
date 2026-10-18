@@ -134,6 +134,6 @@ import Testing
         // 右栏不能还是上一个预设：否则显示的、「存储」写入的都是它。
         #expect(wb.inspectorSubject == .preset(second))
         #expect(wb.presetEditor == nil)
-        #expect(wb.alert?.title == "读取预设失败")
+        #expect(wb.alert?.title == "无法读取预设")
     }
 }

@@ -39,10 +39,10 @@ swift build -c release
 
 ```text
 photoframe export <图片...> --preset <id|名称|文件> [--preset ...] --output <目录>
-                  [--assume-profile srgb|display-p3|adobe-rgb]
+                  [--assume-profile srgb|display-p3|adobe-rgb|prophoto-rgb|rec2020]
                   [--overwrite] [--dry-run] [--json] [--quiet] [--jobs <n>]
 photoframe preview <图片> --preset <id|名称|文件> --output <目录>
-                  [--assume-profile srgb|display-p3|adobe-rgb]
+                  [--assume-profile srgb|display-p3|adobe-rgb|prophoto-rgb|rec2020]
                   [--max-edge <px>] [--page <n> ...] [--overwrite] [--json]
 photoframe image inspect <图片> [--json]
 
@@ -113,7 +113,7 @@ photoframe --help | --version
 |---|---|
 | `--preset` | 可重复；重复的预设只算一次 |
 | `-o, --output` | 输出根目录，不存在时创建 |
-| `--assume-profile` | 没有 ICC 的源图按什么色彩空间解释：`srgb`、`display-p3`、`adobe-rgb`。见下文「输入色彩空间」 |
+| `--assume-profile` | 没有 ICC 的源图按什么色彩空间解释：`srgb`、`display-p3`、`adobe-rgb`、`prophoto-rgb`、`rec2020`（与 GUI 右栏「按此解释」的选项一一对应）。见下文「输入色彩空间」 |
 | `--bind <slotId>=<素材>` | 单任务素材绑定，可重复。见「素材绑定」 |
 | `--overwrite` | 作品目录已存在时替换，而不是加版本后缀。只替换本软件之前导出的目录（目录上有扩展属性 `org.anotherphotoframe.published`，里面只有本软件命名的图片）；否则拒绝，退出码 5（D-49） |
 | `--dry-run` | 只校验并列出将写出的文件，不渲染、不写任何文件（连输出目录都不创建） |
@@ -159,8 +159,9 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 
 ### 输入色彩空间：`--assume-profile`（D-75）
 
-D-04、§6.2「无 ICC 策略」：源图没有颜色描述时默认按 sRGB 解释，并警告 `source.profile_missing`；用户可以按任务指定另一个色彩空间
-（例如丢了 ICC 的 Display P3 扫描图）。
+D-04、§6.2「无 ICC 策略」：源图没有 ICC 时默认按 sRGB 解释，并警告 `source.profile_missing`（「源图没有 ICC，按 sRGB 解释」）；
+用户可以按任务指定另一个色彩空间（例如丢了 ICC 的 Display P3 扫描图）。五个取值与 GUI 右栏「色彩」里的「按此解释」相同，
+GUI 里这样设置的任务都能用 CLI 复现。
 
 - 只对**没有 ICC** 的源图生效。源图自带 ICC 时以文件为准，忽略这个选项，并警告 `source.override_ignored`（一次导出多张图时，
   有 ICC 的那几张照常按自己的 ICC 处理）。
@@ -494,7 +495,7 @@ photoframe preset get "My IG" canvas
 | D-72 | `export` 先校验全部任务，有问题就什么都不写；校验通过后个别任务失败时其余照常完成，退出码 6 |
 | D-73 | `--overwrite` 时同一请求两个任务指向同一作品目录，校验时报 `request.duplicate_output` |
 | D-74 | 保留 `preview` 命令（预览 PNG） |
-| D-75 | `--assume-profile`：只对没有 ICC 的源图生效，有 ICC 时忽略并警告 `source.override_ignored`（D-04） |
+| D-75 | `--assume-profile`：只对没有 ICC 的源图生效，有 ICC 时忽略并警告 `source.override_ignored`（D-04）；取值与 GUI「按此解释」相同 |
 | D-76 | `--preset` 匹配：文件路径，否则由 `PresetLibrary.find` 按 presetId、完整名称、短名称匹配 |
 | D-77 | JSON 里值为空的可选字段省略，不写 `null` |
 | D-93 | 预设内容逐项编辑：`preset get` / `preset set` 与 MCP `get_preset` / `update_preset` 共用字段路径和校验 |

@@ -100,7 +100,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             warnings.append(RenderWarning(code: "output.hdr_source_not_hdr", message: "源图不是 HDR，按 SDR 输出"))
         } else if !writesHDR {
             warnings.append(RenderWarning(code: "output.hdr_no_headroom",
-                                          message: "源图标为 HDR，但画面没有超过 SDR 白的内容（headroom = 1），按 SDR 输出"))
+                                          message: "源图标为 HDR，但画面没有超过 SDR 白的内容（余量 = 1），按 SDR 输出"))
         }
         let sdrMethod: SDRRenditionMethod
         switch source.hdrKind {
@@ -303,7 +303,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             throw RenderError(code: "render.unsupported_output_color_space", message: "V1 只输出 sRGB：\(output.colorSpace)")
         }
         if output.dynamicRange == .hdr, output.format != .jpeg {
-            throw RenderError(code: "render.hdr_format_unsupported", message: "HDR 输出只支持带 gain map 的 JPEG（D-17）",
+            throw RenderError(code: "render.hdr_format_unsupported", message: "HDR 输出只支持带增益图的 JPEG",
                               hint: "把输出格式改为 JPEG，或改为 SDR 输出")
         }
     }

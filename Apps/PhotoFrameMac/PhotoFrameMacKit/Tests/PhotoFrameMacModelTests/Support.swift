@@ -47,6 +47,30 @@ final class Fixture {
         return url
     }
 
+    /// 没有颜色描述的 PNG：合成后去掉 iCCP、sRGB、cICP、gAMA、cHRM 块（「缺少 ICC」的源图）。
+    func photoWithoutProfile(_ name: String, width: Int = 360, height: Int = 240) throws -> URL {
+        let url = root.appending(path: "Originals/\(name)")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.setFillColor(CGColor(srgbRed: 0.3, green: 0.5, blue: 0.7, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        try write(ctx.makeImage()!, to: url, type: .png)
+        let data = try Data(contentsOf: url)
+        var out = Data(data.prefix(8))
+        var i = 8
+        while i + 12 <= data.count {
+            let length = data[i..<i + 4].reduce(0) { $0 << 8 | Int($1) }
+            let end = i + 12 + length
+            if !["iCCP", "sRGB", "cICP", "gAMA", "cHRM"].contains(String(decoding: data[i + 4..<i + 8], as: UTF8.self)) {
+                out += data[i..<end]
+            }
+            i = end
+        }
+        try out.write(to: url)
+        return url
+    }
+
     /// 32 位浮点 TIFF（extended 线性 sRGB），右半边亮到 4 倍 SDR 白：按 D-62 第 3 条认作 HDR。
     func hdrPhoto(_ name: String, width: Int = 360, height: Int = 240) throws -> URL {
         let url = root.appending(path: "Originals/\(name)")

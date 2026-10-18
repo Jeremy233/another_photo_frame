@@ -159,6 +159,22 @@ final class OriginalImageStore {
         return longEdge > Double(limit) && longEdge * scale > threshold
     }
 
+    /// 这一档显示的是不是原图的全部像素：全分辨率，或原图本来就不超过清晰档的上限（清晰档不会放大）。
+    /// 快图可能是文件里内嵌的小缩略图，不算。
+    nonisolated static func showsAllPixels(tier: Tier, pixelSize: CGSize) -> Bool {
+        switch tier {
+        case .full: true
+        case .screen: max(pixelSize.width, pixelSize.height) <= Double(Tier.screen.maxPixelSize ?? 0)
+        case .quick: false
+        }
+    }
+
+    /// 要不要按 HDR 解码：只有 HDR 源图在 HDR 预览时才要（SDR 源图按 HDR 解码得到的像素一样，只会多解码、多缓存一份）。
+    /// 还不知道源图是不是 HDR 时按预览的动态范围。
+    nonisolated static func decodesHDR(previewHDR: Bool, sourceIsHDR: Bool?) -> Bool {
+        previewHDR && sourceIsHDR != false
+    }
+
     private func insert(_ image: CGImage, for key: Key) {
         if key.tier == .full {
             // 全分辨率很大：只留最新的一张。

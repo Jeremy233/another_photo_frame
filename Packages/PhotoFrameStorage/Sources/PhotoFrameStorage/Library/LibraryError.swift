@@ -105,7 +105,7 @@ public struct AssetRejection: Error, Hashable, Sendable, Codable {
 
     static func unsupportedType(_ ext: String) -> Self {
         .init(code: "asset.unsupported_type", message: "不支持的素材类型：\(ext.isEmpty ? "(无扩展名)" : ext)",
-              hint: "素材只支持 PNG 和受限 SVG（D-09）")
+              hint: "素材只支持 PNG 和受限 SVG")
     }
 
     static func typeMismatch(expected: AssetSlot.Format) -> Self {
@@ -127,7 +127,7 @@ public struct AssetRejection: Error, Hashable, Sendable, Codable {
 
     static func svg(_ why: String) -> Self {
         .init(code: "asset.svg_rejected", message: "SVG 素材不符合受限格式：\(why)",
-              hint: "只支持基本图形与路径（D-09），请导出为不含脚本、外部引用和文字的 SVG，或改用 PNG")
+              hint: "只支持基本图形与路径：请导出为不含脚本、外部引用和文字的 SVG，或改用 PNG")
     }
 }
 

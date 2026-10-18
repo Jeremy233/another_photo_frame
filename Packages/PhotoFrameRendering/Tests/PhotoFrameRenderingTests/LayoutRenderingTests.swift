@@ -153,8 +153,8 @@ struct LayoutRenderingTests {
                 .filter { $0.code == "panorama.exceeds_carousel_limit" }
         }
         // 3000×1000 到 1080×1440：4 张切片。
-        #expect(try limitWarnings(cover: true, limit: 4).map(\.message) == ["封面 + 切片共 5 张，超过平台轮播上限 4 张"])
+        #expect(try limitWarnings(cover: true, limit: 4).map(\.message) == ["封面 + 切片共 5 页，超过平台轮播上限 4 页"])
         #expect(try limitWarnings(cover: false, limit: 4).isEmpty)
-        #expect(try limitWarnings(cover: false, limit: 3).map(\.message) == ["切片共 4 张，超过平台轮播上限 3 张"])
+        #expect(try limitWarnings(cover: false, limit: 3).map(\.message) == ["4 张切片，超过平台轮播上限 3 页"])
     }
 }

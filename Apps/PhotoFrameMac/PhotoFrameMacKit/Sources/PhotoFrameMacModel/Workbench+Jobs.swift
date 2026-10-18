@@ -175,11 +175,21 @@ extension Workbench {
         await resumeQueue()
     }
 
+    /// 「已完成」里选中的、确实已经结束的任务（重试之后又在执行的不算）。顶栏按钮和详情都用它。
+    public var selectedFinishedJobs: Set<JobID> {
+        historySelection.filter { record($0)?.status.isTerminal == true }
+    }
+
+    /// 只有成功的任务可以重新导出；失败或已取消的用「重试」（D-52）。顶栏、右键菜单、行尾按钮都按它判断。
+    public func canReexport(_ id: JobID) -> Bool {
+        record(id)?.status == .completed
+    }
+
     /// 已完成的任务再导出一次：按原来的快照新建任务（D-52），默认加版本号、不覆盖。
-    /// 「活跃」和「已完成」共用一个选择：还没结束的任务跳过，不会再排一份一样的。
+    /// 不是成功结束的任务跳过（还没结束的不会再排一份一样的，失败的用「重试」）。
     public func reexport(_ ids: Set<JobID>) async {
         for id in ids {
-            guard let finished = record(id), finished.status.isTerminal else { continue }
+            guard canReexport(id), let finished = record(id) else { continue }
             let spec = finished.spec
             await perform("无法重新导出") {
                 let request = ExportRequest(
