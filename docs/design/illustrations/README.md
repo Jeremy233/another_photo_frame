@@ -48,8 +48,8 @@ Constraints: no text, no logos, no watermark, no UI, no arrows, no collage, no p
 从仓库根目录运行，需要 Python 3、Node.js 与 Node `sharp` 库；中文字体需可用。
 
 ```bash
-python3 docs/illustrations/source/generate_figures.py
-node docs/illustrations/source/render_figures.mjs
+python3 docs/design/illustrations/source/generate_figures.py
+node docs/design/illustrations/source/render_figures.mjs
 ```
 
 若 `sharp` 不在常规 Node 模块查找路径中，可通过环境变量 `PHOTOFRAME_SHARP_MODULE` 指定已安装模块的位置。无需调用图像生成工具即可重绘和渲染现有技术示意。
