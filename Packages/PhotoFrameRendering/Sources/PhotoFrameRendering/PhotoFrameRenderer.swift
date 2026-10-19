@@ -14,9 +14,18 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     /// 预览用的解码缓存（§12.1「预览使用降采样解码与缩略图缓存」）：GUI 改颜色、文字、图层等不影响照片尺寸的参数，
     /// 或翻到同一预设的另一页时，不再重新解码源图。导出不用它，每个任务的内存仍只取决于当前任务（D-18）。
     let previewSources = DecodedSourceCache()
+    /// 不在内置磁盘上的源图的本机副本（D-129），导出、预览、检查源图共用。
+    let staging: SourceStaging
 
-    public init() {
+    public convenience init() {
+        self.init(staging: .shared)
+        // 每个进程第一次创建渲染器时，清理崩溃的进程留下的副本目录。
+        SourceStaging.sweepSharedLeftoversOnce()
+    }
+
+    init(staging: SourceStaging) {
         context = WorkingColor.makeContext()
+        self.staging = staging
     }
 
     /// 渲染一个任务。
@@ -78,7 +87,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             ? PixelSize(width: max(1, Int((Double(needed.width) * decodeScale).rounded(.up))),
                         height: max(1, Int((Double(needed.height) * decodeScale).rounded(.up))))
             : needed
-        let decoder = SourceDecoder(context: context)
+        let decoder = SourceDecoder(context: context, staging: staging)
         let source = try cachesDecode
             ? previewSources.source(inputs.sourceURL, neededSize: neededSize, override: inputs.sourceColorOverride, decoder: decoder)
             : decoder.decode(inputs.sourceURL, neededSize: neededSize, override: inputs.sourceColorOverride)
