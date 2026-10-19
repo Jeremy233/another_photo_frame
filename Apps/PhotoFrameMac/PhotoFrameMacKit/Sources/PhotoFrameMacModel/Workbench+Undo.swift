@@ -71,7 +71,9 @@ extension Workbench {
     private func registerUndo(_ name: String, before: UndoState, key: AnyHashable?) {
         guard let undoManager, !undoManager.isUndoing, !undoManager.isRedoing, !before.hasSameContent(as: undoState()) else { return }
         let now = ContinuousClock.now
-        if let key, let last = lastUndo, last.key == key, now - last.time < .seconds(1),
+        // 只合并同一处（同一批任务或同一个预设）的修改：换了任务再改同一个字段是新的一步。
+        let subject = inspectorSubject
+        if let key, let last = lastUndo, last.key == key, last.subject == subject, now - last.time < .seconds(1),
            undoManager.canUndo, undoManager.undoActionName == name {
             // 上一步撤销回到这一串修改之前的状态，不用再记一步。
             lastUndo?.time = now
@@ -85,7 +87,7 @@ extension Workbench {
         }
         undoManager.setActionName(name)
         if explicit { undoManager.endUndoGrouping() }
-        lastUndo = key.map { (key: $0, time: now) }
+        lastUndo = key.map { (key: $0, subject: subject, time: now) }
     }
 
     /// 撤销或重做：回到 `state`，并登记反方向的一步。

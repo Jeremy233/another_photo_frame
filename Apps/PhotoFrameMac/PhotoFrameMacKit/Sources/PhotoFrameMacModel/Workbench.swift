@@ -133,8 +133,8 @@ public final class Workbench {
     @ObservationIgnored var undoNesting = 0
     /// 正在拖动滑块：拖动开始时的状态。
     @ObservationIgnored var continuousEditStart: UndoState?
-    /// 上一步撤销记录的合并键和时间（连续修改同一个字段时合成一步）。
-    @ObservationIgnored var lastUndo: (key: AnyHashable, time: ContinuousClock.Instant)?
+    /// 上一步撤销记录的合并键、改的是哪里和时间（连续修改同一处的同一个字段时合成一步）。
+    @ObservationIgnored var lastUndo: (key: AnyHashable, subject: InspectorSubject, time: ContinuousClock.Instant)?
 
     @ObservationIgnored var work: [String: BackgroundWork] = [:]
     @ObservationIgnored private var workCount = 0

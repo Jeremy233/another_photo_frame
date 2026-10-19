@@ -114,7 +114,8 @@ extension Workbench {
                     job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }
                 }
             }
-            let affected = Set(created).union(replaced)
+            // 读预设期间移除了的任务不再选中。
+            let affected = Set(created).union(replaced.filter { job($0) != nil })
             scheduleValidation(Array(affected))
             showInInspector(Set(affected.map(BatchItemID.job)))
             refreshPreview()
