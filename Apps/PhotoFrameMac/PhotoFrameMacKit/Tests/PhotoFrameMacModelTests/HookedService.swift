@@ -126,6 +126,10 @@ final class HookedService: Workbench.Service, @unchecked Sendable {
     func addSource(_ fileURL: URL) async throws(ApplicationError) -> PhotoSource { try await inner.addSource(fileURL) }
     func sources() async -> [PhotoSource] { await inner.sources() }
 
+    func relinkSource(_ id: SourceID, to fileURL: URL) async throws(ApplicationError) -> PhotoSource {
+        try await inner.relinkSource(id, to: fileURL)
+    }
+
     // MARK: 任务
 
     func submit(_ request: ExportRequest) async throws(ApplicationError) -> [JobID] { try await inner.submit(request) }

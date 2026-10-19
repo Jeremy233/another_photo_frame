@@ -344,6 +344,8 @@ import Testing
         #expect(wb.allJobs.count == 2)
     }
 
+    /// 校验有错误时整批不开始（D-72）。GUI 的修订（2026-10-19）：只是原图找不到、还有别的任务可以导出时，
+    /// 改为询问是否跳过（见 MissingSourceTests）；没有别的任务，或者还有其他错误时，照旧不开始、也不询问。
     @Test func invalidJobBlocksBatch() async throws {
         let f = try Fixture()
         await f.workbench.load()
@@ -353,7 +355,21 @@ import Testing
         try FileManager.default.removeItem(at: url)
         await wb.startBatch()
         #expect(wb.alert?.title == "无法开始批处理")
+        #expect(wb.missingPrompt == nil)
         #expect(wb.job(jobId) != nil && wb.runJobIds.isEmpty)
+
+        // 另一个任务的位置是文件、不是文件夹：除了原图找不到还有别的错误，整批不开始。
+        wb.alert = nil
+        let other = try await f.addJob("Other.jpg")
+        let file = f.root.appending(path: "not-a-folder")
+        try Data("x".utf8).write(to: file)
+        wb.selection = [.job(other)]
+        wb.setDestinationForSelection(file)
+        await wb.settle()
+        await wb.startBatch()
+        #expect(wb.alert?.title == "无法开始批处理")
+        #expect(wb.alert?.message.contains(url.lastPathComponent) == true)
+        #expect(wb.missingPrompt == nil && wb.runJobIds.isEmpty)
     }
 
     @Test func cancelRetryAndReexport() async throws {
