@@ -83,7 +83,9 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" AnotherPhotoFrame-<版本>-macOS
 
 # 命令行工具：只有一个可执行文件，平台配置编译在程序里（D-126），不再带 .bundle
 swift build -c release --package-path Tools/photoframe --scratch-path "$TMPDIR/photoframe-release"
-ditto -c -k --keepParent "$TMPDIR/photoframe-release/release/photoframe" photoframe-<版本>-macOS.zip
+BIN=$(swift build -c release --package-path Tools/photoframe --scratch-path "$TMPDIR/photoframe-release" --show-bin-path)
+# 不加 --keepParent：zip 里只有 photoframe 一个文件，不带上级文件夹
+(cd "$BIN" && ditto -c -k photoframe "$OLDPWD/photoframe-<版本>-macOS.zip")
 ```
 
 上传到 GitHub Release 之前，把两个 zip 解压到另一个目录检查：应用再运行一次 `codesign --verify --deep --strict`；命令行工具解压后只有 `photoframe` 一个文件，在那个目录里运行 `./photoframe --version` 和 `./photoframe preset list`。`spctl -a` 对 ad-hoc 签名的应用总是返回 `rejected`，这是正常的：没有经过 Apple 公证。用户第一次打开时，到「系统设置 → 隐私与安全性」点「仍要打开」，或者运行 `xattr -dr com.apple.quarantine`。
