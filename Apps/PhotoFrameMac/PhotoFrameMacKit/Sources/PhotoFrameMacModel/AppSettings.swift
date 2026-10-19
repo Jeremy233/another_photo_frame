@@ -5,7 +5,7 @@ import PhotoFrameApplication
 public struct AppSettings: Hashable, Sendable, Codable {
     /// 点「开始批处理」后切到「活跃」（D-108 默认切到，与 Compressor 一致）。
     public var switchesToActiveAfterStart = true
-    /// 同时执行的任务数；nil 为自动（性能核数的一半，1…4，D-53）。
+    /// 同时执行的任务数；nil 为自动（性能核数的一半，1…4，D-53）。最多 8，且不超过本机核数（D-128）。
     public var maxConcurrentJobs: Int?
     /// 内存预算（GiB）；nil 为自动（物理内存的一半，D-53）。
     public var memoryBudgetGiB: Int?
@@ -17,16 +17,18 @@ public struct AppSettings: Hashable, Sendable, Codable {
         reviewsWarningsBeforeStart: Bool = true
     ) {
         self.switchesToActiveAfterStart = switchesToActiveAfterStart
-        self.maxConcurrentJobs = maxConcurrentJobs
+        self.maxConcurrentJobs = maxConcurrentJobs.map(QueueConfiguration.clampedMaxConcurrentJobs)
         self.memoryBudgetGiB = memoryBudgetGiB
         self.reviewsWarningsBeforeStart = reviewsWarningsBeforeStart
     }
 
-    public var effectiveMaxConcurrentJobs: Int { maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs }
+    public var effectiveMaxConcurrentJobs: Int {
+        maxConcurrentJobs.map(QueueConfiguration.clampedMaxConcurrentJobs) ?? QueueConfiguration.defaultMaxConcurrentJobs
+    }
     public var effectiveMemoryBudgetBytes: Int64 { memoryBudgetGiB.map { Int64($0) << 30 } ?? QueueConfiguration.defaultMemoryBudgetBytes }
 
-    /// 设置窗口里可选的并发数。
-    public static let concurrencyChoices = Array(1...8)
+    /// 设置窗口里可选的并发数：1 到 8，且不超过本机核数（D-128）。
+    public static var concurrencyChoices: [Int] { Array(1...QueueConfiguration.maxConcurrentJobsLimit) }
 
     /// 可选的内存预算：2 的幂，不超过物理内存。
     public static var memoryChoicesGiB: [Int] {
@@ -38,7 +40,8 @@ public struct AppSettings: Hashable, Sendable, Codable {
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switchesToActiveAfterStart = try c.decodeIfPresent(Bool.self, forKey: .switchesToActiveAfterStart) ?? true
-        maxConcurrentJobs = try c.decodeIfPresent(Int.self, forKey: .maxConcurrentJobs)
+        // 以前存下的值可能超过本机的上限（D-128 之前可以选到 8）：读的时候截断，设置窗口里显示的就是实际用的值。
+        maxConcurrentJobs = try c.decodeIfPresent(Int.self, forKey: .maxConcurrentJobs).map(QueueConfiguration.clampedMaxConcurrentJobs)
         memoryBudgetGiB = try c.decodeIfPresent(Int.self, forKey: .memoryBudgetGiB)
         reviewsWarningsBeforeStart = try c.decodeIfPresent(Bool.self, forKey: .reviewsWarningsBeforeStart) ?? true
     }

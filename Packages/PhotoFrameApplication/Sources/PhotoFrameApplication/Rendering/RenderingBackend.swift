@@ -19,6 +19,8 @@ import UniformTypeIdentifiers
 /// - **文件名**：渲染层写 `00.<ext>`、`01.<ext>`…，发布时由 `AtomicExporter` 按角色改名为 `00_Cover.jpg`、
 ///   `01_Slide.jpg`…（D-46～D-48）。
 /// - **错误**：`RenderError` 转成同 code 的 `ApplicationError`；取消原样抛出。
+/// - **线程**：渲染、预览、检查源图和预览编码都是同步的长时间工作，在 `RenderThread` 的专用线程上做，
+///   不占协作线程池（D-128）：同时执行的任务数 ≥ 核数时，预览、进度事件和界面上的其他异步工作照常进行。
 public struct RenderingBackend: JobRenderer, ImageAnalyzer {
     public let renderer: PhotoFrameRenderer
     public let assets: any AssetProvider
@@ -76,7 +78,8 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
     public func inspect(_ fileURL: URL) async throws -> SourceInspection {
         let info: InspectedSource
         do {
-            info = try renderer.inspect(fileURL)
+            let renderer = self.renderer
+            info = try await RenderThread.run { _ in try renderer.inspect(fileURL) }
         } catch {
             throw Self.mapped(error)
         }
@@ -111,7 +114,7 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
                 job: job, size: .maxLongEdge(options.maxLongEdge), pages: options.pages,
                 color: options.dynamicRange == .sdr ? .sRGB : .gainMap))
             try Task.checkCancellation()
-            let pages = try previewImages(result.pages)
+            let pages = try await RenderThread.run { [self] _ in try previewImages(result.pages) }
             return ExportPreview(pages: pages, roles: result.roles.map(JobOutputRole.init),
                                  warnings: result.warnings.map(ApplicationWarning.init))
         } catch {

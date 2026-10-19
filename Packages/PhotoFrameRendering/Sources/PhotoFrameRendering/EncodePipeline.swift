@@ -34,12 +34,7 @@ final class EncodePipeline: @unchecked Sendable {
     ///   - priority: 后台线程的优先级跟随渲染任务。
     init(pageBytes: Int, maxDepth: Int = 4, byteBudget: Int = 64 << 20, priority: TaskPriority = Task.currentPriority) {
         let depth = max(1, min(maxDepth, byteBudget / max(pageBytes, 1)))
-        let qos: DispatchQoS.QoSClass = switch priority.rawValue {
-        case TaskPriority.high.rawValue...: .userInitiated
-        case TaskPriority.medium.rawValue...: .default
-        case TaskPriority.low.rawValue...: .utility
-        default: .background
-        }
+        let qos = DispatchQoS.QoSClass(priority)
         self.depth = depth
         queues = (0..<depth).map {
             DispatchQueue(label: "PhotoFrameRendering.encode.\($0)", qos: DispatchQoS(qosClass: qos, relativePriority: 0))

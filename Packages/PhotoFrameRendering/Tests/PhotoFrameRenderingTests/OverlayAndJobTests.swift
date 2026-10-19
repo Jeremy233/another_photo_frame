@@ -378,12 +378,15 @@ struct JobInterfaceTests {
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let job = RenderJob(sourceURL: src, preset: makePreset(panorama: PanoramaSettings(enabled: true)), outputDirectory: out)
         let renderer = PhotoFrameRenderer()
+        // 进度回调在渲染线程上调用，不在 Task 里（D-128），通过任务句柄取消。
+        let handle = LockedValue<Task<RenderResult, any Error>?>(nil)
         let task = Task {
             try await renderer.render(job: job) { p in
                 // 写出第一张之后取消。
-                if p.stage == .encoding, p.completedOutputs == 1 { withUnsafeCurrentTask { $0?.cancel() } }
+                if p.stage == .encoding, p.completedOutputs == 1 { handle.value?.cancel() }
             }
         }
+        handle.value = task
         await #expect(throws: CancellationError.self) { _ = try await task.value }
         #expect(try FileManager.default.contentsOfDirectory(atPath: out.path).isEmpty)
     }

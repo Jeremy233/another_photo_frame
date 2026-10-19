@@ -26,7 +26,11 @@ result.warnings     // [RenderWarning]：稳定 code + 中文 message + 页码 /
 - `RenderJob.assets(from: SlotResolution, fileURL:)` 把 `SlotResolver` 的结果和素材库路径拼成素材表。
 - 渲染器只把成品写进 `outputDirectory`，文件名固定：单页／封面 `00.<ext>`，切片 k 为 `<k+1 两位数>.<ext>`。
   命名、冲突处理、校验后原子发布由 PhotoFrameApplication 负责（§9.2）。目标文件已存在时不覆盖，报 `render.write_failed`。
-- 取消：在阶段之间和每一页之前检查 `Task.isCancelled`；取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
+- 线程（D-128）：`render(job:)`、`renderPreview(_:)` 在 `RenderThread` 的专用线程上执行（每次一条串行 `DispatchQueue`，GCD 的 overcommit 线程），
+  不占 Swift 的协作线程池；`progress` 回调也在那个线程上调用。以前同步渲染直接在 `async` 函数里做，同时执行的任务数 ≥ 核数时协作线程被占满，
+  预览、进度事件要等某个任务结束。专用线程的优先级跟随调用方的 Task。
+- 取消：所在 Task 被取消时设置 `RenderCancellation`（专用线程读不到 `Task.isCancelled`），在阶段之间和每一页之前检查；
+  取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
 - 错误：`RenderError(code, message, hint)`，code 稳定（`render.*`，几何与图层错误沿用 Core 的 `geometry.*`、`overlay.*`）。
 
 预览（§11.2 `renderPreview`，详见 2.7）：
@@ -138,7 +142,7 @@ probe（读属性：尺寸、方向）
 ### 2.6 编码与元数据（§6.8、D-06）
 
 - SDR：CI 把页面渲染成 sRGB 8-bit（超出 sRGB 的颜色逐通道截断），再交给 ImageIO 编码（坑 3：只有 sRGB 8-bit 输入时 ImageIO 不改像素）。JPEG 质量 = `quality / 100`（默认 Q100）。
-- 多页导出时，CI 渲染仍由任务线程按页顺序做；ImageIO 编码、补 ICC 和写文件交给后台串行队列（`EncodePipeline`），渲染下一页时前几页还在编码。同时编码的页数最多 4 页，在途的 8-bit 位图合计不超过 64 MB（画布很大时退回逐页）。结果按页序取回：进度、警告、出错时报的错误和取消、出错时的清理都与逐页执行相同，写出的字节也相同。后台用串行队列（GCD 的 overcommit 线程），协作线程池被同时进行的任务占满时编码也一定有线程（全局并发队列在这种情况下会死锁，测试覆盖）。HDR 页面（CI 一步完成渲染和编码）仍逐页做。
+- 多页导出时，CI 渲染仍由渲染线程按页顺序做；ImageIO 编码、补 ICC 和写文件交给后台串行队列（`EncodePipeline`），渲染下一页时前几页还在编码。同时编码的页数最多 4 页，在途的 8-bit 位图合计不超过 64 MB（画布很大时退回逐页）。结果按页序取回：进度、警告、出错时报的错误和取消、出错时的清理都与逐页执行相同，写出的字节也相同。后台用串行队列（GCD 的 overcommit 线程），协作线程池被同时进行的任务占满时编码也一定有线程（全局并发队列在这种情况下会死锁，测试覆盖）。HDR 页面（CI 一步完成渲染和编码）仍逐页做。
 - HDR（只支持 JPEG）：`CIContext.jpegRepresentation` + `.hdrImage`，HDR 图显式 `settingContentHeadroom(源 headroom)`，`.hdrGainMapAsRGB`（坑 4、5、17）。源图不是 HDR 时按 SDR 输出并警告 `output.hdr_source_not_hdr`；HDR + PNG 报 `render.hdr_format_unsupported`。
 - ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
 - 元数据默认全部不写出；方向不写（像素已校正）。三个独立开关（预设 `output.metadata`）：
@@ -184,6 +188,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
 | `DecodeTests` | 坏标签不藏 ICC、BigTIFF 的 ICC、切片与整份数据结果相同、兼容 TIFF 查表还原与逐采样逐位相同、峰值取值与排序相同、降级时警告不重复、Rec. 2020 覆盖也做坑 20 改写、灰度图诊断、非 ASCII ICC 标签、快门 / 光圈 / ISO 文字、损坏的 EXIF 数值 |
 | `EncodePipelineTests` | 任务数多于核数时不卡住且字节相同、中间一页写不出时报这一页并清理、在途页数按画布大小限制 |
+| `RenderThreadTests` | D-128：比核数多的渲染都停住时协作线程池仍空闲（预览、其他异步工作照常完成）、停住时取消、开始前已取消、优先级跟随 Task |
 | `RestrictedSVGTests` | 极大数值不崩溃、currentColor、display / visibility、组透明度、长前言后的 DOCTYPE 与 UTF-16 实体、#RRGGBBAA 与 rgb(%)、颜色警告、斜接上限、嵌套 svg 警告 |
 | `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange 与 gainMap、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 

@@ -249,6 +249,34 @@ import Testing
         #expect(again.settings.maxConcurrentJobs == 2)
     }
 
+    @Test("并发数设置最多 8，且不超过本机核数（D-128）：以前存下的更大的值读回时截断，队列也按上限执行")
+    func concurrencySettingIsCappedAtTheCoreCount() async throws {
+        let limit = QueueConfiguration.maxConcurrentJobsLimit
+        #expect(limit == min(8, ProcessInfo.processInfo.activeProcessorCount))
+        #expect(AppSettings.concurrencyChoices == Array(1...limit))
+        let saved = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"maxConcurrentJobs": 64, "memoryBudgetGiB": 4}"#.utf8))
+        #expect(saved.maxConcurrentJobs == limit)
+        #expect(saved.memoryBudgetGiB == 4)
+        #expect(AppSettings(maxConcurrentJobs: 64).maxConcurrentJobs == limit)
+        #expect(AppSettings(maxConcurrentJobs: 1).maxConcurrentJobs == 1)
+
+        let f = try Fixture()
+        f.settingsStore.save(saved)
+        let wb = Workbench(service: f.hooks, locationStore: f.store, settingsStore: f.settingsStore, debounce: .zero)
+        await wb.load()
+        #expect(wb.settings.maxConcurrentJobs == limit, "设置窗口显示截断后的值")
+        #expect(await f.service.queue.configuration.maxConcurrentJobs == limit)
+
+        // 直接改成超过上限的值（设置窗口不会给出这种选项）：队列仍按上限。
+        wb.settings.maxConcurrentJobs = 64
+        await wb.settle()
+        #expect(wb.settings.effectiveMaxConcurrentJobs == limit)
+        #expect(await f.service.queue.configuration.maxConcurrentJobs == limit)
+        wb.settings.maxConcurrentJobs = 1
+        await wb.settle()
+        #expect(await f.service.queue.configuration.maxConcurrentJobs == 1)
+    }
+
     @Test func startBatchExportsAndClearsCurrent() async throws {
         let f = try Fixture()
         await f.workbench.load()

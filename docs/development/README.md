@@ -19,7 +19,7 @@
 
 | 模块 | 状态 |
 |---|---|
-| 产品与技术规范（[PhotoFrame_V1_Specification.md](../design/PhotoFrame_V1_Specification.md)，决策 D-01…D-127） | 审阅中（Draft） |
+| 产品与技术规范（[PhotoFrame_V1_Specification.md](../design/PhotoFrame_V1_Specification.md)，决策 D-01…D-128） | 审阅中（Draft） |
 | `PhotoFrameCore` | ✅ 已完成 |
 | `PhotoFrameStorage` | ✅ 已完成 |
 | `PhotoFrameRendering`（[渲染管线](RenderingPipeline.md)） | ✅ 已完成 |
