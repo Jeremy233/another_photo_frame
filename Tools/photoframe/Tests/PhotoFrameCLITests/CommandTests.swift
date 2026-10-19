@@ -377,7 +377,7 @@ struct ExportCommandTests {
             name: "Spare Slot", canvas: CanvasSettings(width: 800, height: 800, background: PresetColor(hex: "#808080"), minMarginPx: 40, mode: .fit),
             assetSlots: [AssetSlot(slotId: "spare", required: false, acceptedFormats: [.png])], output: OutputSettings(format: .png))
         try PresetPackage.export(preset, to: box.root.appending(path: "Spare.photoframe"))
-        let warning = "[preset.unused_slot] assetSlots[0]：素材槽没有被任何图层使用：spare"
+        let warning = "[preset.unused_slot] assetSlots[0]：素材槽没有被任何装饰使用：spare"
         let export = ["export", "Badlands.jpg", "--preset", "Spare.photoframe", "-o", "Exports", "--dry-run"]
 
         let text = await runCLI(export, in: box.root)

@@ -346,8 +346,8 @@ import Testing
         let messages = try #require(wb.job(a)?.issues).map(\.message)
         #expect(messages.contains { $0.contains("「水印」") }, "\(messages)")
         #expect(!messages.contains { $0.contains("watermark") || $0.contains("signature") }, "\(messages)")
-        let issue = JobIssue(isError: false, code: "slot.optional_missing", message: "跳过图层「signature-2」和「signature」", hint: nil)
-        #expect(issue.naming(preset.layerTitles).message == "跳过图层「签名 2」和「签名」")
+        let issue = JobIssue(isError: false, code: "slot.optional_missing", message: "跳过装饰「signature-2」和「signature」", hint: nil)
+        #expect(issue.naming(preset.layerTitles).message == "跳过装饰「签名 2」和「签名」")
     }
 
     // MARK: T9 修改建议

@@ -111,14 +111,14 @@ enum OverlayContent {
         guard size.isPositive, size.width <= 16384, size.height <= 16384,
               let ctx = CGContext(data: nil, width: size.width, height: size.height, bitsPerComponent: 16, bytesPerRow: 0,
                                   space: WorkingColor.space, bitmapInfo: info)
-        else { throw RenderError(code: "render.overlay_too_large", message: "图层尺寸无效或过大：\(size)") }
+        else { throw RenderError(code: "render.overlay_too_large", message: "装饰尺寸无效或过大：\(size)") }
         ctx.setShouldAntialias(true)
         ctx.setShouldSmoothFonts(false)
         ctx.setAllowsFontSubpixelPositioning(true)
         ctx.interpolationQuality = .high
         body(ctx)
         guard let image = ctx.makeImage() else {
-            throw RenderError(code: "render.overlay_failed", message: "图层绘制失败")
+            throw RenderError(code: "render.overlay_failed", message: "装饰绘制失败")
         }
         return CIImage(cgImage: image)
     }
@@ -168,7 +168,7 @@ struct TextBlock {
         let naturalWidth = width.rounded(.up) + 2 * Double(pad)
         let naturalHeight = (lineHeight * Double(lines.count)).rounded(.up) + 2 * Double(pad)
         guard naturalWidth.isFinite, naturalHeight.isFinite, naturalWidth < Double(1 << 31), naturalHeight < Double(1 << 31) else {
-            throw RenderError(code: "render.overlay_too_large", message: "文字图层尺寸无效或过大")
+            throw RenderError(code: "render.overlay_too_large", message: "文字装饰尺寸无效或过大")
         }
         let natural = PixelSize(width: max(1, Int(naturalWidth)), height: max(1, Int(naturalHeight)))
         return (TextBlock(lines: lines, font: font, lineHeightPx: lineHeight, padding: pad, naturalSize: natural), notes)

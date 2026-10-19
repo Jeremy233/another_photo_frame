@@ -193,13 +193,13 @@ public enum OverlayError: Error, Hashable, Sendable {
 
     public var message: String {
         switch self {
-        case .invalidSize(let s): "图层尺寸必须为正：\(s)"
-        case .invalidMaximumSize(let s): "图层最大尺寸必须为正：\(s)"
+        case .invalidSize(let s): "装饰尺寸必须为正：\(s)"
+        case .invalidMaximumSize(let s): "装饰最大尺寸必须为正：\(s)"
         case .centerAnchorOutside: "居中锚点不能放在照片外侧；请改为内侧或选择其他锚点"
         case .invalidPage(let p): "页码不能为负：\(p)"
         case .invalidCanvas(let s): "画布尺寸必须为正：\(s)"
         case .invalidPhotoRect(let r): "照片矩形必须为正且位于画布内：\(r)"
-        case .missingSize: "图层没有 sizePx，渲染时也没有提供内容尺寸"
+        case .missingSize: "装饰没有 sizePx，渲染时也没有提供内容尺寸"
         }
     }
 }

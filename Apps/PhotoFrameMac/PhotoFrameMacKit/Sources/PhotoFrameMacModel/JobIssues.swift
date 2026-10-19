@@ -18,22 +18,22 @@ public struct JobIssue: Hashable, Sendable, Identifiable {
         case "panorama.exceeds_carousel_limit": "在「全景」里减少切片张数，或取消「封面」"
         case "panorama.increased_slide_count": "把「全景」的「张数」改回自动，长卷两端就不会补背景色"
         case "overlay.exceeds_canvas", "overlay.insufficient_margin":
-            "在「图层」里调小「水平偏移」「垂直偏移」，或在「画布」里加大「边框宽度」"
-        case "overlay.overlaps_photo": "把图层的「参照」改为照片外侧，或在「画布」里加大「边框宽度」"
-        case "overlay.missing_pages": "在「图层」里把「显示在」改成实际存在的页"
-        case "overlay.font_missing": "在「图层」里清空「字体」改用系统字体，或先安装这个字体"
-        case "overlay.metadata_missing": "源图没有这些 EXIF 字段，对应部分会留空；可以在「图层」里改「模板」"
+            "在「装饰」里调小「水平偏移」「垂直偏移」，或在「画布」里加大「边框宽度」"
+        case "overlay.overlaps_photo": "把装饰的「参照」改为照片外侧，或在「画布」里加大「边框宽度」"
+        case "overlay.missing_pages": "在「装饰」里把「显示在」改成实际存在的页"
+        case "overlay.font_missing": "在「装饰」里清空「字体」改用系统字体，或先安装这个字体"
+        case "overlay.metadata_missing": "源图没有这些 EXIF 字段，对应部分会留空；可以在「装饰」里改「模板」"
         case "overlay.asset_missing", "overlay.empty_text", "overlay.missing_text":
-            "在「图层」里给这个图层绑定「素材」或填写「文字」，不需要就取消「启用」"
+            "在「装饰」里给这个装饰绑定「素材」或填写「文字」，不需要就取消「启用」"
         case "platform.hdr_unverified": "上传后的 HDR 效果尚未实测；不确定时把「输出」的「动态范围」改为 SDR"
         case "output.hdr_source_not_hdr", "output.hdr_no_headroom": "把「输出」的「动态范围」改为「跟随源图」，就不会再提示"
         case "output.metadata_dropped": "保留 HDR 时不能写入这些元数据；需要元数据时把「动态范围」改为 SDR"
         case "source.profile_missing": "颜色不对时选中源图，在右栏「色彩」里的「按此解释」选择色彩空间"
         case "source.override_ignored": "「按此解释」只用于没有 ICC 的源图，这张源图按自带的 ICC 解释"
         case "render.crop_ignored_for_panorama": "全景切片不裁切；需要裁切时在「全景」里取消「全景分割」"
-        case "slot.optional_missing": "把左栏「素材」里的素材拖到「图层」的「素材」行上，或取消这个图层的「启用」"
-        case "slot.stale_binding": "在「图层」的「素材」里重新选择素材"
-        case "slot.missing_required": "把左栏「素材」里的素材拖到「图层」的「素材」行上"
+        case "slot.optional_missing": "把左栏「素材」里的素材拖到「装饰」的「素材」行上，或取消这个装饰的「启用」"
+        case "slot.stale_binding": "在「装饰」的「素材」里重新选择素材"
+        case "slot.missing_required": "把左栏「素材」里的素材拖到「装饰」的「素材」行上"
         default: nil
         }
     }

@@ -195,7 +195,7 @@ public struct RenderWarning: Hashable, Sendable, Codable, CustomStringConvertibl
     public var description: String {
         var s = "[\(code)] \(message)"
         if let page { s += "（第 \(page) 页）" }
-        if let layerId { s += "（图层 \(layerId)）" }
+        if let layerId { s += "（装饰 \(layerId)）" }
         return s
     }
 }
@@ -287,6 +287,6 @@ public struct RenderError: Error, Hashable, Sendable, CustomStringConvertible {
     }
 
     static func overlay(_ e: OverlayError, layerId: String) -> RenderError {
-        RenderError(code: e.code, message: "图层 \(layerId)：\(e.message)")
+        RenderError(code: e.code, message: "装饰 \(layerId)：\(e.message)")
     }
 }

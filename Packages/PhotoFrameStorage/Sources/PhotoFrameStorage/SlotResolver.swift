@@ -122,13 +122,13 @@ public enum SlotResolutionWarning: Hashable, Sendable {
 
     public var message: String {
         switch self {
-        case .optionalSlotMissing(let s, let layers): "可选素材槽\(quoted(s))没有绑定素材，跳过图层\(quoted(layers))"
+        case .optionalSlotMissing(let s, let layers): "可选素材槽\(quoted(s))没有绑定素材，跳过装饰\(quoted(layers))"
         case .staleBinding(let s, let scope, _): "素材槽\(quoted(s))的\(scope.label)绑定指向已删除的素材"
         case .incompatibleFormat(let s, let scope, _, let f): "素材槽\(quoted(s))的\(scope.label)绑定是 \(f.rawValue)，这个素材槽不接受这种格式"
         case .unusedJobBinding(let s): "单任务绑定的素材槽\(quoted(s))没有被预设使用"
-        case .cameraMatchUnbound(let s, let layer): "图层\(quoted(layer))按相机匹配到素材槽\(quoted(s))，但它没有可用的素材，改用下一个候选"
-        case .cameraUnknown(let layers): "源图没有相机品牌和型号，图层\(quoted(layers))使用默认素材"
-        case .cameraNoMatch(let layer): "这台相机没有匹配的相机图标，跳过图层\(quoted(layer))"
+        case .cameraMatchUnbound(let s, let layer): "装饰\(quoted(layer))按相机匹配到素材槽\(quoted(s))，但它没有可用的素材，改用下一个候选"
+        case .cameraUnknown(let layers): "源图没有相机品牌和型号，装饰\(quoted(layers))使用默认素材"
+        case .cameraNoMatch(let layer): "这台相机没有匹配的相机图标，跳过装饰\(quoted(layer))"
         }
     }
 }
