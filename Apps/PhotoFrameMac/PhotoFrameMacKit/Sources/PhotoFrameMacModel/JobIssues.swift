@@ -18,8 +18,8 @@ public struct JobIssue: Hashable, Sendable, Identifiable {
         case "panorama.exceeds_carousel_limit": "在「全景」里减少切片张数，或取消「封面」"
         case "panorama.increased_slide_count": "把「全景」的「张数」改回自动，长卷两端就不会补背景色"
         case "overlay.exceeds_canvas", "overlay.insufficient_margin":
-            "在「图层」里调小「水平偏移」「垂直偏移」，或在「画布」里加大「最小边距」"
-        case "overlay.overlaps_photo": "把图层的「参照」改为照片外侧，或在「画布」里加大「最小边距」"
+            "在「图层」里调小「水平偏移」「垂直偏移」，或在「画布」里加大「边框宽度」"
+        case "overlay.overlaps_photo": "把图层的「参照」改为照片外侧，或在「画布」里加大「边框宽度」"
         case "overlay.missing_pages": "在「图层」里把「显示在」改成实际存在的页"
         case "overlay.font_missing": "在「图层」里清空「字体」改用系统字体，或先安装这个字体"
         case "overlay.metadata_missing": "源图没有这些 EXIF 字段，对应部分会留空；可以在「图层」里改「模板」"

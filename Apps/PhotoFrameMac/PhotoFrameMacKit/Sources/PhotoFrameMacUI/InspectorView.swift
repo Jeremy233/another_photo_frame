@@ -609,7 +609,7 @@ private struct CanvasTab: View {
                 }
             }
             ColorField(title: "背景色", value: workbench.binding(\.canvas.background))
-            IntField(title: "最小边距", value: workbench.binding(\.canvas.minMarginPx))
+            IntField(title: "边框宽度", value: workbench.binding(\.canvas.minMarginPx))
         }
     }
 
