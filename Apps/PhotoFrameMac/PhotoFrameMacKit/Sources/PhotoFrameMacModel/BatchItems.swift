@@ -36,6 +36,14 @@ public struct SourceItem: Identifiable, Hashable, Sendable {
     /// 没有 ICC 时按什么色彩空间解释（D-04、D-75）；nil 按 sRGB 并警告。
     public var colorOverride: SourceColorOverride?
     public var jobs: [DraftJob]
+    /// 原图不见了（移走、改名、删除，或所在的卷断开）。任务和改动都留着，文件回来或重新链接后恢复。
+    public var isMissing = false
+    /// 加入时记下的识别信息，重新链接时核对新文件是不是同一张照片。读完之前为 nil。
+    public var fingerprint: SourceFingerprint?
+    /// 加入时记下的书签：原图移动或改名后用它找新位置。
+    var bookmark: Data?
+    /// 右栏「警告」里的说明（例如已经自动重新链接到新位置）。
+    public var notices: [JobIssue] = []
 
     public var id: SourceID { source.sourceId }
 }
@@ -206,6 +214,31 @@ public struct WarningPrompt: Identifiable, Equatable, Sendable {
     /// 带警告的任务，按列表顺序。
     public var jobIds: [UUID]
     public var warningCount: Int
+}
+
+/// 重新链接选中的文件与原图不一致时的确认：列出不同的地方，用户确认后才重新链接。
+public struct RelinkPrompt: Identifiable, Equatable, Sendable {
+    public var id = UUID()
+    public var sourceId: SourceID
+    public var fileURL: URL
+    /// 与原图不同的地方。空表示没有原图的信息、无法核对。
+    public var differences: [RelinkDifference]
+}
+
+/// 开始批处理时有原图找不到：跳过它们的任务、导出其余的，或者取消（只在 GUI；CLI、MCP 仍按 D-72 全部不提交）。
+public struct MissingSourcesPrompt: Identifiable, Equatable, Sendable {
+    public var id = UUID()
+    /// 找不到的原图，按列表顺序。
+    public var sourceIds: [SourceID]
+    public var fileURLs: [URL]
+    /// 会被跳过的任务数。
+    public var skippedJobs: Int
+}
+
+public enum MissingSourcesChoice: Sendable {
+    /// 跳过原图找不到的任务（留在「当前」里），导出其余的。
+    case skip
+    case cancel
 }
 
 public enum WarningChoice: Sendable {

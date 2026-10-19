@@ -275,9 +275,8 @@ import Testing
         let preview = f.workbench.preview
         await f.workbench.settle()
         #expect(preview.roles.count > 1 && !preview.warnings.isEmpty)
-        // 源图被删掉后改参数：渲染失败，不留上一次的页数和提示。
-        try FileManager.default.removeItem(at: try #require(f.workbench.sources.first?.source.fileURL))
-        f.workbench.setField(\.canvas.minMarginPx, 80)
+        // 改出无效的参数：渲染失败，不留上一次的页数和提示。（原图不见了时相反，留着上一次的画面，见 MissingSourceTests。）
+        f.workbench.setField(\.canvas.width, 0)
         await f.workbench.settle()
         #expect(preview.error != nil)
         #expect(preview.roles.isEmpty && preview.warnings.isEmpty && preview.pageImage == nil)

@@ -1,3 +1,4 @@
+import Foundation
 import PhotoFrameApplication
 
 /// 任务校验得到的一条错误或警告，给任务行的弹出框和 Inspector 顶部的「警告」用（参照 Compressor 的错误窗口）。
@@ -50,7 +51,8 @@ extension DraftJob {
 
 extension JobIssue {
     /// 只是说明、不算问题（例如 HDR 预览里成品为什么是 SDR）：显示成灰色的信息，不计入警告数。
-    public var isInfo: Bool { code.hasPrefix("preview.") }
+    /// 自动重新链接的说明（``JobIssue/relinked(to:retries:)``）也是信息。
+    public var isInfo: Bool { code.hasPrefix("preview.") || code == JobIssue.relinkedCode }
 }
 
 extension JobIssue {
@@ -72,6 +74,26 @@ extension JobRecord {
     }
 }
 
+extension JobIssue {
+    static let missingCode = "source.missing"
+    static let relinkedCode = "source.relinked"
+    /// 服务报告读不到源文件时的错误代码：原图不见了时这些错误由 ``missing(_:)`` 代替。
+    static let unreadableCodes: Set<String> = ["job.source_unreadable", "source.not_found"]
+
+    /// 原图不见了（任务行、源图行、右栏「警告」）。
+    static func missing(_ url: URL) -> JobIssue {
+        JobIssue(isError: true, code: missingCode, message: "原图不见了：\(url.path)",
+                 hint: "点「重新链接…」选择它现在的位置；放回原处或重新连接所在的卷后会自动恢复")
+    }
+
+    /// 已经重新链接到新位置。`retries`：这张源图有失败或已取消的任务，说明重试会读新位置。
+    static func relinked(to url: URL, automatically: Bool, retries: Bool) -> JobIssue {
+        let how = automatically ? "原图移动或改了名，已自动重新链接到" : "已重新链接到"
+        return JobIssue(isError: false, code: relinkedCode, message: "\(how)：\(url.path)",
+                        hint: retries ? "「已完成」里这张源图失败或已取消的任务，重试时也读新位置" : nil)
+    }
+}
+
 extension Workbench {
     /// 右栏「警告」里的内容：选中一个任务时它的校验结果，选中源图时源图检查的提示，再加上当前预览渲染时的提示。
     /// 同一种（同一代码）的只列一次。预览区不显示这些提示，选中预设或源图时它们也只在这里。
@@ -81,20 +103,30 @@ extension Workbench {
         switch subject {
         case .jobs:
             guard jobs.count == 1, let job = jobs.first else { return [] }
-            issues = job.issues
+            issues = self.issues(for: job) + (sourceItem(job.sourceId)?.notices ?? [])
         case .source(let id):
             if let item = sourceItem(id) {
-                if let error = item.inspectionError { issues.append(JobIssue(error)) }
-                issues += item.inspection?.warnings.map(JobIssue.init) ?? []
+                issues = item.missingIssues
+                if !item.isMissing, let error = item.inspectionError { issues.append(JobIssue(error)) }
+                issues += (item.inspection?.warnings.map(JobIssue.init) ?? []) + item.notices
             }
         case .preset, .location, .none:
             break
         }
         guard preview.subject == previewSubject else { return issues }
+        // 原图不见了时预览是上一次的结果，它的提示不一定还对；只看上面的错误。
+        if preview.isStale { return issues }
         var codes = Set(issues.map(\.code))
         var extra: [JobIssue] = []
         let titles = preview.subject?.preset?.layerTitles ?? [:]
         for warning in preview.warnings where codes.insert(warning.code).inserted { extra.append(JobIssue(warning).naming(titles)) }
         return issues + extra.filter { !$0.isInfo } + extra.filter(\.isInfo)
+    }
+}
+
+extension SourceItem {
+    /// 原图不见了时的错误（任务行、源图行、右栏「警告」共用）。
+    public var missingIssues: [JobIssue] {
+        isMissing ? [JobIssue.missing(source.fileURL)] : []
     }
 }

@@ -20,6 +20,7 @@ extension Workbench {
                 sources.append(SourceItem(source: source, jobs: []))
                 added.append(source.sourceId)
                 inspect(source.sourceId)
+                capture(source.sourceId)
             } catch {
                 failures.append("\(url.lastPathComponent)：\(error.displayText)")
             }
@@ -30,7 +31,7 @@ extension Workbench {
         return added
     }
 
-    private func inspect(_ id: SourceID) {
+    func inspect(_ id: SourceID) {
         background("inspect-\(id)") { [self] in
             let result: Result<SourceInspection, ApplicationError>
             do throws(ApplicationError) { result = .success(try await service.inspectSource(.id(id))) } catch { result = .failure(error) }
@@ -288,7 +289,8 @@ extension Workbench {
         for id in ids {
             background("validate-\(id)") { [self] in
                 try? await Task.sleep(for: validationDelay)
-                guard !Task.isCancelled, let job = job(id) else { return }
+                // 原图不见了的任务等它回来（或重新链接）再校验。
+                guard !Task.isCancelled, let job = job(id), sourceItem(job.sourceId)?.isMissing != true else { return }
                 let item = try? await service.validate(request(for: job)).items.first
                 guard !Task.isCancelled else { return }
                 updateJobsQuietly(id) { $0.validation = item }
@@ -310,9 +312,9 @@ extension Workbench {
         var request: ExportRequest
     }
 
-    /// 「当前」里全部任务的快照。
+    /// 「当前」里全部任务的快照，不含这次选择跳过的（原图找不到的）任务。
     private func batchSnapshot() -> [BatchEntry] {
-        allJobs.map { BatchEntry(job: $0, request: request(for: $0)) }
+        allJobs.filter { !skippedSources.contains($0.sourceId) }.map { BatchEntry(job: $0, request: request(for: $0)) }
     }
 
     /// 底栏「开始批处理」：校验全部任务 → 目标目录已存在时请用户确认（D-49）→ 提交 → 开始派发。
@@ -322,18 +324,39 @@ extension Workbench {
         guard !isStartingBatch else { return }
         isStartingBatch = true
         defer { isStartingBatch = false }
+        skippedSources = []
         let batch = batchSnapshot()
         guard !batch.isEmpty else {
             await resumeQueue()
             return
         }
-        guard let items = await validateForSubmit(batch, policy: .versionSuffix) else { return }
+        guard let items = await validateForSubmit(batch, policy: .versionSuffix, asksAboutMissing: true) else { return }
+        await reviewWarningsAndSubmit(batch, items: items)
+    }
+
+    /// 校验通过之后：有警告时先询问（设置里可以关掉），然后确认覆盖、提交。
+    private func reviewWarningsAndSubmit(_ batch: [BatchEntry], items: [ValidationItem]) async {
         let warned = zip(batch, items).filter { !$0.1.warnings.isEmpty }
         if !warned.isEmpty, settings.reviewsWarningsBeforeStart {
             warningPrompt = WarningPrompt(jobIds: warned.map(\.0.job.id), warningCount: warned.map(\.1.warnings.count).reduce(0, +))
             return
         }
         await confirmOverwritesAndSubmit(batch, items: items)
+    }
+
+    /// 用户对「N 张原图找不到」的回答：跳过它们的任务（留在「当前」里，标着原图不见了），导出其余的。
+    public func resolveMissingSources(_ choice: MissingSourcesChoice) async {
+        guard let prompt = missingPrompt else { return }
+        missingPrompt = nil
+        guard choice == .skip, !isStartingBatch else { return }
+        isStartingBatch = true
+        defer { isStartingBatch = false }
+        skippedSources = Set(prompt.sourceIds)
+        let batch = batchSnapshot()
+        guard !batch.isEmpty else { return }
+        // 询问期间又有原图不见了：这次不再问，和其他错误一样不开始。
+        guard let items = await validateForSubmit(batch, policy: .versionSuffix) else { return }
+        await reviewWarningsAndSubmit(batch, items: items)
     }
 
     /// 用户对警告询问的回答。`dontAskAgain`：以后不再询问（设置里可以改回来）。
@@ -404,21 +427,52 @@ extension Workbench {
     }
 
     /// 逐个校验；有错误时弹出提示并返回 nil。
-    private func validateForSubmit(_ batch: [BatchEntry], policy: ConflictPolicy) async -> [ValidationItem]? {
+    /// - Parameter asksAboutMissing: 只有原图找不到这一种错误、而且还有别的任务可以导出时，不弹错误，
+    ///   改为询问是否跳过（``missingPrompt``，GUI 对 D-72 的修订）。其他错误仍然整批不开始。
+    private func validateForSubmit(
+        _ batch: [BatchEntry], policy: ConflictPolicy, asksAboutMissing: Bool = false
+    ) async -> [ValidationItem]? {
         var items: [ValidationItem] = []
         var problems: [String] = []
+        var missing: [SourceID] = []
+        var otherProblems = false
         for entry in batch {
+            // 已经知道原图不见了的不交给服务（卷断开时会卡住）。
+            if let source = sourceItem(entry.job.sourceId), source.isMissing {
+                if !missing.contains(source.id) { missing.append(source.id) }
+                problems.append("\(source.source.displayName) · \(entry.job.preset.name)：\(JobIssue.missing(source.source.fileURL).message)")
+                continue
+            }
             do throws(ApplicationError) {
-                guard let item = try await service.validate(entry.request.with(policy)).items.first else { continue }
+                guard let item = try await service.validate(entry.request.with(policy)).items.first else {
+                    otherProblems = true
+                    continue
+                }
                 items.append(item)
                 // 校验期间改过的任务不写这份结果（改动本身会重新校验）。
                 if let live = job(entry.job.id), request(for: live) == entry.request {
                     updateJobsQuietly(entry.job.id) { $0.validation = item }
                 }
                 problems += item.errors.map { "\(item.sourceURL.lastPathComponent) · \(item.presetName)：\($0.displayText)" }
+                if !item.errors.isEmpty, item.errors.allSatisfy({ JobIssue.unreadableCodes.contains($0.code) }) {
+                    if !missing.contains(entry.job.sourceId) { missing.append(entry.job.sourceId) }
+                } else if !item.errors.isEmpty {
+                    otherProblems = true
+                }
             } catch {
                 problems.append(error.displayText)
+                otherProblems = true
             }
+        }
+        // 校验发现读不到的原图也标出来（不必等下一次检查）。
+        markMissing(missing)
+        let skipped = Set(missing)
+        if asksAboutMissing, !missing.isEmpty, !otherProblems,
+           batch.contains(where: { !skipped.contains($0.job.sourceId) }) {
+            missingPrompt = MissingSourcesPrompt(
+                sourceIds: missing, fileURLs: missing.compactMap { sourceItem($0)?.source.fileURL },
+                skippedJobs: batch.count { skipped.contains($0.job.sourceId) })
+            return nil
         }
         guard problems.isEmpty, items.count == batch.count else {
             alert = WorkbenchAlert(title: "无法开始批处理", message: WorkbenchAlert.paragraph(problems))

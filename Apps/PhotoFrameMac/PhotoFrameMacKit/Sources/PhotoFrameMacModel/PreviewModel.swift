@@ -16,6 +16,15 @@ public struct PreviewSubject: Hashable, Sendable {
     public var colorOverride: SourceColorOverride?
     /// 素材库的版本：预设本地绑定和默认绑定在渲染时才解析，绑定或素材变了就是新的内容。
     public var libraryRevision: Int
+    /// 原图不见了：不渲染，保留上一次的画面（``PreviewModel/isStale``）。文件回来后这一项变回 false，按最新的参数重新渲染。
+    public var sourceMissing = false
+
+    /// 渲染缓存的键：与原图在不在无关（文件回来后可以直接用缓存里同样参数的结果）。
+    var renderable: PreviewSubject {
+        var subject = self
+        subject.sourceMissing = false
+        return subject
+    }
 }
 
 /// 预览区显示哪一页（UI 设计文档第 9 节）。
@@ -68,6 +77,13 @@ public final class PreviewModel {
     public private(set) var warnings: [ApplicationWarning] = []
     public private(set) var error: ApplicationError?
     public private(set) var isRendering = false
+    /// 原图不见了，画面是上一次渲染的结果、不是最新的（界面调暗并提示「重新链接…」）。
+    public private(set) var isStale = false
+    /// 渲染时发现读不到原图（还没检查出来就改了参数）：工作台把它标为缺失。
+    @ObservationIgnored var onSourceUnreadable: (@MainActor (SourceID) -> Void)?
+    /// 现在显示的画面是哪张源图的。
+    @ObservationIgnored private var shownSourceId: SourceID?
+    @ObservationIgnored private var shownPage: PreviewPage?
 
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var memoryWatch: MemoryPressureWatch?
@@ -138,7 +154,7 @@ public final class PreviewModel {
 
     private func renderKey(_ subject: PreviewSubject, page: PreviewPage) -> RenderKey {
         let modified = (try? FileManager.default.attributesOfItem(atPath: subject.sourceURL.path)[.modificationDate]) as? Date
-        return RenderKey(subject: subject, sourceModified: modified, page: page, range: range)
+        return RenderKey(subject: subject.renderable, sourceModified: modified, page: page, range: range)
     }
 
     private func cached(_ key: RenderKey) -> RenderedPreview? {
@@ -167,6 +183,11 @@ public final class PreviewModel {
         for key in cacheOrder where !sourceIds.contains(key.subject.sourceId) { removeRender(key) }
     }
 
+    /// 丢掉这张源图的渲染结果（重新链接到了别的文件）。正在显示的页不受影响。
+    func removeRenders(for sourceId: SourceID) {
+        for key in cacheOrder where key.subject.sourceId == sourceId { removeRender(key) }
+    }
+
     /// 清空渲染缓存。正在显示的页不受影响。
     func removeAllRenders() {
         cache = [:]
@@ -179,18 +200,18 @@ public final class PreviewModel {
 
     private func render() {
         task?.cancel()
-        guard let subject, let preset = subject.preset else {
-            pageImage = nil
-            pageDisplayImage = nil
-            strip = []
-            stripImages = []
-            stripThumbnail = nil
-            roles = []
-            warnings = []
-            error = nil
+        guard let subject, let preset = subject.preset, !subject.sourceMissing else {
             isRendering = false
+            error = nil
+            if let subject, subject.sourceMissing {
+                showStale(subject)
+            } else {
+                clear()
+                isStale = false
+            }
             return
         }
+        isStale = false
         let page = page
         let key = renderKey(subject, page: page)
         if let rendered = cached(key) {
@@ -226,12 +247,56 @@ public final class PreviewModel {
         }
     }
 
+    /// 原图不见了：留着这张源图上一次的画面（参数改过也不重新渲染）。现在显示的是别的源图或别的页时，
+    /// 用缓存里这张源图这一页最近的结果；没有就留着现在的画面（别的源图的画面不留）。
+    private func showStale(_ subject: PreviewSubject) {
+        let page = page
+        if shownSourceId != subject.sourceId || shownPage != page {
+            let key = cacheOrder.last { $0.subject.sourceId == subject.sourceId && $0.page == page && $0.range == range }
+                ?? cacheOrder.last { $0.subject.sourceId == subject.sourceId && $0.page == page }
+            if let key, let rendered = cached(key) {
+                apply(.success(rendered), page: page, sourceId: subject.sourceId)
+            } else if shownSourceId != subject.sourceId {
+                clear()
+                shownSourceId = subject.sourceId
+            }
+        }
+        isStale = true
+    }
+
+    private func clear() {
+        pageImage = nil
+        pageDisplayImage = nil
+        strip = []
+        stripImages = []
+        stripThumbnail = nil
+        roles = []
+        warnings = []
+        shownSourceId = nil
+        shownPage = nil
+    }
+
     private func apply(_ result: Result<RenderedPreview, ApplicationError>, page: PreviewPage) {
+        apply(result, page: page, sourceId: subject?.sourceId)
+    }
+
+    private func apply(_ result: Result<RenderedPreview, ApplicationError>, page: PreviewPage, sourceId: SourceID?) {
         isRendering = false
+        if case .failure(let failure) = result, JobIssue.unreadableCodes.contains(failure.code), let sourceId {
+            // 读不到原图：与检查出缺失时一样，留着上一次的画面，不显示「无法预览」。
+            error = nil
+            if shownSourceId != sourceId { clear() }
+            shownSourceId = sourceId
+            isStale = true
+            onSourceUnreadable?(sourceId)
+            return
+        }
         switch result {
         case .success(let rendered):
             let preview = rendered.preview
             error = nil
+            shownSourceId = sourceId
+            shownPage = page
             roles = preview.roles
             warnings = preview.warnings
             switch page {
@@ -248,15 +313,9 @@ public final class PreviewModel {
                 if !hasStrip { self.page = .page(roles.first?.carouselPosition ?? 0) }
             }
         case .failure(let failure):
+            // 不留上一次渲染的画面、页数和提示。
+            clear()
             error = failure
-            pageImage = nil
-            pageDisplayImage = nil
-            strip = []
-            stripImages = []
-            stripThumbnail = nil
-            // 不留上一次渲染的页数和提示。
-            roles = []
-            warnings = []
         }
     }
 
@@ -324,7 +383,7 @@ extension Workbench {
         func subject(_ item: SourceItem, preset: ExportPreset?, bindings: [String: UUID]) -> PreviewSubject {
             PreviewSubject(
                 sourceId: item.id, sourceURL: item.source.fileURL, preset: preset, assetBindings: bindings,
-                colorOverride: item.colorOverride, libraryRevision: libraryRevision)
+                colorOverride: item.colorOverride, libraryRevision: libraryRevision, sourceMissing: item.isMissing)
         }
         let (inspectorSubject, jobs) = inspected()
         switch inspectorSubject {

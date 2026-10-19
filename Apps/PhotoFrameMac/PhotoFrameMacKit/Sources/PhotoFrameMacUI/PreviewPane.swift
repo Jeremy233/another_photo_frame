@@ -42,21 +42,34 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder private var canvas: some View {
-        if let subject = preview.subject {
+        if let subject = preview.subject, subject.sourceMissing {
+            // 原图不见了：调暗显示上一次的成品画面（「原图」没有可显示的），上面提示并可以重新链接。
+            ZStack {
+                if !(preview.showsOriginal || subject.preset == nil) { renderedPage.opacity(0.35).allowsHitTesting(false) }
+                StalePreviewNotice(workbench: workbench, sourceId: subject.sourceId)
+            }
+        } else if let subject = preview.subject {
             if preview.showsOriginal || subject.preset == nil {
                 // 只有 HDR 源图才按 HDR 解码；还不知道时按预览的动态范围。
                 let range = workbench.sourceItem(subject.sourceId)?.dynamicRange
                 OriginalImage(url: subject.sourceURL, preview: preview, sourceIsHDR: range.map { $0 == .hdr })
-            } else if preview.page == .strip {
-                PanoramaStrip(pages: preview.strip, images: preview.stripImages, thumbnail: preview.stripThumbnail,
-                              showsSeams: preview.showsSeams, preview: preview)
-            } else if let page = preview.pageImage {
-                PageImage(page: page, image: preview.pageDisplayImage, preview: preview)
-            } else if let error = preview.error {
+            } else if let error = preview.error, preview.pageImage == nil, preview.strip.isEmpty {
                 EmptyState(title: "无法预览", symbol: "xmark.octagon.fill", description: error.displayText)
+            } else {
+                renderedPage
             }
         } else {
             EmptyState(title: "没有预览", symbol: "photo", description: "选中一个任务或源图")
+        }
+    }
+
+    /// 成品的当前页或全景长卷。
+    @ViewBuilder private var renderedPage: some View {
+        if preview.page == .strip {
+            PanoramaStrip(pages: preview.strip, images: preview.stripImages, thumbnail: preview.stripThumbnail,
+                          showsSeams: preview.showsSeams, preview: preview)
+        } else if let page = preview.pageImage {
+            PageImage(page: page, image: preview.pageDisplayImage, preview: preview)
         }
     }
 }
