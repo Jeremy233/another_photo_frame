@@ -347,7 +347,18 @@ extension Workbench {
     }
 
     func refreshPreview() {
-        preview.update(previewSubject)
+        let subject = previewSubject
+        followSourceDynamicRange(subject)
+        preview.update(subject)
+    }
+
+    /// 预览换到另一张源图（或这张源图刚检查完）时，SDR / HDR 跟着源图：HDR 源图自动打开 HDR 预览，
+    /// 其他源图回到 SDR。还停在同一张源图上时不动，手动切换的结果保留。
+    private func followSourceDynamicRange(_ subject: PreviewSubject?) {
+        guard let id = subject?.sourceId, id != rangeFollowedSourceId,
+              let range = sourceItem(id)?.dynamicRange else { return }
+        rangeFollowedSourceId = id
+        preview.range = range == .hdr ? .hdr : .sdr
     }
 
     /// 动态范围选「跟随源图」（D-125）时，预览的这张源图实际会导出成什么；不是 auto 或没有源图时为 nil。

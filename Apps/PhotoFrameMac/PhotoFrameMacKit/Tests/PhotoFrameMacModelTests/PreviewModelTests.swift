@@ -62,6 +62,9 @@ import Testing
         try await f.addJob("Bright.tif", hdr: true)
         f.workbench.setField(\.output.dynamicRange, .hdr)
         let preview = f.workbench.preview
+        // HDR 源图自动打开 HDR 预览；手动切回 SDR 后同一张源图上保持 SDR。
+        #expect(preview.range == .hdr)
+        preview.range = .sdr
         await f.workbench.settle()
         #expect(preview.pageImage?.dynamicRange == .sdr, "SDR 模式显示 SDR 底图")
 
@@ -83,6 +86,27 @@ import Testing
         // 预览区不显示提示，Inspector 的「警告」里有，作为说明排在最后。
         let issue = try #require(f.workbench.inspectorIssues.last)
         #expect(issue.code == "preview.output_sdr" && issue.isInfo)
+    }
+
+    @Test func previewRangeFollowsTheSelectedSource() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let sdr = try await f.addJob()
+        let hdr = try await f.addJob("Bright.tif", hdr: true)
+        let wb = f.workbench
+        let preview = wb.preview
+        wb.selection = [.job(hdr)]
+        #expect(preview.range == .hdr)
+        // 还在同一张源图上：手动选的 SDR 不被改回来。
+        preview.range = .sdr
+        wb.setField(\.canvas.minMarginPx, 30)
+        #expect(preview.range == .sdr)
+        wb.selection = [.job(sdr)]
+        #expect(preview.range == .sdr)
+        wb.selection = [.job(hdr)]
+        #expect(preview.range == .hdr)
+        wb.selection = [.job(sdr)]
+        #expect(preview.range == .sdr)
     }
 
     @Test func autoRangeFollowsSource() async throws {

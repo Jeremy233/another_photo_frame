@@ -65,6 +65,8 @@ public final class Workbench {
             }
         }
     }
+    /// 预览的 SDR / HDR 最近一次是按哪张源图自动设的（``followSourceDynamicRange``）。
+    @ObservationIgnored var rangeFollowedSourceId: SourceID?
     /// 任务列表的选择（可多选）。非空时右栏显示源图 / 任务。
     public var selection: Set<BatchItemID> = [] {
         didSet {
