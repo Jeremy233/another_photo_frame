@@ -98,7 +98,8 @@ struct SourceDecoder {
         let hasGainMap = format == .jpeg && (listsGainMap || Self.hasGainMapAuxiliaryData(src))
 
         var cg = try decodeCGImage(src, url: url, longEdge: decodeLong, sourceLong: longSource)
-        cg = try applyProfilePolicy(cg, embedded: embedded, override: override, into: &out)
+        let policy = try applyProfilePolicy(cg, embedded: embedded, override: override, into: &out)
+        cg = policy.image
 
         if out.isFloat {
             // PoC 坑 15：CI 直接使用大尺寸 RGB 浮点源会渲染出错位图块，先用 CG 转成 RGBAh（§6.2）。
@@ -122,10 +123,18 @@ struct SourceDecoder {
                 throw .decodeFailed(url, "无法展开 gain map")
             }
             out.sdr = image
-            out.hdr = hdr.translatedToOrigin()
             out.hdrKind = .gainMap
             out.headroom = max(Double(hdr.contentHeadroom), 1)
-            out.transformSteps.append("gain map 展开：CIImage expandToHDR，headroom \(fmt(out.headroom!))（文件元数据）")
+            if policy.reinterpreted, let applied = Self.applyingGainMap(of: url, to: image) {
+                // 底图的颜色解释改过（坑 20 改写、输入色彩空间覆盖）：HDR 版本用改写后的底图套用文件里的 gain map（D-127）。
+                // CI 按文件原样展开的 HDR 用的是原来的解释，暗部和中间调会与 SDR 版本不一致。
+                out.hdr = applied
+                out.transformSteps.append(
+                    "gain map：套用到改写颜色解释后的底图（CIImage applyingGainMap），headroom \(fmt(out.headroom!))（文件元数据）")
+            } else {
+                out.hdr = hdr.translatedToOrigin()
+                out.transformSteps.append("gain map 展开：CIImage expandToHDR，headroom \(fmt(out.headroom!))（文件元数据）")
+            }
             return out
         }
 
@@ -175,6 +184,16 @@ struct SourceDecoder {
         }
     }
 
+    /// 把文件里的 gain map 套用到 `base`（已做方向校正、原点为 (0, 0) 的底图，分辨率可以低于原图：CI 把 gain map
+    /// 缩放到底图的范围）。读不出 gain map 或缺少元数据时返回 nil。
+    static func applyingGainMap(of url: URL, to base: CIImage) -> CIImage? {
+        guard let gainMap = CIImage(contentsOf: url, options: [.auxiliaryHDRGainMap: true, .applyOrientationProperty: true])
+        else { return nil }
+        let applied = base.applyingGainMap(gainMap.translatedToOrigin())
+        // gain map 缺少需要的元数据时 CI 原样返回底图。
+        return applied === base ? nil : applied
+    }
+
     /// ImageIO 能读出 ISO 21496-1 或 Apple gain map 辅助数据（会解码 gain map）。
     static func hasGainMapAuxiliaryData(_ src: CGImageSource) -> Bool {
         CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
@@ -202,9 +221,11 @@ struct SourceDecoder {
     }
 
     /// 输入颜色描述的决策（D-04、PoC 坑 1 与坑 20）。只改颜色空间标签，不改像素。
+    /// `reinterpreted`：没有按文件本身的描述解释（坑 20 改写曲线，或用了输入色彩空间覆盖）。
+    /// 缺 ICC 时按 sRGB 解释不算，CI 读文件时也这样解释。
     private func applyProfilePolicy(
         _ cg: CGImage, embedded: Bool, override: SourceColorOverride?, into out: inout DecodedSource
-    ) throws(RenderError) -> CGImage {
+    ) throws(RenderError) -> (image: CGImage, reinterpreted: Bool) {
         let current = cg.colorSpace
         let profileMissing = Self.profileMissing
         // 坑 20 / D-58：TRC 为 BT.709 / BT.2020 逆 OETF 参数曲线时改写成采样曲线。嵌入的 ICC 和覆盖（Rec. 2020）都要改。
@@ -227,12 +248,12 @@ struct SourceDecoder {
                 out.warnings.append(profileMissing)
                 out.sourceProfile = WorkingColor.describe(current)
                 out.sourceProfileOrigin = "assumedSRGB"
-                return cg
+                return (cg, false)
             }
             out.sourceProfile = override.displayName
             out.sourceProfileOrigin = "override"
             out.transformSteps.append("输入色彩空间覆盖为 \(override.displayName)")
-            return rewritingTRC(space) ?? retagged
+            return (rewritingTRC(space) ?? retagged, true)
         }
         if !embedded {
             // 非 RGB 图像保留自己的颜色空间（不改标签），诊断里写它本身，不写 sRGB。
@@ -240,12 +261,13 @@ struct SourceDecoder {
             out.sourceProfileOrigin = "assumedSRGB"
             out.warnings.append(profileMissing)
             if current?.model == .rgb, current?.name != CGColorSpace.sRGB, let tagged = cg.copy(colorSpace: WorkingColor.sRGB) {
-                return tagged
+                return (tagged, false)
             }
-            return cg
+            return (cg, false)
         }
         out.sourceProfile = WorkingColor.describe(current)
-        return rewritingTRC(current) ?? cg
+        if let rewritten = rewritingTRC(current) { return (rewritten, true) }
+        return (cg, false)
     }
 
     /// 没有 ICC（D-04）：GUI、CLI、MCP 都显示这一句。

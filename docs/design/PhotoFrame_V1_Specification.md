@@ -405,6 +405,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
   2. **源文件没有 SDR 版本时**（PQ / HLG、纯 HDR 浮点 TIFF），用 Core Image `CIToneMapHeadroom` 做 tone map：`sourceHeadroom` 取画面实际峰值（线性 sRGB 分量最大值的 99.95 分位），`targetHeadroom` = 1。不得使用 PQ / HLG 元数据里的默认 headroom（例如 4.93）。所用方法和参数写入渲染报告。
   3. 背景、水印、文字等 SDR 元素不参与 tone map。
   4. 任何情况下都**不能无声地把高亮直接 clip 到白色**。
+- gain map JPEG 的 HDR 版本跟随 SDR 底图的颜色解释：底图的解释改写过（坑 20 的曲线改写、输入色彩空间覆盖）时，把文件里的 gain map 套用到改写后的底图，HDR 的暗部、中间调与 SDR 版本一致（D-127）。
 - 合成：背景、水印、文字等 SDR 元素在 HDR 输出中按参考白（SDR 白点）放置，不随 headroom 一起变亮。
 - 视频：V1 不做视频输出（D-16）。
 
@@ -1160,6 +1161,7 @@ photoframe mcp serve
 > 2026-10-18 全面审计留给用户的产品决策。D-53 的默认并发数复核后保持不变。
 
 - [x] **D-126** 内置平台配置编译进程序：JSON 写在 PhotoFrameStorage 的源码里（`BuiltInPlatformCatalog.swift`，只有这一份，仍按 §5.4 的格式解析和检查），模块不再带资源包。单独复制出来的 `photoframe` 可执行文件可以运行所有命令（包括 `mcp serve`），发布的命令行工具 zip 里只有这一个文件；用户目录里的覆盖文件（`revision` 更大的优先）不变。原因：以前从资源包读，只复制可执行文件时任何命令一启动就崩溃，设计好的 `platform.catalog_missing` 错误也走不到（这个错误码随之去掉）。备选：保留资源包，要求它和可执行文件放在同一个文件夹。【已确定 2026-10-19】
+- [x] **D-127** gain map JPEG 的底图改写了颜色解释时（ICC 是 BT.709 / BT.2020 参数曲线、按 D-58 改写；或源图没有 ICC，用了「按此解释」/ `--assume-profile` 覆盖），HDR 版本由改写后的底图套用文件里的 gain map 得到，不再按文件原样展开；HDR 的暗部和中间调与 SDR 版本一致，高光仍按 gain map 展开，headroom 仍取文件元数据。颜色解释没改过的文件照旧按原样展开，输出逐字节不变。原因：以前 HDR 按文件原来的解释展开，在 HDR 屏上暗部和中间调比 SDR 版本暗。目前只用合成文件验证过，真实的 Lightroom Rec. 2020 gain map 样张还没验证。备选：保持按文件原样展开，HDR 与 SDR 版本的暗部可能不一致。【已确定 2026-10-19】
 
 ---
 

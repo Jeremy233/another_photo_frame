@@ -128,6 +128,109 @@ struct HDRTests {
         #expect(!png.warnings.contains { $0.code.hasPrefix("output.hdr") })
     }
 
+    // MARK: - gain map JPEG：底图的颜色解释改过（D-127）
+
+    /// 底图怎样被改写解释：文件嵌入 itur_2020 ICC（坑 20 改写曲线），或没有 ICC 而用输入色彩空间覆盖。
+    struct Reinterpretation: Sendable, CustomTestStringConvertible {
+        var name: String
+        var embedsRec2020: Bool
+        var override: SourceColorOverride?
+        var testDescription: String { name }
+
+        static let all = [
+            Reinterpretation(name: "嵌入 itur_2020 ICC（坑 20）", embedsRec2020: true, override: nil),
+            Reinterpretation(name: "没有 ICC，覆盖为 Rec. 2020", embedsRec2020: false, override: .rec2020),
+            Reinterpretation(name: "没有 ICC，覆盖为 Adobe RGB", embedsRec2020: false, override: .adobeRGB),
+        ]
+    }
+
+    /// 12 个中性色块（线性 Rec. 2020，每块 80 × 160 px）：前 9 块 SDR 与 HDR 相同（gain = 1），后 3 块 SDR 为白、HDR 为 2 / 3 / 4 倍。
+    static let reinterpretSDR: [Double] = [0.01, 0.03, 0.06, 0.1, 0.18, 0.3, 0.5, 0.75, 1, 1, 1, 1]
+    static let reinterpretHDR: [Double] = [0.01, 0.03, 0.06, 0.1, 0.18, 0.3, 0.5, 0.75, 1, 2, 3, 4]
+
+    /// 用 CI 写一张合成的 gain map JPEG。`embedsRec2020` 为 false 时按 sRGB 写，ImageIO 不嵌 ICC（坑 2），就是「没有 ICC」的源图。
+    static func writeGainMapJPEG(to url: URL, embedsRec2020: Bool) throws {
+        func chart(_ values: [Double]) -> CIImage {
+            values.enumerated().reduce(CIImage.empty()) { image, item in
+                let color = CIColor(red: item.element, green: item.element, blue: item.element, alpha: 1, colorSpace: WorkingColor.space)!
+                return CIImage(color: color).cropped(to: CGRect(x: item.offset * 80, y: 0, width: 80, height: 160)).composited(over: image)
+            }
+        }
+        let space = CGColorSpace(name: embedsRec2020 ? CGColorSpace.itur_2020 : CGColorSpace.sRGB)!
+        try WorkingColor.makeContext().writeJPEGRepresentation(
+            of: chart(reinterpretSDR), to: url, colorSpace: space,
+            options: [.hdrImage: chart(reinterpretHDR).settingContentHeadroom(4), .hdrGainMapAsRGB: true])
+        let data = try Data(contentsOf: url)
+        #expect(SourceFileFormat.hasEmbeddedColorDescription(data, format: .jpeg) == embedsRec2020)
+    }
+
+    /// 各色块中心在工作空间里的线性 G（图像可以是降采样后的尺寸）。
+    static func patchValues(_ image: CIImage) -> [Double] {
+        let e = image.extent
+        let w = Int(e.width), h = Int(e.height)
+        var px = [Float](repeating: 0, count: w * h * 4)
+        px.withUnsafeMutableBytes { buf in
+            WorkingColor.makeContext().render(image, toBitmap: buf.baseAddress!, rowBytes: w * 16, bounds: e, format: .RGBAf,
+                                              colorSpace: WorkingColor.space)
+        }
+        return (0..<12).map { i in Double(px[((h / 2) * w + Int((Double(i) + 0.5) * Double(w) / 12)) * 4 + 1]) }
+    }
+
+    @Test("gain map JPEG 的底图改写了颜色解释：HDR 版本套用到改写后的底图，暗部和中间调与 SDR 版本一致",
+          arguments: Reinterpretation.all, [960, 400])
+    func gainMapFollowsReinterpretedBase(_ c: Reinterpretation, decodeLong: Int) throws {
+        let url = try makeTempDirectory().appendingPathComponent("gainmap.jpg")
+        try Self.writeGainMapJPEG(to: url, embedsRec2020: c.embedsRec2020)
+        let source = try SourceDecoder(context: WorkingColor.makeContext())
+            .decode(url, neededSize: PixelSize(width: decodeLong / 2, height: decodeLong / 12), override: c.override)
+        #expect(source.hdrKind == .gainMap)
+        #expect(source.headroom == 4)
+        #expect(source.transformSteps.contains { $0.contains("applyingGainMap") }, "\(source.transformSteps)")
+        let sdr = Self.patchValues(try #require(source.sdr)), hdr = Self.patchValues(try #require(source.hdr))
+
+        // 前提：按文件原样展开的 HDR 与改写后的 SDR 在暗部明显不同（以前的做法）。
+        let asIs = Self.patchValues(try #require(CIImage(contentsOf: url, options: [.expandToHDR: true])))
+        #expect(abs(asIs[1] - sdr[1]) > 0.004, "原样展开 \(asIs[1])，SDR \(sdr[1])")
+
+        for i in 0..<9 {
+            #expect(abs(hdr[i] - sdr[i]) <= 0.001 + 0.01 * sdr[i], "色块 \(i)：SDR \(sdr[i])，HDR \(hdr[i])")
+        }
+        // 高光仍按 gain map 展开（底图为白，与解释无关）。
+        for i in 9..<12 {
+            #expect(abs(hdr[i] / Self.reinterpretHDR[i] - 1) < 0.02, "色块 \(i)：HDR \(hdr[i])")
+        }
+    }
+
+    @Test("颜色解释没改过的 gain map JPEG 仍按文件原样展开")
+    func gainMapAsIsWhenNotReinterpreted() throws {
+        let url = try makeTempDirectory().appendingPathComponent("gainmap.jpg")
+        try Self.writeGainMapJPEG(to: url, embedsRec2020: false)
+        for name in [url, Fixtures.url("hdr_gainmap.jpg")] {
+            let source = try SourceDecoder(context: WorkingColor.makeContext()).decode(name, neededSize: PixelSize(width: 480, height: 80), override: nil)
+            #expect(source.hdrKind == .gainMap)
+            #expect(source.transformSteps.contains { $0.contains("expandToHDR") }, "\(source.transformSteps)")
+        }
+    }
+
+    @Test("导出 HDR：读回的 HDR 与 SDR 底图在暗部和中间调一致，高光保留", arguments: Reinterpretation.all)
+    func hdrExportFollowsReinterpretedBase(_ c: Reinterpretation) async throws {
+        let url = try makeTempDirectory().appendingPathComponent("gainmap.jpg")
+        try Self.writeGainMapJPEG(to: url, embedsRec2020: c.embedsRec2020)
+        let preset = makePreset(width: 960, height: 160, margin: 0, output: OutputSettings(format: .jpeg, dynamicRange: .hdr))
+        let result = try await render(url, preset, override: c.override)
+        let out = result.outputs[0]
+        #expect(out.dynamicRange == .hdr)
+        let sdr = Self.patchValues(try #require(CIImage(contentsOf: out.fileURL)))
+        let hdr = Self.patchValues(try #require(CIImage(contentsOf: out.fileURL, options: [.expandToHDR: true])))
+        // 8 位底图 + 8 位 gain map 的量化误差。
+        for i in 0..<9 {
+            #expect(abs(hdr[i] - sdr[i]) <= 0.003 + 0.03 * sdr[i], "色块 \(i)：SDR \(sdr[i])，HDR \(hdr[i])")
+        }
+        for i in 9..<12 {
+            #expect(abs(hdr[i] / hdr[8] / Self.reinterpretHDR[i] - 1) < 0.1, "色块 \(i)：HDR \(hdr[i] / hdr[8])")
+        }
+    }
+
     // MARK: - 「明确是 HDR」的判定（D-62）
 
     /// PQ 编码值（ST 2084），nits → 0…1。
