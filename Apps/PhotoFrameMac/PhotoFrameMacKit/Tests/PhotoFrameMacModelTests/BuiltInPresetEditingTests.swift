@@ -20,10 +20,10 @@ import Testing
         #expect(wb.presetEditor?.draft.canvas.minMarginPx == 10)
         #expect(wb.hasUnsavedBuiltInEdits && wb.hasUnsavedEdits(id))
         // 出厂的定义（服务里的预设）不变。
-        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 60)
+        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 20)
         // 内置预设不能存回去。
         await wb.savePresetEdits()
-        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 60)
+        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 20)
 
         // 换选别的预设再回来，修改还在。
         wb.selectedPresetId = f.presetId("XHS Standard")
@@ -43,7 +43,7 @@ import Testing
         wb.selectedPresetId = id
         await wb.settle()
         wb.revertPresetEdits()
-        #expect(wb.presetEditor?.draft.canvas.minMarginPx == 60)
+        #expect(wb.presetEditor?.draft.canvas.minMarginPx == 20)
         #expect(!wb.hasUnsavedBuiltInEdits && !wb.hasUnsavedEdits(id))
     }
 
@@ -63,7 +63,7 @@ import Testing
         relaunched.selectedPresetId = id
         await relaunched.settle()
         #expect(relaunched.presetDrafts.isEmpty)
-        #expect(relaunched.presetEditor?.draft.canvas.minMarginPx == 60)
+        #expect(relaunched.presetEditor?.draft.canvas.minMarginPx == 20)
         #expect(relaunched.presetEditor?.isDirty == false)
         #expect(!relaunched.hasUnsavedBuiltInEdits)
         // 库里没有多出预设。
@@ -90,7 +90,7 @@ import Testing
         #expect(wb.selectedPresetId == saved.presetId)
         #expect(wb.presetEditor?.entry.origin == .user && wb.presetEditor?.isDirty == false)
         #expect(!wb.hasUnsavedEdits(id) && !wb.hasUnsavedBuiltInEdits)
-        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 60)
+        #expect(try await f.service.resolvePreset(.library(id.uuidString)).preset.canvas.minMarginPx == 20)
     }
 
     @Test func userPresetDraftSurvivesSwitchingPresets() async throws {
