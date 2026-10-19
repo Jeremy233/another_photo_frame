@@ -100,6 +100,9 @@ struct BatchList: View {
                     }
                 }
             }
+            if items.count == 1, case .source(let id) = items.first, workbench.sourceItem(id)?.isMissing == true {
+                Button("重新链接…") { RelinkPanel.show(id, workbench: workbench) }
+            }
             if !jobs.isEmpty {
                 Button("复制任务") { workbench.duplicateJobs(Set(jobs)) }
                 if jobs.count == 1, let id = jobs.first { Button("存储为预设…") { askPresetName(id) } }
@@ -221,7 +224,7 @@ private struct SourceRow: View {
                     .disabled(item.jobs.isEmpty)
                     .help(isExpanded ? "折叠" : "展开")
                     .accessibilityLabel(isExpanded ? "折叠" : "展开")
-                Thumbnail(url: item.source.fileURL)
+                Thumbnail(url: item.source.fileURL, isMissing: item.isMissing)
             }
             .padding(.leading, -(DisclosureChevron.width + Self.chevronGap))
             Text(item.source.displayName)
@@ -255,7 +258,12 @@ private struct SourceRow: View {
     private static let chevronGap: CGFloat = 2
 
     @ViewBuilder private var info: some View {
-        if let inspection = item.inspection {
+        if item.isMissing {
+            // 与读不出来一样是错误：悬停看原来的位置。
+            JobIssueIcon(isError: true)
+                .help(item.missingIssues.map(\.message).joined())
+                .accessibilityLabel("原图不见了")
+        } else if let inspection = item.inspection {
             // 只标出真正的 HDR；标为 HDR 但没有超出 SDR 的高光的源图按 SDR 导出，不标（右栏写明原因）。
             if item.dynamicRange == .hdr { Badge(text: "HDR") }
             Text(inspection.displaySize.text).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
@@ -271,6 +279,8 @@ private struct SourceRow: View {
 /// 源图缩略图：按需缩小解码。解码结果按文件（URL + 修改时间）放在共用的小缓存里，行滚出去再回来时不再解码。
 private struct Thumbnail: View {
     let url: URL
+    /// 原图不见了：留着已经显示的缩略图；回来后重新读（文件可能换过）。
+    let isMissing: Bool
     @State private var image: NSImage?
 
     /// 每张 120 px，几百张也占不了多少内存；系统内存紧张时 NSCache 自己会清。
@@ -290,7 +300,8 @@ private struct Thumbnail: View {
         }
         .frame(width: 44, height: 30)
         .clipShape(.rect(cornerRadius: 3))
-        .task(id: url) {
+        .task(id: LoadKey(url: url, isMissing: isMissing)) {
+            guard !isMissing else { return }
             let key = Self.cacheKey(url)
             if let cached = Self.cache.object(forKey: key) {
                 image = cached
@@ -301,6 +312,11 @@ private struct Thumbnail: View {
             if let loaded, !Task.isCancelled { Self.cache.setObject(loaded, forKey: key) }
             image = loaded
         }
+    }
+
+    private struct LoadKey: Hashable {
+        var url: URL
+        var isMissing: Bool
     }
 
     /// 缓存键：文件路径 + 修改时间（文件改了就重新解码）。
@@ -379,8 +395,9 @@ private struct JobRow: View {
             Button("移除") { workbench.removeSelection() }
                 .buttonStyle(.link)
                 .foregroundStyle(Palette.error)
-        } else if !job.issues.isEmpty {
-            IssueButton(issues: job.issues)
+        } else {
+            let issues = workbench.issues(for: job)
+            if !issues.isEmpty { IssueButton(issues: issues) }
         }
     }
 }

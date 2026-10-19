@@ -78,6 +78,9 @@ public protocol PhotoFrameService: Sendable {
     /// 登记一张源图。只检查文件存在且是 V1 支持的格式（D-02），不读取像素；同一路径重复添加返回已有记录。
     func addSource(_ fileURL: URL) async throws(ApplicationError) -> PhotoSource
     func sources() async -> [PhotoSource]
+    /// 源图换了位置（GUI 的「重新链接」）：`sourceId` 不变，之后的校验、预览和还没开始执行的任务（排队、失败、已取消，
+    /// 重试时）都读新位置。已经在执行或已完成的任务不变。不核对新文件是不是同一张照片，由调用方核对。
+    func relinkSource(_ id: SourceID, to fileURL: URL) async throws(ApplicationError) -> PhotoSource
 
     /// 按请求创建任务（源图 × 预设）。队列未暂停时立即开始排队执行。
     func submit(_ request: ExportRequest) async throws(ApplicationError) -> [JobID]
@@ -105,6 +108,13 @@ public protocol PhotoFrameService: Sendable {
     func events() async -> AsyncStream<JobEvent>
     /// 等这些任务结束（CLI 默认阻塞到任务结束，§10.3）。
     func waitUntilFinished(_ jobs: [JobID]) async -> [JobSnapshot]
+}
+
+extension PhotoFrameService {
+    /// 默认不支持（CLI、MCP 不需要重新链接）。
+    public func relinkSource(_ id: SourceID, to fileURL: URL) async throws(ApplicationError) -> PhotoSource {
+        throw ApplicationError(code: "service.unsupported", message: "这个服务不支持重新链接源图")
+    }
 }
 
 /// 进程内实现：源图登记 + 本地库（预设、素材、绑定）+ ``JobQueue`` + 图像分析。
@@ -394,6 +404,21 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         sourcesById[source.sourceId] = source
         sourceOrder.append(source.sourceId)
         sourceIdsByURL[url] = source.sourceId
+        return source
+    }
+
+    public func relinkSource(_ id: SourceID, to fileURL: URL) async throws(ApplicationError) -> PhotoSource {
+        guard var source = sourcesById[id] else { throw .unknownSource(id) }
+        let url = fileURL.standardizedFileURL
+        try Self.checkSourceFile(url)
+        if sourceIdsByURL[source.fileURL] == id { sourceIdsByURL[source.fileURL] = nil }
+        source.fileURL = url
+        source.displayName = url.lastPathComponent
+        source.fileSizeBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
+        source.image = nil
+        sourcesById[id] = source
+        sourceIdsByURL[url] = id
+        await queue.relinkSource(source)
         return source
     }
 
