@@ -26,4 +26,25 @@ struct VerticalBorderTests {
         wb.setField(\.panorama.alignment, .left)
         #expect(wb.computedVerticalMargin == .single(51))
     }
+
+    @Test func manualCountCanStepBackWithAutoBorder() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let wb = f.workbench
+        let url = try f.photo("Wide.jpg", width: 1600, height: 400)
+        let ids = await wb.addSources([url])
+        let sourceId = try #require(ids.first)
+        await wb.drop(.preset(f.presetId("Instagram Panorama")), on: .source(sourceId))
+        await wb.settle()
+        let job = try #require(wb.sourceItem(sourceId)?.jobs.last?.id)
+        wb.selection = [.job(job)]
+        wb.setField(\.panorama.autoVerticalMargin, true)
+
+        // 自动边框时自动 5 张（v = 60）。改成手动 6 张后边框变 0，下限仍是 5，能改回 5 张。
+        wb.setSlideCountManual(true)
+        #expect(wb.field(\.panorama.tileCount) == .single(.fixed(5)))
+        wb.setField(\.panorama.tileCount, .fixed(6))
+        #expect(wb.computedVerticalMargin == .single(0))
+        #expect(wb.manualSlideCountRange?.lowerBound == 5)
+    }
 }

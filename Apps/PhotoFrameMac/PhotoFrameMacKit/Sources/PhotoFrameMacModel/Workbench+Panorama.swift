@@ -66,11 +66,14 @@ extension Workbench {
     static let platformCatalog: PlatformCatalog? = try? PlatformCatalogStore.builtIn()
 
     /// 这份预设在这张源图上自动算出的切片张数（与渲染同一套版式计算）。没有源图尺寸时用任务最近一次校验或预览的页数估计。
+    /// 自动上下边框按自动张数算：按手动张数算出的边框正好让照片占满这些张，下限就会跟着手动张数走、改不回去。
     func automaticSlideCount(_ preset: ExportPreset, source: SourceItem?, validation job: DraftJob?) -> Int? {
+        var automatic = preset.panorama
+        automatic.tileCount = .auto
         if let size = source?.inspection?.displaySize,
            let layout = try? PanoramaLayout(
                tile: preset.canvas.size, source: size, coverMinimumMargin: preset.canvas.minMarginPx,
-               verticalMargin: preset.panorama.resolvedVerticalMargin(tile: preset.canvas.size, source: size),
+               verticalMargin: automatic.resolvedVerticalMargin(tile: preset.canvas.size, source: size),
                includesCover: preset.panorama.cover, alignment: preset.panorama.alignment) {
             return layout.automaticSlideCount
         }
