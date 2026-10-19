@@ -186,7 +186,7 @@ struct PlatformTests {
         #expect(c.profile(id: "instagram")!.check(p).isEmpty)
     }
 
-    @Test("6 个内置预设：名称、尺寸、#FAFAF8、60 px、Q100 SDR、ID 固定且唯一、通过校验")
+    @Test("6 个内置预设：名称、尺寸、#FAFAF8、20 px、Q100 SDR、ID 固定且唯一、通过校验")
     func builtIns() throws {
         let c = try PlatformCatalogStore.builtIn()
         let all = BuiltInPresets.all(catalog: c)
@@ -197,7 +197,7 @@ struct PlatformTests {
         #expect(all.map(\.presetId) == BuiltInPresets.all(catalog: c).map(\.presetId))
         for p in all {
             #expect(p.canvas.background.hex == "#FAFAF8")
-            #expect(p.canvas.minMarginPx == 60)
+            #expect(p.canvas.minMarginPx == 20)
             #expect(p.canvas.mode == .fit)
             #expect(p.output == OutputSettings())
             #expect(p.output.dynamicRange == .auto, "内置预设跟随源图（D-125）")

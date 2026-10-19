@@ -65,6 +65,8 @@ public final class Workbench {
             }
         }
     }
+    /// 预览的 SDR / HDR 最近一次是按哪张源图自动设的（``followSourceDynamicRange``）。
+    @ObservationIgnored var rangeFollowedSourceId: SourceID?
     /// 任务列表的选择（可多选）。非空时右栏显示源图 / 任务。
     public var selection: Set<BatchItemID> = [] {
         didSet {
@@ -92,6 +94,12 @@ public final class Workbench {
         }
     }
     public internal(set) var presetEditor: PresetEditor?
+    /// 左栏预设还没存储的修改，按预设 ID。只在内存里：换选别的预设再回来时还在，退出 App 后丢掉，
+    /// 内置预设下次启动就是出厂的定义（不写盘，也不改库里的预设）。
+    public internal(set) var presetDrafts: [UUID: ExportPreset] = [:]
+    /// 内置预设还没另存的素材绑定（素材槽 → 素材），按预设 ID。与 `presetDrafts` 一样只在内存里：
+    /// 不写进库里的绑定，「还原」时清空，另存为用户预设时存成新预设的本地绑定。
+    public internal(set) var presetBindingDrafts: [UUID: [String: UUID]] = [:]
     var focus: Focus = .batch
 
     enum Focus { case batch, preset, location }
@@ -113,6 +121,9 @@ public final class Workbench {
     @ObservationIgnored var appliedJobEvents = 0
     /// 「开始批处理」正在校验或提交：这期间再点一次（或连按 ⌘↩）不重复提交。
     @ObservationIgnored var isStartingBatch = false
+    /// 退出时选了「完成后退出」：活跃的任务做完后调用 `onReadyToQuit`。
+    public internal(set) var isWaitingToQuit = false
+    @ObservationIgnored public var onReadyToQuit: (@MainActor () -> Void)?
 
     // MARK: 提示
 
@@ -133,6 +144,14 @@ public final class Workbench {
     @ObservationIgnored var skippedSources: Set<SourceID> = []
 
     public let preview: PreviewModel
+
+    /// 撤销用窗口的 UndoManager（界面出现时设置）；没有时操作照常执行、不记撤销。
+    @ObservationIgnored public weak var undoManager: UndoManager?
+    @ObservationIgnored var undoNesting = 0
+    /// 正在拖动滑块：拖动开始时的状态。
+    @ObservationIgnored var continuousEditStart: UndoState?
+    /// 上一步撤销记录的合并键、改的是哪里和时间（连续修改同一处的同一个字段时合成一步）。
+    @ObservationIgnored var lastUndo: (key: AnyHashable, subject: InspectorSubject, time: ContinuousClock.Instant)?
 
     @ObservationIgnored var work: [String: BackgroundWork] = [:]
     @ObservationIgnored private var workCount = 0
@@ -228,12 +247,17 @@ public final class Workbench {
     }
 
     public func setField<Value>(_ path: WritableKeyPath<ExportPreset, Value>, _ value: Value) {
-        edit { $0[keyPath: path] = value }
+        edit(coalescing: path) { $0[keyPath: path] = value }
     }
 
     /// 修改右栏正在编辑的全部预设（任务的副本，或左栏预设的草稿）。不自动写回库里的预设（§4.2）。
-    public func edit(_ body: (inout ExportPreset) -> Void) {
+    /// 可以撤销，Edit 菜单里显示为「撤销 + `name`」；`key` 见 ``undoable(_:coalescing:_:)``。
+    public func edit(_ name: String = "修改参数", coalescing key: AnyHashable? = nil, _ body: (inout ExportPreset) -> Void) {
         guard isInspectorEditable else { return }
+        undoable(name, coalescing: key) { editInspected(body) }
+    }
+
+    private func editInspected(_ body: (inout ExportPreset) -> Void) {
         switch inspectorSubject {
         case .jobs(let ids):
             updateJobs(ids) { job in
@@ -242,12 +266,16 @@ public final class Workbench {
                 // 改动删掉的素材槽（删除图层、相机规则时）不再留单任务绑定，否则会一直警告绑定的槽没有被预设使用。
                 for slotId in slots.subtracting(job.preset.assetSlots.map(\.slotId)) { job.assetBindings[slotId] = nil }
             }
-        case .preset:
+        case .preset(let id):
             guard var draft = presetEditor?.draft else { return }
             body(&draft)
             guard draft != presetEditor?.draft else { return }
-            presetEditor?.draft = draft
-            refreshPreview()
+            setPresetDraft(draft)
+            // 同样：删掉的素材槽不再留内置预设在内存里的绑定。
+            if let bound = presetBindingDrafts[id] {
+                let slots = Set(draft.assetSlots.map(\.slotId))
+                setPresetBindingDrafts(bound.filter { slots.contains($0.key) }, for: id)
+            }
         case .source, .location, .none:
             break
         }
@@ -438,13 +466,12 @@ public struct PresetEditor: Equatable, Sendable {
     public var entry: CatalogPreset
     public var draft: ExportPreset
 
-    /// 内置预设只读，要先复制（D-81）。
+    /// 只有直接打开的预设文件只读。内置预设也可以改，但改动只留在内存里，要存储就另存为用户预设（不改出厂的定义）。
     public var isReadOnly: Bool {
-        switch entry.origin {
-        case .builtIn, .file: true
-        case .user, .imported: false
-        }
+        if case .file = entry.origin { true } else { false }
     }
+
+    public var isBuiltIn: Bool { entry.origin == .builtIn }
 
     public var isDirty: Bool { draft != entry.preset }
 }

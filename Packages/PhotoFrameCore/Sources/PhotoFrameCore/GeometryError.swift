@@ -32,7 +32,7 @@ public enum GeometryError: Error, Hashable, Sendable {
         case .invalidSource(let s): "源图尺寸必须为正：\(s)"
         case .invalidMargin(let m): "边距不能为负：\(m)"
         case .marginTooLarge(let m, let c): "边距 \(m) px 对画布 \(c) 过大，没有可放置照片的区域"
-        case .invalidVerticalMargin(let v): "切片上下边距无效：\(v)"
+        case .invalidVerticalMargin(let v): "切片上下边框宽度无效：\(v)"
         case .invalidSlideCount(let n): "切片张数必须 ≥ 1：\(n)"
         case .slideCountBelowMinimum(let n, let minimum):
             "切片张数 \(n) 少于完整放下照片所需的 \(minimum) 张；只能增加张数"

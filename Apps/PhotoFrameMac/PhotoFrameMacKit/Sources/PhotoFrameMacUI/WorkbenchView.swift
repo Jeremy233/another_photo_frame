@@ -8,6 +8,8 @@ import SwiftUI
 /// 与 Compressor 一样固定深色，背景用中性灰；控件都用 macOS 26 系统样式。
 public struct WorkbenchView: View {
     @Bindable var workbench: Workbench
+    /// 窗口的撤销管理器：「当前」里的改动登记在这里（⌘Z / ⇧⌘Z，与输入框的撤销同一个栈）。
+    @Environment(\.undoManager) private var undoManager
 
     public init(workbench: Workbench) {
         self.workbench = workbench
@@ -37,6 +39,8 @@ public struct WorkbenchView: View {
         .toolbar { toolbar }
         .toolbar(removing: .title)
         .toolbarBackground(Palette.toolbar, for: .windowToolbar)
+        .onAppear { workbench.undoManager = undoManager }
+        .onChange(of: undoManager) { _, manager in workbench.undoManager = manager }
         .task {
             await workbench.load()
             await PhotoFrameAppDelegate.register(workbench)

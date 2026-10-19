@@ -377,7 +377,7 @@ extension PreviewImage {
 }
 
 extension Workbench {
-    /// 预览跟着右栏：选中一个任务时预览它；选中源图时预览它的第一个任务（没有任务只看原图）；
+    /// 预览跟着右栏：选中任务时预览它（多选时第一个）；选中源图时预览它的第一个任务（没有任务只看原图）；
     /// 选中左栏预设时用选中的源图（没有则第一张源图）预览预设草稿。
     var previewSubject: PreviewSubject? {
         func subject(_ item: SourceItem, preset: ExportPreset?, bindings: [String: UUID]) -> PreviewSubject {
@@ -388,23 +388,36 @@ extension Workbench {
         let (inspectorSubject, jobs) = inspected()
         switch inspectorSubject {
         case .jobs:
-            guard jobs.count == 1, let job = jobs.first, let item = sourceItem(job.sourceId) else { return nil }
+            // 多选时预览第一个（右栏的修改作用于全部选中的任务）。
+            guard let job = jobs.first, let item = sourceItem(job.sourceId) else { return nil }
             return subject(item, preset: job.preset, bindings: job.assetBindings)
         case .source(let id):
             guard let item = sourceItem(id) else { return nil }
             let first = item.jobs.first
             return subject(item, preset: first?.preset, bindings: first?.assetBindings ?? [:])
-        case .preset:
+        case .preset(let id):
             guard let draft = presetEditor?.draft,
                   let item = targetSourceIds.first.flatMap(sourceItem) ?? sources.first else { return nil }
-            return subject(item, preset: draft, bindings: [:])
+            // 内置预设在内存里的素材绑定（不在库里）按单任务绑定交给渲染。
+            return subject(item, preset: draft, bindings: presetBindingDrafts[id] ?? [:])
         case .location, .none:
             return nil
         }
     }
 
     func refreshPreview() {
-        preview.update(previewSubject)
+        let subject = previewSubject
+        followSourceDynamicRange(subject)
+        preview.update(subject)
+    }
+
+    /// 预览换到另一张源图（或这张源图刚检查完）时，SDR / HDR 跟着源图：HDR 源图自动打开 HDR 预览，
+    /// 其他源图回到 SDR。还停在同一张源图上时不动，手动切换的结果保留。
+    private func followSourceDynamicRange(_ subject: PreviewSubject?) {
+        guard let id = subject?.sourceId, id != rangeFollowedSourceId,
+              let range = sourceItem(id)?.dynamicRange else { return }
+        rangeFollowedSourceId = id
+        preview.range = range == .hdr ? .hdr : .sdr
     }
 
     /// 动态范围选「跟随源图」（D-125）时，预览的这张源图实际会导出成什么；不是 auto 或没有源图时为 nil。

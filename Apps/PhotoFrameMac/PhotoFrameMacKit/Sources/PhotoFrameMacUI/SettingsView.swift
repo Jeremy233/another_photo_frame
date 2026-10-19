@@ -39,6 +39,11 @@ private struct GeneralSettings: View {
             }
             .help("有任务带警告时，开始前询问继续、查看还是取消")
             .formLabel("开始批处理前：")
+            Toggle(isOn: $settings.confirmsQuitWithUnstartedJobs) {
+                Text("有没开始的任务时先询问")
+            }
+            .help("「当前」里有没提交的任务、或「活跃」里有排队的任务时，退出前先确认；有正在处理的任务时总会询问")
+            .formLabel("退出时：")
         }
         .formStyle(.columns)
         .padding(20)

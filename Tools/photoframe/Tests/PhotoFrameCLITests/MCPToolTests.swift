@@ -70,7 +70,7 @@ struct MCPToolTests {
         #expect(manifest["canvas"]?.objectValue?["width"]?.intValue == 1080)
 
         let field = try await h.call("get_preset", ["preset": .string("xhs-standard"), "path": .string("canvas.minMarginPx")])
-        #expect(field["value"]?.intValue == 60)
+        #expect(field["value"]?.intValue == 20)
         #expect(field["path"]?.stringValue == "canvas.minMarginPx")
 
         let bad = try await h.call("get_preset", ["preset": .string("xhs-standard"), "path": .string("canvas..x")])

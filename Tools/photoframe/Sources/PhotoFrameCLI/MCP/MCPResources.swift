@@ -36,7 +36,9 @@ enum MCPResources {
         - `canvas`：`width`、`height`、`background`（`{"colorSpace": "sRGB", "hex": "#RRGGBB"}`）、`minMarginPx`、
           `mode`（`fit` 默认 / `crop`），`crop`（`{"aspectRatio": [4, 5], "anchor": [0.5, 0.5]}`，可省略）
         - `panorama`：`enabled`、`cover`、`tileCount`（`"auto"` 或整数，只能比自动张数多）、`cropPolicy`（`never`）、
-          `fitHeight`、`padColor`（`"canvasBackground"` 或颜色）、`verticalMarginPx`（所有切片共用的上下边距）
+          `fitHeight`、`padColor`（`"canvasBackground"` 或颜色）、`verticalMarginPx`（所有切片共用的上下边距）、
+          `autoVerticalMargin`（`true` 时自动算上下边距，使它等于长卷端部的底色宽度，忽略 `verticalMarginPx`，默认 `false`）、
+          `alignment`（照片在长卷里的位置：`left` / `center` 默认 / `right`，靠左／靠右时照片贴边）
         - `layers[]`：`layerId`、`type`（`text` / `metadataText` / `asset` / `cameraBadge`）、`enabled`、
           `visibleOn`（`coverOnly` / `allSlides` / `selectedSlides`，后者配 `slides: [0, 2]`，0 = 封面）、
           `anchor`（`topLeft`、`top`、`topRight`、`left`、`center`、`right`、`bottomLeft`、`bottom`、`bottomRight`）、`reference`（`photo` / `canvas`）、`side`（`inside` / `outside`，

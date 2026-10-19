@@ -11,15 +11,18 @@ public struct AppSettings: Hashable, Sendable, Codable {
     public var memoryBudgetGiB: Int?
     /// 开始批处理前，有任务带警告时先询问（参照 Compressor「The batch has warnings」）。
     public var reviewsWarningsBeforeStart = true
+    /// 退出时有还没开始的任务先确认（确认框里可以勾「不再显示」）。有正在处理的任务时不管这一项总要确认。
+    public var confirmsQuitWithUnstartedJobs = true
 
     public init(
         switchesToActiveAfterStart: Bool = true, maxConcurrentJobs: Int? = nil, memoryBudgetGiB: Int? = nil,
-        reviewsWarningsBeforeStart: Bool = true
+        reviewsWarningsBeforeStart: Bool = true, confirmsQuitWithUnstartedJobs: Bool = true
     ) {
         self.switchesToActiveAfterStart = switchesToActiveAfterStart
         self.maxConcurrentJobs = maxConcurrentJobs.map(QueueConfiguration.clampedMaxConcurrentJobs)
         self.memoryBudgetGiB = memoryBudgetGiB
         self.reviewsWarningsBeforeStart = reviewsWarningsBeforeStart
+        self.confirmsQuitWithUnstartedJobs = confirmsQuitWithUnstartedJobs
     }
 
     public var effectiveMaxConcurrentJobs: Int {
@@ -44,6 +47,7 @@ public struct AppSettings: Hashable, Sendable, Codable {
         maxConcurrentJobs = try c.decodeIfPresent(Int.self, forKey: .maxConcurrentJobs).map(QueueConfiguration.clampedMaxConcurrentJobs)
         memoryBudgetGiB = try c.decodeIfPresent(Int.self, forKey: .memoryBudgetGiB)
         reviewsWarningsBeforeStart = try c.decodeIfPresent(Bool.self, forKey: .reviewsWarningsBeforeStart) ?? true
+        confirmsQuitWithUnstartedJobs = try c.decodeIfPresent(Bool.self, forKey: .confirmsQuitWithUnstartedJobs) ?? true
     }
 }
 

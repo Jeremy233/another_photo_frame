@@ -101,7 +101,8 @@ struct WorkbenchCommands: Commands {
     }
 }
 
-/// 应用级事件：固定深色外观；把图片拖到 Dock 图标或用「打开方式」打开时，直接加入当前批次（与 Compressor 一致，不带预设）。
+/// 应用级事件：固定深色外观；把图片拖到 Dock 图标或用「打开方式」打开时，直接加入当前批次（与 Compressor 一致，不带预设）；
+/// 退出前确认（有没开始或正在处理的任务时）。
 @MainActor
 public final class PhotoFrameAppDelegate: NSObject, NSApplicationDelegate {
     static weak var workbench: Workbench?
@@ -120,11 +121,90 @@ public final class PhotoFrameAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⌘Q：问什么由 `Workbench.quitPrompt` 决定；要问时先返回 `.terminateLater`，用户回答后再答复。
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let workbench = Self.workbench else { return .terminateNow }
+        switch workbench.quitPrompt {
+        case .none:
+            return .terminateNow
+        case .unstartedJobs(let count):
+            QuitAlert.confirmUnstarted(count: count, workbench: workbench)
+            return .terminateLater
+        case .processingJobs(let count):
+            QuitAlert.confirmProcessing(count: count, workbench: workbench)
+            return .terminateLater
+        }
+    }
+
     /// 窗口出现后登记，把启动时就收到的文件加进去。
     static func register(_ workbench: Workbench) async {
         self.workbench = workbench
+        // 选了「完成后退出」、任务都做完了：再走一遍退出（这时不再询问）。
+        // 确认框还开着时由用户的回答决定。
+        workbench.onReadyToQuit = { if !QuitAlert.isAsking { NSApp.terminate(nil) } }
         let urls = pending
         pending = []
         if !urls.isEmpty { await workbench.addSources(urls) }
+    }
+}
+
+/// 退出确认。用 NSAlert（与开始批处理前的警告询问一样），因为要「不再显示」复选框和红色的破坏性按钮。
+@MainActor
+enum QuitAlert {
+    /// 确认框开着（`applicationShouldTerminate` 在等答复）。
+    static var isAsking = false
+    /// 有还没开始的任务：退出 / 取消，可以勾「不再显示」（设置里能改回来）。
+    static func confirmUnstarted(count: Int, workbench: Workbench) {
+        let alert = NSAlert()
+        alert.messageText = "有 \(count) 个任务还没开始"
+        alert.informativeText = "退出后，「当前」里没提交的任务和「活跃」里排队的任务都会丢掉。确定要退出吗？"
+        alert.addButton(withTitle: "退出")
+        alert.addButton(withTitle: "取消").keyEquivalent = "\u{1b}"
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "不再显示"
+        show(alert, workbench: workbench) { response in
+            let choice: QuitChoice = response == .alertFirstButtonReturn ? .quit : .cancel
+            return (choice, alert.suppressionButton?.state == .on)
+        }
+    }
+
+    /// 有正在处理的任务：总是询问。停止并退出（红色）/ 完成后退出 / 取消。
+    static func confirmProcessing(count: Int, workbench: Workbench) {
+        let alert = NSAlert()
+        alert.messageText = "有 \(count) 个任务正在处理"
+        alert.informativeText = "现在退出会取消全部活跃的任务。也可以等它们全部完成后自动退出。"
+        let stop = alert.addButton(withTitle: "停止并退出")
+        stop.hasDestructiveAction = true
+        alert.addButton(withTitle: "完成后退出")
+        alert.addButton(withTitle: "取消").keyEquivalent = "\u{1b}"
+        show(alert, workbench: workbench) { response in
+            let choice: QuitChoice = switch response {
+            case .alertFirstButtonReturn: .stopAndQuit
+            case .alertSecondButtonReturn: .quitWhenFinished
+            default: .cancel
+            }
+            return (choice, false)
+        }
+    }
+
+    /// 从主窗口滑出；回答后执行，再答复 `applicationShouldTerminate` 的 `.terminateLater`。
+    private static func show(
+        _ alert: NSAlert, workbench: Workbench, choice: @escaping (NSApplication.ModalResponse) -> (QuitChoice, Bool)
+    ) {
+        isAsking = true
+        let finish = { (response: NSApplication.ModalResponse) in
+            let (answer, dontAsk) = choice(response)
+            Task {
+                let quit = await workbench.resolveQuit(answer, dontAskAgain: dontAsk)
+                isAsking = false
+                NSApp.reply(toApplicationShouldTerminate: quit)
+            }
+        }
+        if let window = NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+            alert.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(alert.runModal())
+        }
     }
 }

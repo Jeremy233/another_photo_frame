@@ -131,7 +131,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         case .canvas:
             if side != nil {
                 throw DecodingError.dataCorruptedError(
-                    forKey: .side, in: c, debugDescription: "以画布为参照时不能写 side（图层总在画布内侧）")
+                    forKey: .side, in: c, debugDescription: "以画布为参照时不能写 side（装饰总在画布内侧）")
             }
             reference = .canvas
         }
