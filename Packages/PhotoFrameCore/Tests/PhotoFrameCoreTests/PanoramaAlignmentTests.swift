@@ -40,8 +40,40 @@ struct PanoramaAlignmentTests {
         let v = PanoramaLayout.equalizedVerticalMargin(tile: tile, source: source, alignment: .left)
         let p = try PanoramaLayout(tile: tile, source: source, verticalMargin: v, alignment: .left)
         #expect(p.slideCount == 5 && p.pixelPadding.left == 0)
-        // 向下取整：差不超过 2R 像素。
+        // 取整后差不超过 2R 像素。
         #expect(abs(p.pixelPadding.right - v) <= 8)
+    }
+
+    @Test func autoMarginRoundsUpWhenRoundingDownOverflows() throws {
+        // R = 3.005：v = 7.2 / 4.01 ≈ 1.80。向下取 1 时照片宽 4321.2 > 4 · 1080，会变成 5 张、不加边距。
+        let wide = PixelSize(width: 3005, height: 1000)
+        let v = PanoramaLayout.equalizedVerticalMargin(tile: tile, source: wide)
+        #expect(v == 2)
+        #expect(try PanoramaLayout(tile: tile, source: wide, verticalMargin: v).slideCount == 4)
+        // 手动张数同理：放不下时渲染会抛出 slideCountBelowMinimum。
+        let manual = PanoramaLayout.equalizedVerticalMargin(tile: tile, source: wide, slideCount: .manual(4))
+        #expect(manual == 2)
+        #expect(try PanoramaLayout(tile: tile, source: wide, verticalMargin: manual, slideCount: .manual(4)).slideCount == 4)
+    }
+
+    @Test func autoMarginSolvesEveryWideSource() throws {
+        // 有 ≥ 1 px 的解且不超过半高时，自动边距不能退回 0，版式也必须正好是 N 张。
+        for width in stride(from: 1500, through: 40000, by: 7) {
+            let wide = PixelSize(width: width, height: 1000)
+            let r = wide.aspectRatio
+            let n = Int(((r * 1440 + PanoramaLayout.defaultSlideCountTolerance) / 1080).rounded(.down))
+            for alignment in [PanoramaSettings.Alignment.center, .left] {
+                let k: Double = alignment == .center ? 2 : 1
+                let exact = (r * 1440 - Double(n) * 1080) / (2 * r - k)
+                guard exact >= 1, exact < 700 else { continue }
+                let v = PanoramaLayout.equalizedVerticalMargin(tile: tile, source: wide, alignment: alignment)
+                #expect(v > 0, "\(width) \(alignment)")
+                let p = try PanoramaLayout(tile: tile, source: wide, verticalMargin: v, alignment: alignment)
+                #expect(p.slideCount == n, "\(width) \(alignment)")
+                let padding = alignment == .center ? p.pixelPadding.left : p.pixelPadding.right
+                #expect(Double(abs(padding - v)) <= 2 * r / k + 2, "\(width) \(alignment)")
+            }
+        }
     }
 
     @Test func autoMarginFallsBackToZeroWhenUnsolvable() {

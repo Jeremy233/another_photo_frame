@@ -193,8 +193,9 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
     /// `v = (R·H − N·W) / (2R − k)`。v 变大会让照片变窄、底色变宽，所以自动张数时取
     /// N = floor(R·H / W)，比不加边距时少一张，才能有 v ≥ 0 的解。
     ///
-    /// 竖图／方图、算出的 v 无效（≤ 0、不小于 H − v，或这个 v 下自动张数不是 N），以及手动张数多到
-    /// 无解时返回 0，即不加上下边距。结果向下取整。
+    /// v 取最接近的整数；v 每少 1 px 照片就宽 2R px，四舍五入后放不进 N 张时向上取整。
+    /// 竖图／方图、算出的 v 无效（≤ 0、不小于 H − v，或这个 v 下自动张数不是 N、手动张数放不下），
+    /// 以及手动张数多到无解时返回 0，即不加上下边距。
     public static func equalizedVerticalMargin(
         tile: PixelSize,
         source: PixelSize,
@@ -214,13 +215,14 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         let k: Double = alignment == .center ? 2 : 1
         let exact = (r * h - Double(n) * w) / (2 * r - k)
         guard exact > 0 else { return 0 }
-        let v = Int(exact.rounded(.down))
-        guard v < tile.height - v else { return 0 }
-        if case .automatic = slideCount {
+        for v in [Int(exact.rounded()), Int(exact.rounded(.up))] where v > 0 && v < tile.height - v {
             let automatic = max(1, Int(((r * Double(tile.height - 2 * v) - slideCountTolerance) / w).rounded(.up)))
-            guard automatic == n else { return 0 }
+            switch slideCount {
+            case .automatic where automatic == n, .manual where automatic <= n: return v
+            default: continue
+            }
         }
-        return v
+        return 0
     }
 
     static func slice(
