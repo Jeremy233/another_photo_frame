@@ -309,9 +309,11 @@ let photoframeExecutable: URL? = {
     return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
 }()
 
-/// 以子进程运行 `photoframe`。
-func runProcess(_ arguments: [String], in directory: URL, beforeWait: ((Process, Pipe) -> Void)? = nil) throws -> (status: Int32, stdout: String, stderr: String) {
-    guard let exe = photoframeExecutable else { throw TestFailure("找不到 photoframe 可执行文件") }
+/// 以子进程运行 `photoframe`（`executable` 为 nil 时用 `swift test` 构建出的那份）。
+func runProcess(
+    _ arguments: [String], in directory: URL, executable: URL? = nil, beforeWait: ((Process, Pipe) -> Void)? = nil
+) throws -> (status: Int32, stdout: String, stderr: String) {
+    guard let exe = executable ?? photoframeExecutable else { throw TestFailure("找不到 photoframe 可执行文件") }
     let process = Process()
     process.executableURL = exe
     process.arguments = arguments

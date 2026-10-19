@@ -39,6 +39,66 @@ struct ProcessTests {
         #expect(missing.stderr.contains("source.not_found"))
     }
 
+    @Test("单独复制出来的可执行文件（旁边没有资源包）：各个命令和 MCP 服务器都能运行（D-126）")
+    func loneExecutable() throws {
+        let box = try Sandbox()
+        try box.photo("Badlands.jpg", width: 1200, height: 800)
+        // 只复制可执行文件本身；构建目录里它旁边可能还有旧版本留下的 .bundle，这里不带。
+        let bin = box.root.appending(path: "bin", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let lone = bin.appending(path: "photoframe")
+        try FileManager.default.copyItem(at: try #require(photoframeExecutable), to: lone)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: bin.path) == ["photoframe"])
+
+        for arguments in [
+            ["preset", "list", "--json"],
+            ["image", "inspect", "Badlands.jpg", "--json"],
+            ["export", "Badlands.jpg", "--preset", "xhs-standard", "-o", "Exports", "--json"],
+            ["preview", "Badlands.jpg", "--preset", "douyin-standard", "-o", "Preview"],
+        ] {
+            let result = try runProcess(arguments, in: box.root, executable: lone)
+            #expect(result.status == 0, "\(arguments)：\(result.stderr)")
+        }
+        #expect(FileManager.default.fileExists(atPath: box.exports.appending(path: "Xiaohongshu/Badlands_Standard/00_Cover.jpg").path),
+                "\(box.tree())")
+
+        let client = try StdioClient(arguments: ["mcp", "serve"], library: box.root.appending(path: "Library"), executable: lone)
+        defer { client.kill() }
+        _ = try client.request("initialize", [
+            "protocolVersion": "2025-11-25", "capabilities": [String: Any](), "clientInfo": ["name": "e2e", "version": "1"],
+        ])
+        try client.notify("notifications/initialized")
+        #expect((try client.callTool("list_presets", [:])["presets"] as? [Any])?.count == 6)
+        #expect(try client.close() == 0)
+    }
+
+    @Test("磁盘映像（相当于移动硬盘）上的源图：复制到本机缓存后导出，进程退出时删掉本进程的副本目录（D-129）", .timeLimit(.minutes(2)))
+    func stagedSourceIsRemovedAtExit() throws {
+        let box = try Sandbox()
+        let image = box.root.appending(path: "volume.dmg")
+        let mount = box.root.appending(path: "mnt", directoryHint: .isDirectory)
+        guard hdiutil(["create", "-size", "32m", "-fs", "APFS", "-volname", "PFStagingCLI", image.path, "-quiet"]),
+              hdiutil(["attach", image.path, "-nobrowse", "-noautoopen", "-mountpoint", mount.path, "-quiet"])
+        else {
+            print("[跳过] hdiutil 无法挂载磁盘映像")
+            return
+        }
+        defer { hdiutil(["detach", mount.path, "-force", "-quiet"]) }
+        let photo = try box.photo("Badlands.jpg", width: 1200, height: 800)
+        try FileManager.default.copyItem(at: photo, to: mount.appending(path: "Badlands.jpg"))
+
+        let pid = Locked<Int32>(0)
+        let result = try runProcess(
+            ["export", mount.appending(path: "Badlands.jpg").path, "--preset", "xhs-standard", "-o", "Exports", "--json"], in: box.root
+        ) { process, _ in pid.value = process.processIdentifier }
+        #expect(result.status == 0, "\(result.stderr)")
+        #expect(FileManager.default.fileExists(atPath: box.exports.appending(path: "Xiaohongshu/Badlands_Standard/00_Cover.jpg").path))
+        let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: "AnotherPhotoFrame/SourceStaging")
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? []
+        #expect(!left.contains { $0.hasPrefix("\(pid.value)-") }, "\(left)")
+    }
+
     @Test("SIGINT：取消任务并清理临时目录，退出码 130；已发布的作品目录都是完整的")
     func sigint() throws {
         let box = try Sandbox()
@@ -63,4 +123,17 @@ struct ProcessTests {
             #expect(result.stderr.contains("canceled"))
         }
     }
+}
+
+/// 运行 hdiutil，成功时返回 true。
+@discardableResult
+func hdiutil(_ arguments: [String]) -> Bool {
+    let process = Process()
+    process.executableURL = URL(filePath: "/usr/bin/hdiutil")
+    process.arguments = arguments
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return false }
+    process.waitUntilExit()
+    return process.terminationStatus == 0
 }

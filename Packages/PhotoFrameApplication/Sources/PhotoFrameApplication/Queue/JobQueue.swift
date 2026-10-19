@@ -1,5 +1,6 @@
 import Foundation
 import PhotoFrameCore
+import PhotoFrameRendering
 import PhotoFrameStorage
 import Synchronization
 
@@ -274,16 +275,16 @@ public actor JobQueue {
 
             advance(id, attemptId, through: .encoding)
             transition(id, attemptId, to: .writing)
-            // 发布在独立的 Task 里做文件操作，不占用队列；它只看取消标志，不响应 Task 取消。
+            // 发布的文件操作在专用线程上做，不占用队列和协作线程池（D-128）；它只看取消标志，不响应 Task 取消。
             let exporter = self.exporter
             // 同一张源图的多个任务只算一次：覆盖检查对每个路径都要做文件身份比对。
             let protectedSources = Array(Set(records.values.map(\.spec.source.fileURL)))
             staging = nil  // publish 无论成败都会清理临时目录
-            let manifest = try await Task.detached {
+            let manifest = try await RenderThread.run { _ in
                 try exporter.publish(
                     result, spec: spec, jobId: id, staging: area, startedAt: startedAt,
                     protectedSources: protectedSources, isCanceled: { flag.isSet })
-            }.value
+            }
             complete(id, attemptId, manifest)
         } catch {
             if let staging { exporter.discard(staging) }

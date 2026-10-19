@@ -15,8 +15,8 @@ swift build -c release
 
 仓库在 iCloud 同步目录下时加 `--scratch-path "$TMPDIR/photoframe-build"`（原因见根 README）。
 
-要把 `photoframe` 复制到别处（例如 `~/bin/`）时，连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹；
-只复制可执行文件，启动时找不到资源包会直接崩溃。
+`photoframe` 是单个可执行文件（平台配置编译在程序里，D-126），可以直接复制到别处（例如 `~/bin/`）。
+v0.9.1 及更早的版本还需要把旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹，否则启动时会崩溃。
 
 ## 约定
 
@@ -24,6 +24,8 @@ swift build -c release
 - **阻塞到结束**：`export` 一直等到所有任务结束才退出（§10.3）。
 - **路径**：相对路径按当前目录解析，支持 `~`。
 - **原图只读**：任何命令都不会写、移动或覆盖源图（§12.2）。
+- **NAS、移动硬盘上的源图**：先按顺序复制到 `~/Library/Caches/AnotherPhotoFrame/SourceStaging/` 再处理，同一个文件只读一次，
+  进程结束时删除（D-129）。复制途中卷断开报 `render.source_read_failed`，文件被改报 `render.source_changed`。
 - **不加 `--overwrite` 就不覆盖**：已存在的作品目录自动加 `_v2`、`_v3`…（D-49）。
 - **Ctrl-C**：取消所有未完成的任务，删除它们的临时目录，以 130 退出；已经发布的作品目录保持完整。
   再按一次 Ctrl-C 立即退出，残留的临时目录在下次导出到同一目录时清理（D-55）。
@@ -119,7 +121,7 @@ photoframe --help | --version
 | `--dry-run` | 只校验并列出将写出的文件，不渲染、不写任何文件（连输出目录都不创建） |
 | `--json` | stdout 输出 JSON |
 | `-q, --quiet` | 不在 stderr 显示进度 |
-| `--jobs <n>` | 同时执行的任务数，默认性能核数的一半（1–4，D-53） |
+| `--jobs <n>` | 同时执行的任务数，默认性能核数的一半（1–4，D-53）；最多 8，且不超过本机核数，更大的值按上限执行（D-128） |
 
 执行顺序：解析全部预设 → 登记全部源图 → **校验全部任务** → 提交 → 等待。校验阶段发现任何问题（源图读不了、预设无效、缺必需素材、
 输出目录不可写、拒绝覆盖、`--overwrite` 时两个任务指向同一目录……）就什么都不写，直接退出（D-72）。`--overwrite` 时同一请求里两个任务指向同一个作品目录（例如两张同名源图）在校验时报
@@ -238,7 +240,7 @@ photoframe preset get "My IG" canvas
 | 1 | 内部错误，不应发生，请报告问题 | `service.unavailable`、`cli.internal` |
 | 2 | 用法错误：参数缺失、未知选项或命令、取值不对 | （ArgumentParser 的信息，只写 stderr）；`mcp serve` 的目录参数无效：`mcp.invalid_root` |
 | 3 | 找不到输入 | `source.not_found`、`preset.file_not_found`、`library.preset_not_found`、`asset.not_found`、`asset.file_not_found` |
-| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`render.svg_rejected`、`job.source_unreadable`、`job.invalid_preset`、`slot.missing_required`、`library.ambiguous_preset`、`library.builtin_read_only`、`library.invalid_name`、`library.preset_not_in_library`、`preset.invalid_path`、`preset.path_not_found`、`preset.field_read_only`、`preset.invalid_edit`、`asset.ambiguous`、`asset.svg_rejected`、`asset.type_mismatch`、`asset.too_large`、`binding.*`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
+| 4 | 输入无效 | `source.unsupported_format`、`render.unsupported_format`、`render.decode_failed`、`render.source_read_failed`、`render.source_changed`、`render.svg_rejected`、`job.source_unreadable`、`job.invalid_preset`、`slot.missing_required`、`library.ambiguous_preset`、`library.builtin_read_only`、`library.invalid_name`、`library.preset_not_in_library`、`preset.invalid_path`、`preset.path_not_found`、`preset.field_read_only`、`preset.invalid_edit`、`asset.ambiguous`、`asset.svg_rejected`、`asset.type_mismatch`、`asset.too_large`、`binding.*`、`archive.*`、`package.*`、`preset.*` 等其余错误码 |
 | 5 | 输出不可用 | `job.destination_unavailable`、`job.destination_invalid`、`export.overwrite_refused`、`export.overwrite_contains_source`、`export.versions_exhausted`、`export.staging_failed`、`export.publish_failed`、`request.duplicate_output`、`preview.file_exists`、`preview.write_failed`、`preset.export_exists`、`library.io` |
 | 6 | 校验通过后至少一个导出任务失败（其余任务照常完成） | 任务记录里的错误码，如 `render.*`、`export.*` |
 | 130 | 被 Ctrl-C（SIGINT）或 SIGTERM 中断 | |

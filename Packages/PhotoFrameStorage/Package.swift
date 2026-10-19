@@ -13,8 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "PhotoFrameStorage",
-            dependencies: [.product(name: "PhotoFrameCore", package: "PhotoFrameCore")],
-            resources: [.copy("Resources/platforms.json")]),
+            // 没有资源文件：平台配置编译进程序（D-126），单独复制出来的 photoframe 可执行文件不依赖资源包。
+            dependencies: [.product(name: "PhotoFrameCore", package: "PhotoFrameCore")]),
         .testTarget(name: "PhotoFrameStorageTests", dependencies: ["PhotoFrameStorage"]),
     ]
 )

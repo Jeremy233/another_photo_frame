@@ -21,10 +21,12 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 |---|---|
 | `RenderJob.swift` | 对外类型：`RenderJob`、`RenderAsset`、`RenderProgress`、`RenderedOutput`、`RenderDiagnostics`、`RenderWarning`、`RenderError` |
 | `PhotoFrameRenderer.swift` | 入口 `render(job:progress:)` 与 `renderPreview(_:)`：共用的前半段、阶段、进度、取消、清理 |
+| `RenderThread.swift` | 同步的渲染代码在协作线程池之外的专用线程上执行，显式取消标志（D-128） |
 | `Inspection.swift` | 只读入口：`inspect(_:)` 检查源图（格式、ICC、HDR 判定、EXIF 摘要），`plan(sourceURL:preset:)` 预估输出页（不解码像素） |
 | `Preview.swift` | 预览类型：`PreviewRequest`、`PreviewSize`、`PreviewColorMode`、`PreviewResult`、`PreviewPage`；导出 → 预览坐标映射 |
 | `PageLayout.swift` | 预设 → 每页参数（调用 Core 的 Fit / Crop / Panorama / OverlayPlacement）；图层内容准备 |
 | `SourceDecoder.swift` | 解码、降采样、输入 ICC 决策、HDR 识别、画面峰值 |
+| `SourceStaging.swift` | 不在内置磁盘上的源图（NAS、移动硬盘、磁盘映像）先复制到本机缓存再解码（D-129）：复制前后校验、副本复用与上限、退出时清理 |
 | `FileInspection.swift` | 文件头识别、ICC 是否真的存在、JPEG 段遍历 |
 | `ICCProfile.swift` | 最小 ICC 读写：TRC 求值、参数曲线改写（PoC 坑 20）、线性化配置文件 |
 | `TIFFGainMap.swift` | 经典 TIFF 解析、ISO 21496-1 元数据、「最大化兼容性」TIFF 的 HDR 还原 |

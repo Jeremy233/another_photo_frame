@@ -18,8 +18,8 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 ```
 
 可执行文件在 `$TMPDIR/photoframe-build/release/photoframe`。建议复制到固定位置（例如 `~/bin/photoframe` 或 `/usr/local/bin/photoframe`），
-客户端配置里写**绝对路径**。复制时连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹
-（只复制可执行文件，启动时找不到资源包会直接崩溃）。
+客户端配置里写**绝对路径**。它是单个可执行文件（D-126），不需要旁边的资源包；
+v0.9.1 及更早的版本还要把 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹，否则启动时会崩溃。
 
 ## 配置目录白名单（D-100）
 
@@ -34,6 +34,9 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 两种方式的目录合在一起生效。目录必须是已存在的目录（可以用 `~`），不能是 `/`；有一个不合法就拒绝启动（退出码 2，`mcp.invalid_root`）。
 允许写入的目录不自动可读，反之亦然。只给 AI 需要的最小范围，例如「修好的成片」目录只读、「社交平台导出」目录可写。
 
+源图在 NAS、移动硬盘上时，服务器先把它复制到自己的缓存目录 `~/Library/Caches/AnotherPhotoFrame/SourceStaging/` 再处理（D-129），
+进程结束时删除；这是程序的缓存，不属于写入白名单，AI 也拿不到它的路径。
+
 其他启动参数（上限，D-101）：
 
 | 参数 | 默认 | 说明 |
@@ -42,7 +45,7 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 | `--max-preview-edge <px>` | 2048 | `preview_export` 的 `maxEdge` 上限 |
 | `--max-active-jobs <n>` | 16 | 同时未结束（排队或执行中）的导出任务上限 |
 | `--max-output-mb <n>` | 20480 | 本次会话写出的文件总量上限（导出成品 + 预览文件），在每次写请求前检查 |
-| `--jobs <n>` | 性能核数的一半（1–4，D-53） | 同时执行的任务数 |
+| `--jobs <n>` | 性能核数的一半（1–4，D-53） | 同时执行的任务数；最多 8，且不超过本机核数，更大的值按上限执行（D-128） |
 
 本地库（预设、素材、绑定）与 GUI、CLI 共用，位置规则见 [CLI.md](CLI.md)「本地库」（D-78、D-124）；`PHOTOFRAME_LIBRARY=<目录>` 改用别的库（D-96）。
 
