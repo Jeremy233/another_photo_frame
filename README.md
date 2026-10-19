@@ -86,7 +86,7 @@ photoframe export photo.tif --preset instagram-panorama --preset xhs-panorama --
 photoframe preset list
 ```
 
-它也可以作为本地 MCP 服务器（`photoframe mcp serve`）让 Claude 等 AI 助手调用，只能访问你明确允许的目录。详见 [命令行工具](docs/usage/CLI.md) 和 [MCP 服务器](docs/usage/MCP.md)。命令行工具在 [Releases](https://github.com/Jeremy233/another_photo_frame/releases) 里单独提供（`photoframe-<版本>-macOS.zip`，解压后保持 `photoframe` 和旁边的 `.bundle` 在同一个文件夹），也可以从源码构建，见 [开发说明](docs/development/README.md)。
+它也可以作为本地 MCP 服务器（`photoframe mcp serve`）让 Claude 等 AI 助手调用，只能访问你明确允许的目录。详见 [命令行工具](docs/usage/CLI.md) 和 [MCP 服务器](docs/usage/MCP.md)。命令行工具在 [Releases](https://github.com/Jeremy233/another_photo_frame/releases) 里单独提供（`photoframe-<版本>-macOS.zip`，解压后是单个可执行文件 `photoframe`，可以放到任意位置；v0.9.1 及更早的版本要保持它和旁边的 `.bundle` 在同一个文件夹），也可以从源码构建，见 [开发说明](docs/development/README.md)。
 
 ### 隐私
 
@@ -191,7 +191,7 @@ photoframe export photo.tif --preset instagram-panorama --preset xhs-panorama --
 photoframe preset list
 ```
 
-It can also run as a local MCP server (`photoframe mcp serve`) for Claude and other AI assistants, limited to folders you explicitly allow. See the [command-line guide](docs/usage/CLI.md) and [MCP server guide](docs/usage/MCP.md) (in Chinese). The command-line tool is available separately on [Releases](https://github.com/Jeremy233/another_photo_frame/releases) (`photoframe-<version>-macOS.zip`; keep `photoframe` and the `.bundle` next to it in the same folder), or build it from source; see the [development notes](docs/development/README.md).
+It can also run as a local MCP server (`photoframe mcp serve`) for Claude and other AI assistants, limited to folders you explicitly allow. See the [command-line guide](docs/usage/CLI.md) and [MCP server guide](docs/usage/MCP.md) (in Chinese). The command-line tool is available separately on [Releases](https://github.com/Jeremy233/another_photo_frame/releases) (`photoframe-<version>-macOS.zip`, a single `photoframe` executable you can put anywhere; for v0.9.1 and earlier, keep it and the `.bundle` next to it in the same folder), or build it from source; see the [development notes](docs/development/README.md).
 
 ### Privacy
 

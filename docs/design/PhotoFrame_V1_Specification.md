@@ -288,7 +288,7 @@ padLeft = padRight = (stripWidth - renderWidth) / 2
 
 ### 5.4 平台轮播约束
 
-【已确定】定义平台能力描述（可更新，不把第三方规则作为不可变真理）：目标比例、最大项数、文件体积限制、图片格式与上传兼容性、HDR 输出格式。随应用附带一份平台配置数据，可被更新版本覆盖。
+【已确定】定义平台能力描述（可更新，不把第三方规则作为不可变真理）：目标比例、最大项数、文件体积限制、图片格式与上传兼容性、HDR 输出格式。随应用附带一份平台配置数据（编译进程序，D-126），可被更新版本覆盖。
 
 | 平台 | 画布 / 切片 | 轮播上限（含封面） | SDR 格式 | HDR |
 |---|---|---:|---|---|
@@ -1154,6 +1154,12 @@ photoframe mcp serve
 
 - [x] **D-124** 本地库根目录的选择规则（修改 D-78）：①`PHOTOFRAME_LIBRARY` 环境变量；②应用确实以 App Group 签名时用 App Group 容器；③`~/Library/Group Containers/group.org.anotherphotoframe/` 已存在时用它；④否则用 `~/Library/Application Support/AnotherPhotoFrame/`。GUI、CLI、MCP 都调用同一个 `LibraryLocation.defaultRoot()`。原因：未签名的应用不能在 Group Containers 下创建目录（macOS 报 Operation not permitted），而 `containerURL(forSecurityApplicationGroupIdentifier:)` 对未签名程序也会返回路径，不能据此判断已签名。签名（D-21）后从 Application Support 迁移到 App Group 容器的工作以后再做。备选：在签名前一律要求设置 `PHOTOFRAME_LIBRARY`。【已确定 2026-10-17】
 - [x] **D-125** `output.dynamicRange` 增加 `auto`（跟随源图）：源图是 HDR 且输出格式支持 HDR（JPEG 增益图）、平台没有标记为不支持 HDR 时导出 HDR，否则安静地导出 SDR（包括 PNG，不报错）；`sdr` / `hdr` 仍为强制。6 个内置预设和新建预设默认 `auto`；字段缺失时仍按 `sdr`，旧预设行为不变；`schemaVersion` 不变（同 D-63、D-119）。GUI「输出」标签显示「跟随源图」和这张源图的实际输出。预览自身的 SDR / HDR 切换（CLI `--dynamic-range`、MCP `preview_export`）只接受 `sdr` / `hdr`。来源：用户要求 HDR 源图默认导出 HDR。备选：保持内置预设 SDR，由用户手动打开 HDR。【已确定 2026-10-17】
+
+### P8 — 审计后的产品决策（2026-10-19）
+
+> 2026-10-18 全面审计留给用户的产品决策。D-53 的默认并发数复核后保持不变。
+
+- [x] **D-126** 内置平台配置编译进程序：JSON 写在 PhotoFrameStorage 的源码里（`BuiltInPlatformCatalog.swift`，只有这一份，仍按 §5.4 的格式解析和检查），模块不再带资源包。单独复制出来的 `photoframe` 可执行文件可以运行所有命令（包括 `mcp serve`），发布的命令行工具 zip 里只有这一个文件；用户目录里的覆盖文件（`revision` 更大的优先）不变。原因：以前从资源包读，只复制可执行文件时任何命令一启动就崩溃，设计好的 `platform.catalog_missing` 错误也走不到（这个错误码随之去掉）。备选：保留资源包，要求它和可执行文件放在同一个文件夹。【已确定 2026-10-19】
 
 ---
 

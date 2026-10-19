@@ -40,7 +40,7 @@ extension Workbench {
         return lower...max(lower, Self.maxSlideCount(preset, catalog: Self.platformCatalog))
     }
 
-    /// 应用附带的平台目录（与服务默认用的是同一份 `platforms.json`），用来查轮播上限。
+    /// 应用附带的平台目录（与服务默认用的是同一份内置平台配置），用来查轮播上限。
     static let platformCatalog: PlatformCatalog? = try? PlatformCatalogStore.builtIn()
 
     /// 这份预设在这张源图上自动算出的切片张数（与渲染同一套版式计算）。没有源图尺寸时用任务最近一次校验或预览的页数估计。

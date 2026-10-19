@@ -15,8 +15,8 @@ swift build -c release
 
 仓库在 iCloud 同步目录下时加 `--scratch-path "$TMPDIR/photoframe-build"`（原因见根 README）。
 
-要把 `photoframe` 复制到别处（例如 `~/bin/`）时，连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹；
-只复制可执行文件，启动时找不到资源包会直接崩溃。
+`photoframe` 是单个可执行文件（平台配置编译在程序里，D-126），可以直接复制到别处（例如 `~/bin/`）。
+v0.9.1 及更早的版本还需要把旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹，否则启动时会崩溃。
 
 ## 约定
 
