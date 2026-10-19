@@ -9,6 +9,7 @@ import SwiftUI
 /// 颜色全部用系统语义色，浅色和深色外观都适用（Compressor 只有深色）。
 struct InspectorView: View {
     @Bindable var workbench: Workbench
+    @State private var savingBuiltIn: RenameRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +26,7 @@ struct InspectorView: View {
         }
         .background(Palette.panel)
         .controlSize(.regular)
+        .renameAlert($savingBuiltIn)
     }
 
     @ViewBuilder private var header: some View {
@@ -57,10 +59,21 @@ struct InspectorView: View {
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
         case .jobs, .preset(_):
+            // 内置预设改过：放在最上面，问要不要另存为用户预设（不另存的修改退出 App 后丢掉）。
+            if workbench.hasUnsavedBuiltInEdits {
+                NoticeBar(symbol: "square.and.pencil", text: "内置预设已修改。要把修改存储为用户预设吗？不存储的话，退出 App 后恢复原样。") {
+                    HStack {
+                        Button("存储为用户预设…") { askBuiltInPresetName() }
+                            .buttonStyle(.borderedProminent)
+                        Button("还原") { workbench.revertPresetEdits() }
+                    }
+                    .controlSize(.regular)
+                }
+            }
             PresetInfoCard(workbench: workbench)
             issues
             if case .preset(let id) = workbench.inspectorSubject, workbench.presetEditor?.isReadOnly == true {
-                NoticeBar(symbol: "lock", text: "内置预设只读，复制后才能修改") {
+                NoticeBar(symbol: "lock", text: "这个预设只读，复制后才能修改") {
                     Button("复制后编辑") { Task { await workbench.duplicatePreset(id) } }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.regular)
@@ -96,7 +109,15 @@ struct InspectorView: View {
         }
     }
 
-    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上来创建任务"
+    /// 另存内置预设的修改：先结束正在编辑的输入框（最后输入的值也存进去），再输入名称。
+    private func askBuiltInPresetName() {
+        endEditing()
+        savingBuiltIn = RenameRequest(title: "存储为用户预设", name: workbench.suggestedSaveAsName, confirm: "存储") { name in
+            Task { await workbench.saveBuiltInEditsAsPreset(name: name) }
+        }
+    }
+
+    static let startHint = "选中任务即可修改设置；把左栏的预设拖到源图上，或选中源图后点预设，来创建任务"
 
     @ViewBuilder private var tab: some View {
         switch workbench.inspectorTab {
@@ -407,7 +428,7 @@ private struct PresetInfoCard: View {
         switch workbench.inspectorSubject {
         case .preset:
             guard let editor = workbench.presetEditor else { return [] }
-            lines.append(editor.isReadOnly ? "内置预设（只读）" : "预设 · \(editor.entry.origin.groupTitle)")
+            lines.append(editor.isReadOnly ? "预设（只读）" : "预设 · \(editor.entry.origin.groupTitle)")
         case .jobs(let ids) where ids.count > 1:
             return ["只显示可以批量修改的共同字段", "不同的值显示为「多个值」"]
         default:
@@ -435,7 +456,11 @@ private struct PresetInfoCard: View {
         switch workbench.inspectorSubject {
         case .preset(let id):
             if let editor = workbench.presetEditor {
-                if !editor.isReadOnly {
+                // 内置预设不能存回去：另存在顶部的提示条里。
+                if editor.isBuiltIn {
+                    // 只改了素材绑定（在内存里）也能还原。
+                    Button("还原") { workbench.revertPresetEdits() }.disabled(!workbench.hasUnsavedBuiltInEdits)
+                } else if !editor.isReadOnly {
                     Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
                     Button("存储") {
                         // 先结束正在编辑的输入框，最后输入的值也存进去。
@@ -498,7 +523,7 @@ extension Workbench {
     func layerBinding<Value>(_ layerId: String, _ path: WritableKeyPath<OverlayLayer, Value>, default value: Value) -> Binding<Value> {
         Binding(
             get: { self.editedPreset?.layers.first { $0.layerId == layerId }?[keyPath: path] ?? value },
-            set: { v in self.updateLayer(layerId) { $0[keyPath: path] = v } })
+            set: { v in self.updateLayer(layerId, coalescing: "\(layerId) \(path)") { $0[keyPath: path] = v } })
     }
 }
 
@@ -593,7 +618,7 @@ private struct CanvasTab: View {
                 }
             }
             ColorField(title: "背景色", value: workbench.binding(\.canvas.background))
-            IntField(title: "最小边距", value: workbench.binding(\.canvas.minMarginPx))
+            IntField(title: "边框宽度", value: workbench.binding(\.canvas.minMarginPx))
         }
     }
 
@@ -649,7 +674,22 @@ private struct PanoramaTab: View {
                     let range = workbench.manualSlideCountRange ?? n...n
                     InspectorRow { Stepper("\(n) 张切片", value: fixedCount(n), in: min(n, range.lowerBound)...max(n, range.upperBound)) }
                 }
-                IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
+                InspectorPicker("对齐", selection: workbench.binding(\.panorama.alignment)) {
+                    Text("靠左").tag(PanoramaSettings.Alignment?.some(.left))
+                    Text("居中").tag(PanoramaSettings.Alignment?.some(.center))
+                    Text("靠右").tag(PanoramaSettings.Alignment?.some(.right))
+                    if workbench.field(\.panorama.alignment) == .mixed { Text("多个值").tag(PanoramaSettings.Alignment?.none) }
+                }
+            }
+            InspectorSection("上下边框") {
+                // 自动计算时宽度等于长卷端部的底色宽度，按每张源图算：灰掉输入框，显示算出来的值。
+                if workbench.field(\.panorama.autoVerticalMargin) == .single(false) {
+                    IntField(title: "上下边框宽度", value: workbench.binding(\.panorama.verticalMarginPx))
+                } else {
+                    IntField(title: "上下边框宽度", value: .constant(workbench.computedVerticalMargin.value))
+                        .disabled(true)
+                }
+                MixedToggle(title: "自动计算", workbench: workbench, path: \.panorama.autoVerticalMargin)
             }
         }
     }
@@ -710,7 +750,7 @@ private struct OutputTab: View {
             }
             if workbench.field(\.output.format) == .single(.jpeg) {
                 LabeledContent("质量") {
-                    SliderWithValue(value: quality, range: 1...100, step: 1,
+                    SliderWithValue(workbench: workbench, value: quality, range: 1...100, step: 1,
                                     text: workbench.field(\.output.quality).value.map(String.init) ?? "多个值")
                 }
             }
@@ -742,7 +782,9 @@ private struct OutputTab: View {
 }
 
 /// 滑块和它右边的当前值（质量、不透明度两个滑块同样处理）。值与附近的单位标签同为 13 pt。
+/// 一次拖动是一步撤销。
 struct SliderWithValue: View {
+    let workbench: Workbench
     @Binding var value: Double
     var range: ClosedRange<Double>
     var step: Double?
@@ -752,7 +794,11 @@ struct SliderWithValue: View {
     var body: some View {
         HStack(spacing: 8) {
             Group {
-                if let step { Slider(value: $value, in: range, step: step) } else { Slider(value: $value, in: range) }
+                if let step {
+                    Slider(value: $value, in: range, step: step, onEditingChanged: editingChanged)
+                } else {
+                    Slider(value: $value, in: range, onEditingChanged: editingChanged)
+                }
             }
             .labelsHidden()
             Text(text)
@@ -760,6 +806,10 @@ struct SliderWithValue: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 44, alignment: .trailing)
         }
+    }
+
+    private func editingChanged(_ editing: Bool) {
+        if editing { workbench.beginContinuousEdit() } else { workbench.endContinuousEdit() }
     }
 }
 

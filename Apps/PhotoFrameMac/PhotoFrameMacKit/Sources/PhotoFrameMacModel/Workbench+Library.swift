@@ -17,6 +17,11 @@ extension Workbench {
         setLibrary(assets: assetList.assets, bindings: bindingList.bindings)
         libraryWarnings += assetList.warnings + bindingList.warnings
         if let id = selectedPresetId, !presets.contains(where: { $0.presetId == id }) { selectedPresetId = nil }
+        let known = Set(presets.map(\.presetId))
+        if presetDrafts.keys.contains(where: { !known.contains($0) }) { presetDrafts = presetDrafts.filter { known.contains($0.key) } }
+        if presetBindingDrafts.keys.contains(where: { !known.contains($0) }) {
+            presetBindingDrafts = presetBindingDrafts.filter { known.contains($0.key) }
+        }
     }
 
     /// 换上读到的素材和绑定。素材 ID 或绑定真的变了时，预设本地 / 默认绑定的解析结果可能跟着变：
@@ -43,8 +48,8 @@ extension Workbench {
 
     func reference(_ id: UUID) -> PresetReference { .library(id.uuidString) }
 
-    /// 读取左栏选中的预设，在右栏编辑。`saved`：刚存储的草稿；存储期间又改过（草稿已经和它不同）时保留草稿，显示为未存储。
-    func loadPresetEditor(saved: ExportPreset? = nil) {
+    /// 读取左栏选中的预设，在右栏编辑。之前改过还没存储的（`presetDrafts`）接着显示为未存储。
+    func loadPresetEditor() {
         guard let id = selectedPresetId else {
             presetEditor = nil
             refreshPreview()
@@ -55,9 +60,9 @@ extension Workbench {
             await perform("无法读取预设") {
                 let entry = try await service.resolvePreset(reference(id))
                 guard selectedPresetId == id else { return }
-                var draft = entry.preset
-                if let saved, let current = presetEditor?.draft, current.presetId == id, current != saved { draft = current }
-                presetEditor = PresetEditor(entry: entry, draft: draft)
+                // 草稿和读到的预设一样（例如刚存储）就不再算未存储的修改。
+                if presetDrafts[id] == entry.preset { presetDrafts[id] = nil }
+                presetEditor = PresetEditor(entry: entry, draft: presetDrafts[id] ?? entry.preset)
                 loaded = true
             }
             // 读不到新选中的预设：不能留着上一个预设的编辑器，否则右栏显示的、「存储」写入的都是上一个预设。
@@ -92,6 +97,7 @@ extension Workbench {
             let renamed = try await service.renamePreset(reference(id), to: name)
             await refreshLibrary()
             // 右栏正在编辑这个预设：只改名字，不重新读取（重新读取会丢掉还没存储的修改）。
+            presetDrafts[id]?.name = renamed.name
             if var editor = presetEditor, editor.entry.preset.presetId == id {
                 editor.entry.preset.name = renamed.name
                 editor.draft.name = renamed.name
@@ -104,6 +110,7 @@ extension Workbench {
     public func deletePreset(_ id: UUID) async {
         await perform("无法删除预设") {
             try await service.deletePreset(reference(id))
+            presetDrafts[id] = nil
             if selectedPresetId == id { selectedPresetId = nil }
             await refreshLibrary()
         }
@@ -168,22 +175,105 @@ extension Workbench {
         await perform("无法导出预设") { try await service.exportPreset(reference(id), to: url, overwrite: true) }
     }
 
-    /// 保存右栏对预设本身的修改。
+    /// 保存右栏对预设本身的修改。内置预设不能存回去，用 ``saveBuiltInEditsAsPreset(name:)`` 另存。
     public func savePresetEdits() async {
-        guard let editor = presetEditor, editor.isDirty, !editor.isReadOnly else { return }
+        guard let editor = presetEditor, editor.isDirty, !editor.isReadOnly, !editor.isBuiltIn else { return }
         let saved = editor.draft
         await perform("无法存储预设") {
             _ = try await service.replacePreset(saved)
             await refreshLibrary()
-            // 存储期间又改过的内容不能被重新读到的预设覆盖掉。
-            loadPresetEditor(saved: saved)
+            // 存储期间又改过的内容（草稿已经和存储的不同）不能被重新读到的预设覆盖掉，接着显示为未存储。
+            loadPresetEditor()
         }
     }
 
     public func revertPresetEdits() {
         guard let editor = presetEditor else { return }
-        presetEditor?.draft = editor.entry.preset
+        undoable("还原预设") {
+            setPresetDraft(editor.entry.preset)
+            setPresetBindingDrafts([:], for: editor.entry.preset.presetId)
+        }
+    }
+
+    /// 换上内置预设在内存里的素材绑定（空的去掉）。
+    func setPresetBindingDrafts(_ drafts: [String: UUID], for id: UUID) {
+        let value = drafts.isEmpty ? nil : drafts
+        guard presetBindingDrafts[id] != value else { return }
+        presetBindingDrafts[id] = value
         refreshPreview()
+    }
+
+    /// 改右栏正在编辑的左栏预设的草稿，并记在 `presetDrafts` 里（与存储的一样时去掉）。
+    func setPresetDraft(_ draft: ExportPreset) {
+        guard let editor = presetEditor else { return }
+        let id = editor.entry.preset.presetId
+        presetEditor?.draft = draft
+        presetDrafts[id] = draft == editor.entry.preset ? nil : draft
+        refreshPreview()
+    }
+
+    /// 内置预设改过、还没另存为用户预设（右栏顶部的提示条）。
+    public var hasUnsavedBuiltInEdits: Bool {
+        guard let editor = presetEditor, focus == .preset else { return false }
+        return editor.isBuiltIn && (editor.isDirty || presetBindingDrafts[editor.entry.preset.presetId] != nil)
+    }
+
+    /// 改过、还没存储的预设 ID（左栏标出「已修改」）：草稿，或内置预设在内存里的素材绑定。
+    public func hasUnsavedEdits(_ presetId: UUID) -> Bool { presetDrafts[presetId] != nil || presetBindingDrafts[presetId] != nil }
+
+    /// 另存时建议的名称：原名，已经有同名预设时加编号。
+    public var suggestedSaveAsName: String {
+        uniquePresetName(presetEditor?.draft.name ?? "新预设")
+    }
+
+    /// 把对内置预设的修改另存为用户预设（用户输入名称）。内置预设回到出厂的定义，左栏改选新预设。
+    /// 内置预设的本地素材绑定像「复制」一样（D-84）复制给新预设。
+    public func saveBuiltInEditsAsPreset(name: String) async {
+        guard let editor = presetEditor, editor.isBuiltIn else { return }
+        let builtInId = editor.entry.preset.presetId
+        let content = editor.draft
+        let boundInMemory = presetBindingDrafts[builtInId]
+        guard editor.isDirty || boundInMemory != nil else { return }
+        await perform("无法存储为预设") {
+            let saved = try await service.savePreset(content, name: name)
+            await copyPresetBindings(from: builtInId, to: saved.presetId, overriding: boundInMemory ?? [:])
+            // 存储期间又改过的保留在内置预设上，仍然显示为未存储。
+            if presetDrafts[builtInId] == content { presetDrafts[builtInId] = nil }
+            if presetBindingDrafts[builtInId] == boundInMemory { presetBindingDrafts[builtInId] = nil }
+            await refreshLibrary()
+            selectedPresetId = saved.presetId
+        }
+    }
+
+    /// 另存出来的新预设有新的 presetId，原预设的本地绑定对它不起作用：把新预设也有的素材槽的绑定复制过去。
+    /// 复制不了的（素材已删除等）跳过，导出时本来也会回退。
+    /// `overriding`：内置预设在内存里的绑定，优先于库里原预设的绑定。
+    func copyPresetBindings(from source: UUID, to target: UUID, overriding inMemory: [String: UUID] = [:]) async {
+        guard let stored = try? await service.resolvePreset(reference(target)).preset else { return }
+        let slots = Set(stored.assetSlots.map(\.slotId))
+        var copied: [String: UUID] = [:]
+        for binding in await service.listBindings().bindings where binding.presetId == source && slots.contains(binding.slotId) {
+            copied[binding.slotId] = binding.assetId
+        }
+        copied.merge(inMemory.filter { slots.contains($0.key) }) { _, mine in mine }
+        for (slotId, assetId) in copied.sorted(by: { $0.key < $1.key }) {
+            try? await service.bindAsset(assetId, slotId: slotId, preset: reference(target))
+        }
+        // 写了库里的绑定：换上新的绑定列表（右栏的绑定显示、预览、校验跟着变）。
+        if !inMemory.isEmpty { setLibrary(bindings: await service.listBindings().bindings) }
+    }
+
+    /// 用左栏的预设建任务时的内容：内置预设用这次运行里改过的（还没另存的修改也算），其他预设用存储的。
+    /// 用左栏的预设建任务时带上的单任务绑定：内置预设在内存里的素材绑定（只留这份预设有的素材槽）。
+    func presetJobBindings(_ id: UUID, for content: ExportPreset) -> [String: UUID] {
+        guard let drafts = presetBindingDrafts[id], preset(id)?.origin == .builtIn else { return [:] }
+        let slots = Set(content.assetSlots.map(\.slotId))
+        return drafts.filter { slots.contains($0.key) }
+    }
+
+    func presetContent(_ id: UUID) async throws(ApplicationError) -> ExportPreset {
+        if let draft = presetDrafts[id], preset(id)?.origin == .builtIn { return draft }
+        return try await service.resolvePreset(reference(id)).preset
     }
 
     func uniquePresetName(_ base: String) -> String {

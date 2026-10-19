@@ -85,6 +85,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
     ///   - slideCount: 自动或手动张数；手动值小于自动张数时抛出 `slideCountBelowMinimum`（D-11）。
     ///   - maxCarouselItems: 平台轮播最多项数（含封面）；nil 表示不检查。
     ///   - includesCover: 轮播里有没有封面（预设 `panorama.cover`）。没有封面时只按切片张数检查轮播上限。
+    ///   - alignment: 照片在长卷里靠左、居中还是靠右；靠左／靠右时照片贴边，底色都在另一端。
     public init(
         tile: PixelSize,
         source: PixelSize,
@@ -93,6 +94,7 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         slideCount: SlideCount = .automatic,
         maxCarouselItems: Int? = nil,
         includesCover: Bool = true,
+        alignment: PanoramaSettings.Alignment = .center,
         slideCountTolerance: Double = PanoramaLayout.defaultSlideCountTolerance
     ) throws(GeometryError) {
         guard tile.isPositive else { throw .invalidCanvas(tile) }
@@ -123,8 +125,17 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         // 长卷内框 = 宽 N·W、高 H − 2v。N ≥ 自动张数，所以高度贴边；
         // 取 min 只是为了吸收容差内的超出（如 4320.00001 → 4320），不会出现上下补底色。
         let strip = PixelSize(width: n * tile.width, height: tile.height)
-        let placement = centeredPlacement(
+        var placement = centeredPlacement(
             source: source, container: strip, insetX: 0, insetY: verticalMargin)
+        switch alignment {
+        case .center: break
+        case .left:
+            placement.exactRect.x = 0
+            placement.pixelRect.x = 0
+        case .right:
+            placement.exactRect.x = Double(strip.width) - placement.exactRect.width
+            placement.pixelRect.x = strip.width - placement.pixelRect.width
+        }
         let transform = ScaleTranslateTransform.mapping(source: source, into: placement.pixelRect)
 
         var warnings: [PanoramaWarning] = []
@@ -165,12 +176,53 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
         slideCount: SlideCount = .automatic,
         maxCarouselItems: Int? = nil,
         includesCover: Bool = true,
+        alignment: PanoramaSettings.Alignment = .center,
         slideCountTolerance: Double = PanoramaLayout.defaultSlideCountTolerance
     ) throws(GeometryError) {
         try self.init(
             tile: tile, source: source.displaySize, coverMinimumMargin: coverMinimumMargin,
             verticalMargin: verticalMargin, slideCount: slideCount,
-            maxCarouselItems: maxCarouselItems, includesCover: includesCover, slideCountTolerance: slideCountTolerance)
+            maxCarouselItems: maxCarouselItems, includesCover: includesCover, alignment: alignment,
+            slideCountTolerance: slideCountTolerance)
+    }
+
+    /// 「自动上下边距」：让上下边距 v 等于长卷端部的底色宽度。
+    ///
+    /// 照片宽高比 R、切片 W × H、张数 N 时，总底色宽 G = N·W − R·(H − 2v)。居中时每端 G/2，
+    /// 靠左／靠右时只有一端、宽 G。令 v = G / k（居中 k = 2，否则 k = 1），解得
+    /// `v = (R·H − N·W) / (2R − k)`。v 变大会让照片变窄、底色变宽，所以自动张数时取
+    /// N = floor(R·H / W)，比不加边距时少一张，才能有 v ≥ 0 的解。
+    ///
+    /// v 取最接近的整数；v 每少 1 px 照片就宽 2R px，四舍五入后放不进 N 张时向上取整。
+    /// 竖图／方图、算出的 v 无效（≤ 0、不小于 H − v，或这个 v 下自动张数不是 N、手动张数放不下），
+    /// 以及手动张数多到无解时返回 0，即不加上下边距。
+    public static func equalizedVerticalMargin(
+        tile: PixelSize,
+        source: PixelSize,
+        slideCount: SlideCount = .automatic,
+        alignment: PanoramaSettings.Alignment = .center,
+        slideCountTolerance: Double = PanoramaLayout.defaultSlideCountTolerance
+    ) -> Int {
+        guard tile.isPositive, source.isPositive else { return 0 }
+        let r = source.aspectRatio
+        guard r > 1 else { return 0 }
+        let w = Double(tile.width), h = Double(tile.height)
+        let n: Int = switch slideCount {
+        case .automatic: Int(((r * h + slideCountTolerance) / w).rounded(.down))
+        case .manual(let requested): requested
+        }
+        guard n >= 1 else { return 0 }
+        let k: Double = alignment == .center ? 2 : 1
+        let exact = (r * h - Double(n) * w) / (2 * r - k)
+        guard exact > 0 else { return 0 }
+        for v in [Int(exact.rounded()), Int(exact.rounded(.up))] where v > 0 && v < tile.height - v {
+            let automatic = max(1, Int(((r * Double(tile.height - 2 * v) - slideCountTolerance) / w).rounded(.up)))
+            switch slideCount {
+            case .automatic where automatic == n, .manual where automatic <= n: return v
+            default: continue
+            }
+        }
+        return 0
     }
 
     static func slice(
@@ -197,5 +249,22 @@ public struct PanoramaLayout: Hashable, Sendable, Codable {
             index: k, frame: frame, imageRect: imageRect,
             backgroundLeft: left - x0, backgroundRight: x1 - right,
             transform: local, sourceRegion: local.invert(imageRect.rect))
+    }
+}
+
+extension PanoramaSettings {
+    /// 预设里的切片张数换成版式计算用的 ``SlideCount``。
+    public var slideCount: SlideCount {
+        switch tileCount {
+        case .auto: .automatic
+        case .fixed(let n): .manual(n)
+        }
+    }
+
+    /// 实际使用的上下边距：打开「自动」时按这张源图算（``PanoramaLayout/equalizedVerticalMargin``），否则用 `verticalMarginPx`。
+    public func resolvedVerticalMargin(tile: PixelSize, source: PixelSize) -> Int {
+        guard autoVerticalMargin else { return verticalMarginPx }
+        return PanoramaLayout.equalizedVerticalMargin(
+            tile: tile, source: source, slideCount: slideCount, alignment: alignment)
     }
 }

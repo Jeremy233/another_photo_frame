@@ -16,7 +16,7 @@ struct LayersTab: View {
             }
             InspectorSection {
                 InspectorRow {
-                    Menu("添加图层") {
+                    Menu("添加装饰") {
                         ForEach(LayerTemplate.allCases) { template in
                             Button(template.title) { workbench.addLayer(template) }
                         }
@@ -26,7 +26,7 @@ struct LayersTab: View {
             }
         } else {
             // 与内置预设只读的说明同一种样式。
-            NoticeBar(symbol: "square.stack", text: "多个任务的图层不能批量修改，请只选一个任务")
+            NoticeBar(symbol: "square.stack", text: "多个任务的装饰不能批量修改，请只选一个任务")
         }
     }
 }
@@ -62,11 +62,11 @@ private struct LayerSection: View {
             IntField(title: "水平偏移", value: optional(\.offset.x))
             IntField(title: "垂直偏移", value: optional(\.offset.y))
             LabeledContent("不透明度") {
-                SliderWithValue(value: workbench.layerBinding(layer.layerId, \.opacity, default: 1), range: 0...1,
+                SliderWithValue(workbench: workbench, value: workbench.layerBinding(layer.layerId, \.opacity, default: 1), range: 0...1,
                                 text: "\(Int((layer.opacity * 100).rounded()))%")
             }
             VisibilityPicker(workbench: workbench, layer: layer)
-            InspectorRow { DestructiveButton(title: "删除图层") { workbench.removeLayer(layer.layerId) } }
+            InspectorRow { DestructiveButton(title: "删除装饰") { workbench.removeLayer(layer.layerId) } }
         }
         if layer.type.usesAssetSlot {
             CameraMatchSection(workbench: workbench, layer: layer)

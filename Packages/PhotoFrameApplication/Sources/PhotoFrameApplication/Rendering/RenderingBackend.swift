@@ -194,7 +194,7 @@ extension ApplicationWarning {
     init(_ warning: RenderWarning) {
         var message = warning.message
         if let page = warning.page { message += "（第 \(page) 页）" }
-        if let layer = warning.layerId { message += "（图层 \(layer)）" }
+        if let layer = warning.layerId { message += "（装饰 \(layer)）" }
         self.init(code: warning.code, message: message)
     }
 }

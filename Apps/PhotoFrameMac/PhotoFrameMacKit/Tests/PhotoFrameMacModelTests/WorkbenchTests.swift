@@ -64,14 +64,14 @@ import Testing
         wb.selection = [.job(a), .job(b)]
         #expect(wb.inspectorSubject == .jobs([a, b]))
         #expect(wb.editedPreset == nil)
-        #expect(wb.field(\.canvas.minMarginPx) == .single(60))
+        #expect(wb.field(\.canvas.minMarginPx) == .single(20))
         #expect(wb.field(\.platform) == .mixed)
         wb.setField(\.canvas.minMarginPx, 90)
         #expect(wb.job(a)?.preset.canvas.minMarginPx == 90 && wb.job(b)?.preset.canvas.minMarginPx == 90)
         #expect(wb.job(a)?.isModified == true)
         // 任务的改动不写回库里的预设（§4.2）。
         let builtIn = try await f.service.resolvePreset(.library("Instagram Standard")).preset
-        #expect(builtIn.canvas.minMarginPx == 60)
+        #expect(builtIn.canvas.minMarginPx == 20)
     }
 
     @Test func selectingSourceOrPresetChangesInspector() async throws {
@@ -87,9 +87,10 @@ import Testing
         wb.selectedPresetId = f.presetId("Instagram Standard")
         await wb.settle()
         #expect(wb.inspectorSubject == .preset(f.presetId("Instagram Standard")))
-        #expect(wb.presetEditor?.isReadOnly == true)
+        // 内置预设也可以改（只在内存里，见 BuiltInPresetEditingTests）。
+        #expect(wb.presetEditor?.isReadOnly == false && wb.presetEditor?.isBuiltIn == true)
         wb.setField(\.canvas.minMarginPx, 10)
-        #expect(wb.presetEditor?.isDirty == false)
+        #expect(wb.presetEditor?.isDirty == true)
 
         // 再点任务列表，右栏回到任务。
         wb.selection = [.job(jobId)]

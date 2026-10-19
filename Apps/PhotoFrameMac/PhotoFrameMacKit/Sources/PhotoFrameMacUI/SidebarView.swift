@@ -88,7 +88,8 @@ private struct PresetList: View {
 
     /// 树形列表，三角常驻（参照 Compressor 左栏）：内置 ▸ 平台 ▸ 预设；用户保存、导入各一组。
     var body: some View {
-        List(selection: $workbench.selectedPresetId) {
+        // 任务列表有选择时，点预设直接应用到选中的行（`clickPreset`），左栏的选择不变。
+        List(selection: Binding(get: { workbench.selectedPresetId }, set: { workbench.choosePreset($0) })) {
             ForEach(groups, id: \.kind) { group in
                 DisclosureGroup(isExpanded: expanded(group.kind)) {
                     if group == .builtIn {
@@ -126,12 +127,12 @@ private struct PresetList: View {
 
     @ViewBuilder private func rows(_ presets: [CatalogPresetSummary], group: CatalogPresetOrigin) -> some View {
         ForEach(presets, id: \.presetId) { preset in
-            PresetRow(preset: preset)
+            PresetRow(preset: preset, isModified: workbench.hasUnsavedEdits(preset.presetId))
                 .tag(preset.presetId)
                 .draggable(DragPayload.preset(preset.presetId).string)
                 .contextMenu { menu(for: preset) }
-                // 再点仍然选中的预设时右栏也切回它（选择没变，不会通知）。
-                .onRowClick { workbench.focusPreset() }
+                // 再点仍然选中的预设时右栏也切回它（选择没变，不会通知）；任务列表有选择时应用到选中的行。
+                .onRowClick { Task { await workbench.clickPreset(preset.presetId) } }
         }
     }
 
@@ -230,10 +231,15 @@ private struct PresetList: View {
 /// 一行一个预设：小图标 + 名称；尺寸等信息放在悬停提示里，行高与 Compressor 一样紧凑。
 private struct PresetRow: View {
     let preset: CatalogPresetSummary
+    /// 有还没存储的修改（与任务行的「已修改」同一种写法）。
+    var isModified = false
 
     var body: some View {
-        SidebarRow(title: preset.name, symbol: preset.panorama == nil ? "rectangle.portrait" : "rectangle.split.3x1",
-                   help: "\(preset.name)\n\(detail)")
+        HStack(spacing: 4) {
+            SidebarRow(title: preset.name, symbol: preset.panorama == nil ? "rectangle.portrait" : "rectangle.split.3x1",
+                       help: "\(preset.name)\n\(detail)")
+            if isModified { Text("已修改").font(.subheadline).foregroundStyle(.secondary).fixedSize() }
+        }
     }
 
     private var detail: String {

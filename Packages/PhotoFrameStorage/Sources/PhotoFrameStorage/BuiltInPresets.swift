@@ -4,7 +4,7 @@ import PhotoFrameCore
 /// 内置预设：Instagram / 小红书 / 抖音 × Standard / Panorama（§2.2、§3）。
 ///
 /// 画布尺寸取自平台配置；presetId 固定不变，便于用户的预设本地绑定跨版本保持有效。
-/// 默认背景 `#FAFAF8`、最小边距 60 px、sRGB JPEG Q100、动态范围跟随源图（auto，D-125）、元数据不写出，不带装饰图层。
+/// 默认背景 `#FAFAF8`、最小边距 20 px、sRGB JPEG Q100、动态范围跟随源图（auto，D-125）、元数据不写出，不带装饰图层。
 public enum BuiltInPresets {
     public struct Definition: Sendable {
         public var presetId: UUID
@@ -23,7 +23,7 @@ public enum BuiltInPresets {
     ]
 
     public static let defaultBackground = PresetColor.defaultBackground
-    public static let defaultMinMarginPx = 60
+    public static let defaultMinMarginPx = 20
 
     /// 按平台配置生成全部内置预设；配置里缺少的平台跳过。
     public static func all(catalog: PlatformCatalog) -> [ExportPreset] {

@@ -98,7 +98,7 @@ extension ExportPreset {
         }
         if panorama.verticalMarginPx < 0
             || (canvas.height > 0 && panorama.verticalMarginPx >= canvas.height - panorama.verticalMarginPx) {
-            error("invalid_vertical_margin", "panorama.verticalMarginPx", "切片上下边距无效：\(panorama.verticalMarginPx)")
+            error("invalid_vertical_margin", "panorama.verticalMarginPx", "切片上下边框宽度无效：\(panorama.verticalMarginPx)")
         }
         if case .color(let c) = panorama.padColor { checkColor(c, "panorama.padColor") }
 
@@ -156,16 +156,16 @@ extension ExportPreset {
                 if let slotId = layer.slotId {
                     usedSlots.insert(slotId)
                     if !assetSlots.contains(where: { $0.slotId == slotId }) {
-                        error("unknown_slot_reference", "\(path).slotId", "图层引用了不存在的素材槽：\(slotId)")
+                        error("unknown_slot_reference", "\(path).slotId", "装饰引用了不存在的素材槽：\(slotId)")
                     }
                 } else if layer.cameraMatch.isEmpty {
-                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 图层必须指定 slotId 或 cameraMatch")
+                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 装饰必须指定 slotId 或 cameraMatch")
                 }
             } else if layer.slotId != nil {
-                warning("ignored_field", "\(path).slotId", "\(layer.type.rawValue) 图层不使用 slotId")
+                warning("ignored_field", "\(path).slotId", "\(layer.type.rawValue) 装饰不使用 slotId")
             }
             if !layer.type.usesAssetSlot, !layer.cameraMatch.isEmpty {
-                warning("ignored_field", "\(path).cameraMatch", "\(layer.type.rawValue) 图层不使用 cameraMatch")
+                warning("ignored_field", "\(path).cameraMatch", "\(layer.type.rawValue) 装饰不使用 cameraMatch")
             }
             for (j, rule) in layer.cameraMatch.enumerated() where layer.type.usesAssetSlot {
                 let rulePath = "\(path).cameraMatch[\(j)]"
@@ -201,12 +201,12 @@ extension ExportPreset {
                     }
                     checkColor(text.color, "\(path).text.color")
                 } else {
-                    warning("empty_text", "\(path).text", "文字图层没有内容")
+                    warning("empty_text", "\(path).text", "文字装饰没有内容")
                 }
             }
         }
         for (i, slot) in assetSlots.enumerated() where !usedSlots.contains(slot.slotId) {
-            warning("unused_slot", "assetSlots[\(i)]", "素材槽没有被任何图层使用：\(slot.slotId)")
+            warning("unused_slot", "assetSlots[\(i)]", "素材槽没有被任何装饰使用：\(slot.slotId)")
         }
 
         // 输出

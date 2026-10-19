@@ -151,6 +151,16 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
         }
     }
 
+    /// 照片在长卷里的水平位置：多出来的底色放在哪一端。
+    public enum Alignment: String, Hashable, Sendable, Codable, CaseIterable {
+        /// 照片贴住长卷左端，底色都在右端。
+        case left
+        /// 底色平分在两端（默认）。
+        case center
+        /// 照片贴住长卷右端，底色都在左端。
+        case right
+    }
+
     public var enabled: Bool
     /// 是否输出 Slide 0 完整封面。
     public var cover: Bool
@@ -159,8 +169,11 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
     /// 切片铺满可用高度（不套封面边距）。
     public var fitHeight: Bool
     public var padColor: PadColor
-    /// 所有切片共用的上下边距 v（D-10），默认 0。
+    /// 所有切片共用的上下边距 v（D-10），默认 0。`autoVerticalMargin` 打开时不使用。
     public var verticalMarginPx: Int
+    public var alignment: Alignment
+    /// 自动算上下边距，使它等于长卷两端的底色宽度（见 ``PanoramaLayout/equalizedVerticalMargin``），默认关闭。
+    public var autoVerticalMargin: Bool
     public var extensions: ExtensionFields
 
     public init(
@@ -171,6 +184,8 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
         fitHeight: Bool = true,
         padColor: PadColor = .canvasBackground,
         verticalMarginPx: Int = 0,
+        alignment: Alignment = .center,
+        autoVerticalMargin: Bool = false,
         extensions: ExtensionFields = [:]
     ) {
         self.enabled = enabled
@@ -180,13 +195,15 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
         self.fitHeight = fitHeight
         self.padColor = padColor
         self.verticalMarginPx = verticalMarginPx
+        self.alignment = alignment
+        self.autoVerticalMargin = autoVerticalMargin
         self.extensions = extensions
     }
 
     public static let disabled = PanoramaSettings(enabled: false)
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case enabled, cover, tileCount, cropPolicy, fitHeight, padColor, verticalMarginPx
+        case enabled, cover, tileCount, cropPolicy, fitHeight, padColor, verticalMarginPx, alignment, autoVerticalMargin
     }
 
     public init(from decoder: any Decoder) throws {
@@ -198,6 +215,8 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
         fitHeight = try c.decodeIfPresent(Bool.self, forKey: .fitHeight) ?? true
         padColor = try c.decodeIfPresent(PadColor.self, forKey: .padColor) ?? .canvasBackground
         verticalMarginPx = try c.decodeIfPresent(Int.self, forKey: .verticalMarginPx) ?? 0
+        alignment = try c.decodeIfPresent(Alignment.self, forKey: .alignment) ?? .center
+        autoVerticalMargin = try c.decodeIfPresent(Bool.self, forKey: .autoVerticalMargin) ?? false
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
 
@@ -210,6 +229,8 @@ public struct PanoramaSettings: Hashable, Sendable, Codable {
         try c.encode(fitHeight, forKey: .fitHeight)
         try c.encode(padColor, forKey: .padColor)
         try c.encode(verticalMarginPx, forKey: .verticalMarginPx)
+        try c.encode(alignment, forKey: .alignment)
+        try c.encode(autoVerticalMargin, forKey: .autoVerticalMargin)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
     }
 }
