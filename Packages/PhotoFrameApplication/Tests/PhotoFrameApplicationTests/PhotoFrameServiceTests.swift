@@ -49,6 +49,39 @@ struct PhotoFrameServiceTests {
         await eventually { events.all.contains(.queueResumed) }
     }
 
+    @Test("重新链接源图：sourceId 不变，失败的任务重试时读新位置，已完成的不变")
+    func relinkSource() async throws {
+        let box = try Sandbox()
+        let service = LocalPhotoFrameService(renderer: FakeRenderer(), configuration: QueueConfiguration(startsPaused: true))
+        let old = try box.makeSource("Badlands.tif")
+        let source = try await service.addSource(old.fileURL)
+        let destination = ExportDestination(rootDirectory: box.exports)
+        let done = try await service.submit(ExportRequest(sourceIds: [source.sourceId], presets: [.testStandard], destination: destination))
+        await service.start()
+        #expect(await service.waitUntilFinished(done).first?.status == .completed)
+
+        // 原图被移走：新提交的任务失败。
+        let moved = box.root.appending(path: "Moved/Badlands renamed.tif")
+        try FileManager.default.createDirectory(at: moved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: old.fileURL, to: moved)
+        let failed = try await service.submit(ExportRequest(sourceIds: [source.sourceId], presets: [.testStandard], destination: destination))
+        #expect(await service.waitUntilFinished(failed).first?.status == .failed)
+
+        await #expect(throws: ApplicationError.self) { try await service.relinkSource(source.sourceId, to: box.root.appending(path: "nope.tif")) }
+        await #expect(throws: ApplicationError.self) { try await service.relinkSource(SourceID(), to: moved) }
+        let relinked = try await service.relinkSource(source.sourceId, to: moved)
+        #expect(relinked.sourceId == source.sourceId)
+        #expect(relinked.displayName == "Badlands renamed.tif")
+        #expect(await service.sources().map(\.fileURL) == [moved.standardizedFileURL])
+        // 新路径登记在同一张源图下；旧路径不再指向它。
+        #expect(try await service.addSource(moved).sourceId == source.sourceId)
+
+        #expect(try await service.status(done[0]).spec.source.fileURL == old.fileURL)
+        #expect(try await service.status(failed[0]).spec.source.fileURL == moved.standardizedFileURL)
+        _ = try await service.retry(failed[0])
+        #expect(await service.waitUntilFinished(failed).first?.status == .completed)
+    }
+
     @Test("请求错误")
     func requestErrors() async throws {
         let box = try Sandbox()

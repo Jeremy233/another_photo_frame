@@ -119,6 +119,18 @@ public final class Workbench {
     public var alert: WorkbenchAlert?
     public var overwritePrompt: OverwritePrompt?
     public var warningPrompt: WarningPrompt?
+    public var relinkPrompt: RelinkPrompt?
+    public var missingPrompt: MissingSourcesPrompt?
+
+    // MARK: 缺失的原图
+
+    /// 检查原图在不在时，每个文件最多等多久（卷断开时 stat 可能卡住）。
+    @ObservationIgnored var sourceProbeTimeout = SourceFiles.defaultTimeout
+    /// 正在检查原图；这期间又要求检查时做完再查一次。
+    @ObservationIgnored var isCheckingSources = false
+    @ObservationIgnored var needsSourceCheck = false
+    /// 这次开始批处理时选择跳过的原图（找不到的）：它们的任务不提交，留在「当前」里。
+    @ObservationIgnored var skippedSources: Set<SourceID> = []
 
     public let preview: PreviewModel
 
@@ -142,6 +154,8 @@ public final class Workbench {
         validationDelay = debounce
         preview = PreviewModel(service: service, debounce: debounce)
         locations = locationStore.load() ?? LocationList.initial()
+        // 预览读不到原图时（还没检查出来就改了参数），把它标为缺失。
+        preview.onSourceUnreadable = { [weak self] id in self?.markMissing([id]) }
     }
 
     /// 窗口出现时调用：读库和已有任务。

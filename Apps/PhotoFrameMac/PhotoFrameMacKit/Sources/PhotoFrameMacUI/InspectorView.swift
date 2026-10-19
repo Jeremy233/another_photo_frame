@@ -83,7 +83,16 @@ struct InspectorView: View {
     @ViewBuilder private var issues: some View {
         let issues = workbench.inspectorIssues
         if !issues.isEmpty {
-            InspectorSection(issues.contains(where: \.isError) ? "错误和警告" : "警告", key: "warnings") { JobIssueList(issues: issues) }
+            InspectorSection(issues.contains(where: \.isError) ? "错误和警告" : "警告", key: "warnings") {
+                JobIssueList(issues: issues)
+                if let id = workbench.inspectedMissingSource {
+                    // 与消息文字对齐（图标宽度 + 间距）。
+                    Button("重新链接…") { RelinkPanel.show(id, workbench: workbench) }
+                        .padding(.leading, 22)
+                        .padding(.bottom, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
     }
 
