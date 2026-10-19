@@ -671,11 +671,16 @@ private struct PanoramaTab: View {
                     Text("靠右").tag(PanoramaSettings.Alignment?.some(.right))
                     if workbench.field(\.panorama.alignment) == .mixed { Text("多个值").tag(PanoramaSettings.Alignment?.none) }
                 }
-                // 自动时上下边距等于长卷端部的底色宽度，按每张源图算，不显示数值。
-                MixedToggle(title: "自动上下边框", workbench: workbench, path: \.panorama.autoVerticalMargin)
+            }
+            InspectorSection("上下边框") {
+                // 自动计算时宽度等于长卷端部的底色宽度，按每张源图算：灰掉输入框，显示算出来的值。
                 if workbench.field(\.panorama.autoVerticalMargin) == .single(false) {
                     IntField(title: "上下边框宽度", value: workbench.binding(\.panorama.verticalMarginPx))
+                } else {
+                    IntField(title: "上下边框宽度", value: .constant(workbench.computedVerticalMargin.value))
+                        .disabled(true)
                 }
+                MixedToggle(title: "自动计算", workbench: workbench, path: \.panorama.autoVerticalMargin)
             }
         }
     }
