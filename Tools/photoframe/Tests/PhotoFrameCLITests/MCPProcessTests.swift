@@ -143,8 +143,9 @@ final class StdioClient: @unchecked Sendable {
     private var stdoutProbe: Int32 = -1
 
     /// `probeStdio`：留一份 stdin、stdout 管道的描述符，之后用 `nonBlockingStdio()` 检查模式（检查前读不到 stdout 的 EOF）。
-    init(arguments: [String], library: URL, probeStdio: Bool = false) throws {
-        guard let exe = photoframeExecutable else { throw TestFailure("找不到 photoframe 可执行文件") }
+    /// `executable`：nil 时用 `swift test` 构建出的 `photoframe`。
+    init(arguments: [String], library: URL, probeStdio: Bool = false, executable: URL? = nil) throws {
+        guard let exe = executable ?? photoframeExecutable else { throw TestFailure("找不到 photoframe 可执行文件") }
         process.executableURL = exe
         process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment

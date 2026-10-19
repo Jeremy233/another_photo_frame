@@ -155,7 +155,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         public var memoryBudgetBytes: Int64?
         /// GUI 先排队再开始时为 true；CLI 为 false。
         public var startsPaused: Bool
-        /// 平台配置；nil 用应用附带的 `platforms.json`。
+        /// 平台配置；nil 用程序内置的一份（`PlatformCatalogStore.builtIn()`）。
         public var platformCatalog: PlatformCatalog?
         /// 本地库根目录；nil 按 `LibraryLocation.defaultRoot()` 的规则选（D-78、D-124），GUI、CLI、MCP 都用这条；测试传临时目录。
         public var libraryRoot: URL?

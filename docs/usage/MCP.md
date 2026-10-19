@@ -18,8 +18,8 @@ swift build -c release --scratch-path "$TMPDIR/photoframe-build"
 ```
 
 可执行文件在 `$TMPDIR/photoframe-build/release/photoframe`。建议复制到固定位置（例如 `~/bin/photoframe` 或 `/usr/local/bin/photoframe`），
-客户端配置里写**绝对路径**。复制时连同旁边的 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹
-（只复制可执行文件，启动时找不到资源包会直接崩溃）。
+客户端配置里写**绝对路径**。它是单个可执行文件（D-126），不需要旁边的资源包；
+v0.9.1 及更早的版本还要把 `PhotoFrameStorage_PhotoFrameStorage.bundle` 一起复制到同一个文件夹，否则启动时会崩溃。
 
 ## 配置目录白名单（D-100）
 
