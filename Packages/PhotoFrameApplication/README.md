@@ -26,7 +26,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameApplication-build"
 | `Model/OutputManifest.swift` | `JobOutputRole`（封面 / 第 n 页切片，D-27）、输出清单：路径、像素尺寸、ICC、文件大小、可选 SHA-256、警告 |
 | `Model/ApplicationError.swift` | `ApplicationError`（`code` + `message` + `hint`）、`ApplicationWarning`、`ApplicationErrorConvertible` |
 | `Rendering/JobRenderer.swift` | 渲染协议 `JobRenderer`、`JobRenderRequest`、`JobRenderedOutput`、`JobRenderResult`、`JobRenderProgress` |
-| `Rendering/RenderingBackend.swift` | 用 PhotoFrameRendering 实现 `JobRenderer` 与 `ImageAnalyzer`：类型转换、进度翻译、错误码 |
+| `Rendering/RenderingBackend.swift` | 用 PhotoFrameRendering 实现 `JobRenderer` 与 `ImageAnalyzer`：类型转换、进度翻译、错误码，同步工作放到渲染线程（D-128） |
 | `Export/OutputNaming.swift` | §9.2 目录与文件命名、版本后缀、文件名清理 |
 | `Export/AtomicExporter.swift` | 临时目录、校验、原子发布、清理 |
 | `Export/Overwrite.swift` | 显式覆盖（D-49）：发布标记、替换前检查、挪开 / 就位 / 恢复 |
@@ -59,11 +59,16 @@ Source ──┬── Job（源图 × 预设快照）── Attempt 1（failed�
 ## 队列
 
 - 按提交顺序派发，同时运行数 ≤ `maxConcurrentJobs`，且估算内存之和 ≤ `memoryBudgetBytes`。
+  GUI 的设置、CLI 和 MCP 的 `--jobs` 经过服务时限制在 1…`QueueConfiguration.maxConcurrentJobsLimit`（最多 8，且不超过本机核数，D-128），
+  默认值仍是 D-53 的性能核数的一半（1–4）。
   估算优先用 `JobRenderer.estimatedPeakMemoryBytes(for:)`，否则按源图像素 × 8 字节（RGBAh）+ 画布缓冲，
   源图尺寸未知时用 `fallbackJobMemoryBytes`（1 GiB）。超过整个预算的单个任务在没有其他任务运行时照样执行。
 - **暂停**只停止派发新任务。`startsPaused: true` 给 GUI「先排队、再开始批处理」用。
 - **取消**：排队中的直接 `canceled`；执行中的设取消标志并取消渲染所在 Task，删除本次执行的临时目录。
   最终改名发布完成之后不能再取消（任务照常 `completed`）。
+- **线程**（D-128）：`RenderingBackend` 的渲染、预览、检查源图、预览编码和队列的发布都是同步的长时间工作，在 PhotoFrameRendering 的
+  `RenderThread` 专用线程上做，不占 Swift 的协作线程池。同时执行的任务数 ≥ 核数时，预览、进度事件和界面上的其他异步工作照常进行。
+  Task 被取消时由 `RenderCancellation` 通知渲染代码。
 - 事件：`events()` 返回 `AsyncStream<JobEvent>`，每个订阅方一条流。`waitUntilFinished(_:)` / `waitUntilIdle()` 给 CLI 阻塞等待用。
 
 ## 原子导出
@@ -97,7 +102,7 @@ struct Renderer: JobRenderer {
         // … 每写完一个文件：
         await progress.report(.stage(.encoding))
         await progress.report(.outputFinished(.slide(position: k + 1)))
-        try Task.checkCancellation()   // 两张切片之间检查取消
+        try Task.checkCancellation()   // 两张切片之间检查取消（同步的长时间工作放到协作线程池之外，见上文「线程」）
         return JobRenderResult(outputs: [...], warnings: [...])
     }
 }

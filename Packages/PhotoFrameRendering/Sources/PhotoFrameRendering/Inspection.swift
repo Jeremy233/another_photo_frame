@@ -53,7 +53,7 @@ extension PhotoFrameRenderer {
     /// 检查一张源图：格式、尺寸、方向、位深、ICC、HDR 判定（D-62）和可用的 EXIF 文字。
     /// 按小尺寸降采样解码（判断 HDR 需要像素），不会完整解码大图。
     public func inspect(_ url: URL, sourceColorOverride: SourceColorOverride? = nil) throws -> InspectedSource {
-        let decoder = SourceDecoder(context: context)
+        let decoder = SourceDecoder(context: context, staging: staging)
         let source = try decoder.decode(url, neededSize: PixelSize(width: 512, height: 512), override: sourceColorOverride)
         let props = source.properties
         return InspectedSource(

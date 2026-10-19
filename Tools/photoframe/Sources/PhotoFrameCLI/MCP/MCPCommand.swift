@@ -40,7 +40,7 @@ struct MCPCommand: AsyncParsableCommand {
         @Option(name: .customLong("max-output-mb"), help: ArgumentHelp("本次会话写出的文件总量上限（MiB），默认 20480。", valueName: "n"))
         var maxOutputMB: Int?
 
-        @Option(name: .long, help: ArgumentHelp("同时执行的任务数（默认按 CPU 核数，D-53）。", valueName: "n"))
+        @Option(name: .long, help: ArgumentHelp("同时执行的任务数，默认为性能核数的一半（1–4，D-53）；最多 8，且不超过本机核数（D-128）。", valueName: "n"))
         var jobs: Int?
 
         func validate() throws {

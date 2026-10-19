@@ -19,7 +19,7 @@
 
 | 模块 | 状态 |
 |---|---|
-| 产品与技术规范（[PhotoFrame_V1_Specification.md](../design/PhotoFrame_V1_Specification.md)，决策 D-01…D-125） | 审阅中（Draft） |
+| 产品与技术规范（[PhotoFrame_V1_Specification.md](../design/PhotoFrame_V1_Specification.md)，决策 D-01…D-129） | 审阅中（Draft） |
 | `PhotoFrameCore` | ✅ 已完成 |
 | `PhotoFrameStorage` | ✅ 已完成 |
 | `PhotoFrameRendering`（[渲染管线](RenderingPipeline.md)） | ✅ 已完成 |
@@ -67,7 +67,7 @@ swift build -c release --package-path Tools/photoframe
 
 ## 发布
 
-在签名方式（D-21）定下来之前，发布包用 **ad-hoc 签名**。只用 `CODE_SIGNING_ALLOWED=NO` 构建的应用只有链接器给可执行文件加的签名，资源文件（图标、`Assets.car`、内嵌的 `.bundle`）没有签名清单（`Contents/_CodeSignature` 不存在）。用户下载后 macOS 会说应用「已损坏」，而且「隐私与安全性」里不会出现「仍要打开」。v0.9.0 第一次上传的包就是这样，后来已经替换。
+在签名方式（D-21）定下来之前，发布包用 **ad-hoc 签名**。只用 `CODE_SIGNING_ALLOWED=NO` 构建的应用只有链接器给可执行文件加的签名，资源文件（图标、`Assets.car`）没有签名清单（`Contents/_CodeSignature` 不存在）。用户下载后 macOS 会说应用「已损坏」，而且「隐私与安全性」里不会出现「仍要打开」。v0.9.0 第一次上传的包就是这样，后来已经替换。
 
 ```bash
 xcodebuild -project Apps/PhotoFrameMac/PhotoFrameMac.xcodeproj -scheme PhotoFrameMac \
@@ -81,11 +81,12 @@ codesign --verify --deep --strict --verbose=2 "$APP"   # 必须显示 valid on d
 # 打包，并在解压后的副本上再验证一次
 ditto -c -k --sequesterRsrc --keepParent "$APP" AnotherPhotoFrame-<版本>-macOS.zip
 
-# 命令行工具：可执行文件和旁边的 .bundle 放在同一个文件夹里打包
-swift build -c release --package-path Tools/photoframe
+# 命令行工具：只有一个可执行文件，平台配置编译在程序里（D-126），不再带 .bundle
+swift build -c release --package-path Tools/photoframe --scratch-path "$TMPDIR/photoframe-release"
+ditto -c -k --keepParent "$TMPDIR/photoframe-release/release/photoframe" photoframe-<版本>-macOS.zip
 ```
 
-上传到 GitHub Release 之前，把 zip 解压到另一个目录，再运行一次 `codesign --verify --deep --strict`。`spctl -a` 对 ad-hoc 签名的应用总是返回 `rejected`，这是正常的：没有经过 Apple 公证。用户第一次打开时，到「系统设置 → 隐私与安全性」点「仍要打开」，或者运行 `xattr -dr com.apple.quarantine`。
+上传到 GitHub Release 之前，把两个 zip 解压到另一个目录检查：应用再运行一次 `codesign --verify --deep --strict`；命令行工具解压后只有 `photoframe` 一个文件，在那个目录里运行 `./photoframe --version` 和 `./photoframe preset list`。`spctl -a` 对 ad-hoc 签名的应用总是返回 `rejected`，这是正常的：没有经过 Apple 公证。用户第一次打开时，到「系统设置 → 隐私与安全性」点「仍要打开」，或者运行 `xattr -dr com.apple.quarantine`。
 
 ## 持续集成
 

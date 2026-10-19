@@ -31,6 +31,8 @@ struct DecodedSource {
     var warnings: [RenderWarning]
     /// 解码出的位图占用的字节数（gain map JPEG 的 HDR 版本由 CI 按需展开，不计入）。预览的解码缓存按它限制总量。
     var pixelBytes = 0
+    /// 源图不在内置磁盘上时的本机副本（D-129）。CI 之后还会按路径读它（gain map），解码结果在用时副本不删。
+    var stagedCopy: SourceStaging.Copy?
 
     var displaySize: PixelSize { SourceImage(storedSize: storedSize, orientation: orientation).displaySize }
 }
@@ -38,6 +40,8 @@ struct DecodedSource {
 /// 源图解码（规范 §6.2、§6.3 第一段）。
 struct SourceDecoder {
     var context: CIContext
+    /// 不在内置磁盘上的源图先复制到本机（D-129）；nil 时总是直接读。
+    var staging: SourceStaging? = .shared
 
     /// 峰值不超过它就视为没有超过 SDR 白（浮点噪声容差）。
     static let sdrWhiteTolerance = 1.0001
@@ -45,8 +49,11 @@ struct SourceDecoder {
     /// - Parameter neededSize: 输出中照片需要的最大像素尺寸（显示方向）。解码时降采样到不小于它的两倍，
     ///   既控制内存（D-18），又给 Lanczos 留出足够的源像素。
     func decode(_ url: URL, neededSize: PixelSize, override: SourceColorOverride?) throws(RenderError) -> DecodedSource {
+        // 不在内置磁盘上的源图先按顺序复制到本机，之后的读取（包括 CI 对 gain map JPEG 的第二次读取）都用副本（D-129）。
+        let staged = try staging?.localCopy(of: url)
+        let readURL = staged?.url ?? url
         let data: Data
-        do { data = try Data(contentsOf: url, options: .mappedIfSafe) } catch {
+        do { data = try Data(contentsOf: readURL, options: .mappedIfSafe) } catch {
             throw .decodeFailed(url, "无法读取文件（\(error.localizedDescription)）")
         }
         let format = try SourceFileFormat.sniff(data)
@@ -69,6 +76,8 @@ struct SourceDecoder {
             sdr: nil, hdr: nil, hdrKind: .none, headroom: nil, properties: props,
             author: AuthorInfo(properties: props, xmp: CGImageSourceCopyMetadataAtIndex(src, 0, nil)),
             transformSteps: [], warnings: [])
+        out.stagedCopy = staged
+        if staged != nil { out.transformSteps.append("源图不在内置磁盘上：先按顺序复制到本机缓存，再从副本读取（D-129）") }
 
         let display = out.displaySize
         let longSource = max(display.width, display.height)
@@ -98,7 +107,8 @@ struct SourceDecoder {
         let hasGainMap = format == .jpeg && (listsGainMap || Self.hasGainMapAuxiliaryData(src))
 
         var cg = try decodeCGImage(src, url: url, longEdge: decodeLong, sourceLong: longSource)
-        cg = try applyProfilePolicy(cg, embedded: embedded, override: override, into: &out)
+        let policy = try applyProfilePolicy(cg, embedded: embedded, override: override, into: &out)
+        cg = policy.image
 
         if out.isFloat {
             // PoC 坑 15：CI 直接使用大尺寸 RGB 浮点源会渲染出错位图块，先用 CG 转成 RGBAh（§6.2）。
@@ -116,16 +126,24 @@ struct SourceDecoder {
         // 只凭容器属性判定时，展开失败或没有余量再读辅助数据确认一次，结论与只看辅助数据时相同：
         // 辅助数据也读不出 gain map 就当作没有 gain map，继续下面的判定。
         let expanded = hasGainMap
-            ? CIImage(contentsOf: url, options: [.expandToHDR: true, .applyOrientationProperty: true]) : nil
+            ? CIImage(contentsOf: readURL, options: [.expandToHDR: true, .applyOrientationProperty: true]) : nil
         if hasGainMap, !listsGainMap || (expanded?.contentHeadroom ?? 1) > 1 || Self.hasGainMapAuxiliaryData(src) {
             guard let hdr = expanded else {
                 throw .decodeFailed(url, "无法展开 gain map")
             }
             out.sdr = image
-            out.hdr = hdr.translatedToOrigin()
             out.hdrKind = .gainMap
             out.headroom = max(Double(hdr.contentHeadroom), 1)
-            out.transformSteps.append("gain map 展开：CIImage expandToHDR，headroom \(fmt(out.headroom!))（文件元数据）")
+            if policy.reinterpreted, let applied = Self.applyingGainMap(of: readURL, to: image) {
+                // 底图的颜色解释改过（坑 20 改写、输入色彩空间覆盖）：HDR 版本用改写后的底图套用文件里的 gain map（D-127）。
+                // CI 按文件原样展开的 HDR 用的是原来的解释，暗部和中间调会与 SDR 版本不一致。
+                out.hdr = applied
+                out.transformSteps.append(
+                    "gain map：套用到改写颜色解释后的底图（CIImage applyingGainMap），headroom \(fmt(out.headroom!))（文件元数据）")
+            } else {
+                out.hdr = hdr.translatedToOrigin()
+                out.transformSteps.append("gain map 展开：CIImage expandToHDR，headroom \(fmt(out.headroom!))（文件元数据）")
+            }
             return out
         }
 
@@ -175,6 +193,16 @@ struct SourceDecoder {
         }
     }
 
+    /// 把文件里的 gain map 套用到 `base`（已做方向校正、原点为 (0, 0) 的底图，分辨率可以低于原图：CI 把 gain map
+    /// 缩放到底图的范围）。读不出 gain map 或缺少元数据时返回 nil。
+    static func applyingGainMap(of url: URL, to base: CIImage) -> CIImage? {
+        guard let gainMap = CIImage(contentsOf: url, options: [.auxiliaryHDRGainMap: true, .applyOrientationProperty: true])
+        else { return nil }
+        let applied = base.applyingGainMap(gainMap.translatedToOrigin())
+        // gain map 缺少需要的元数据时 CI 原样返回底图。
+        return applied === base ? nil : applied
+    }
+
     /// ImageIO 能读出 ISO 21496-1 或 Apple gain map 辅助数据（会解码 gain map）。
     static func hasGainMapAuxiliaryData(_ src: CGImageSource) -> Bool {
         CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
@@ -202,9 +230,11 @@ struct SourceDecoder {
     }
 
     /// 输入颜色描述的决策（D-04、PoC 坑 1 与坑 20）。只改颜色空间标签，不改像素。
+    /// `reinterpreted`：没有按文件本身的描述解释（坑 20 改写曲线，或用了输入色彩空间覆盖）。
+    /// 缺 ICC 时按 sRGB 解释不算，CI 读文件时也这样解释。
     private func applyProfilePolicy(
         _ cg: CGImage, embedded: Bool, override: SourceColorOverride?, into out: inout DecodedSource
-    ) throws(RenderError) -> CGImage {
+    ) throws(RenderError) -> (image: CGImage, reinterpreted: Bool) {
         let current = cg.colorSpace
         let profileMissing = Self.profileMissing
         // 坑 20 / D-58：TRC 为 BT.709 / BT.2020 逆 OETF 参数曲线时改写成采样曲线。嵌入的 ICC 和覆盖（Rec. 2020）都要改。
@@ -227,12 +257,12 @@ struct SourceDecoder {
                 out.warnings.append(profileMissing)
                 out.sourceProfile = WorkingColor.describe(current)
                 out.sourceProfileOrigin = "assumedSRGB"
-                return cg
+                return (cg, false)
             }
             out.sourceProfile = override.displayName
             out.sourceProfileOrigin = "override"
             out.transformSteps.append("输入色彩空间覆盖为 \(override.displayName)")
-            return rewritingTRC(space) ?? retagged
+            return (rewritingTRC(space) ?? retagged, true)
         }
         if !embedded {
             // 非 RGB 图像保留自己的颜色空间（不改标签），诊断里写它本身，不写 sRGB。
@@ -240,12 +270,13 @@ struct SourceDecoder {
             out.sourceProfileOrigin = "assumedSRGB"
             out.warnings.append(profileMissing)
             if current?.model == .rgb, current?.name != CGColorSpace.sRGB, let tagged = cg.copy(colorSpace: WorkingColor.sRGB) {
-                return tagged
+                return (tagged, false)
             }
-            return cg
+            return (cg, false)
         }
         out.sourceProfile = WorkingColor.describe(current)
-        return rewritingTRC(current) ?? cg
+        if let rewritten = rewritingTRC(current) { return (rewritten, true) }
+        return (cg, false)
     }
 
     /// 没有 ICC（D-04）：GUI、CLI、MCP 都显示这一句。

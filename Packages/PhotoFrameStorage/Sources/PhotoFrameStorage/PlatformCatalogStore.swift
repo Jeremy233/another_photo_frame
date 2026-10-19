@@ -2,25 +2,20 @@ import Foundation
 import PhotoFrameCore
 
 public enum PlatformCatalogError: Error, Hashable, Sendable {
-    case missingResource
     case invalid(String)
 
     public var code: String {
         switch self {
-        case .missingResource: "platform.catalog_missing"
         case .invalid: "platform.catalog_invalid"
         }
     }
 }
 
-/// 读取平台配置：应用内置一份 `platforms.json`；用户目录中可以放一份更新的覆盖文件。
+/// 读取平台配置：程序内置一份（``builtInJSON``，D-126）；用户目录中可以放一份更新的覆盖文件。
 public enum PlatformCatalogStore {
-    /// 应用附带的平台配置。
+    /// 程序内置的平台配置。
     public static func builtIn() throws(PlatformCatalogError) -> PlatformCatalog {
-        guard let url = Bundle.module.url(forResource: "platforms", withExtension: "json"),
-              let data = try? Data(contentsOf: url)
-        else { throw .missingResource }
-        return try decode(data)
+        try decode(Data(builtInJSON.utf8))
     }
 
     public static func decode(_ data: Data) throws(PlatformCatalogError) -> PlatformCatalog {

@@ -26,7 +26,11 @@ result.warnings     // [RenderWarning]：稳定 code + 中文 message + 页码 /
 - `RenderJob.assets(from: SlotResolution, fileURL:)` 把 `SlotResolver` 的结果和素材库路径拼成素材表。
 - 渲染器只把成品写进 `outputDirectory`，文件名固定：单页／封面 `00.<ext>`，切片 k 为 `<k+1 两位数>.<ext>`。
   命名、冲突处理、校验后原子发布由 PhotoFrameApplication 负责（§9.2）。目标文件已存在时不覆盖，报 `render.write_failed`。
-- 取消：在阶段之间和每一页之前检查 `Task.isCancelled`；取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
+- 线程（D-128）：`render(job:)`、`renderPreview(_:)` 在 `RenderThread` 的专用线程上执行（每次一条串行 `DispatchQueue`，GCD 的 overcommit 线程），
+  不占 Swift 的协作线程池；`progress` 回调也在那个线程上调用。以前同步渲染直接在 `async` 函数里做，同时执行的任务数 ≥ 核数时协作线程被占满，
+  预览、进度事件要等某个任务结束。专用线程的优先级跟随调用方的 Task。
+- 取消：所在 Task 被取消时设置 `RenderCancellation`（专用线程读不到 `Task.isCancelled`），在阶段之间和每一页之前检查；
+  取消或出错时删除本次写出的文件，再抛出 `CancellationError` / `RenderError`。
 - 错误：`RenderError(code, message, hint)`，code 稳定（`render.*`，几何与图层错误沿用 Core 的 `geometry.*`、`overlay.*`）。
 
 预览（§11.2 `renderPreview`，详见 2.7）：
@@ -70,12 +74,24 @@ probe（读属性：尺寸、方向）
 
 | 步骤 | 做法 | 依据 |
 |---|---|---|
+| 源图位置 | 不在内置磁盘上（网络卷、外接或移动介质、磁盘映像）时先按顺序复制到本机缓存，再从副本读（`SourceStaging`，见下） | D-129 |
 | 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
 | 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 与 BigTIFF 的 34675（单个标签越界只跳过它，不影响找 ICC） | 坑 1 |
 | 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖（只对缺 ICC 的源图生效；有 ICC 时忽略并警告 `source.override_ignored`） | D-04 |
 | 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
 | 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
 | BT.709/2020 参数曲线 ICC | TRC 为 `para` type 3、g≈2.222、d≈0.081 时改写成 4096 点 `curv`，按 ICC 本身解码 | 坑 20（ColorSync 当 γ2.4 解码，偏暗约 16%） |
+
+**源图暂存到本机（D-129）**：`Data(contentsOf:options: .mappedIfSafe)` 只映射本地、非移动介质卷上的文件（`MNT_LOCAL` 且没有 `MNT_REMOVABLE`）。
+实测 SMB 共享、USB 外接 SSD、hdiutil 磁盘映像上的文件都整个读进内存，gain map JPEG 还要由 CI 按路径再读一遍；
+macOS 没标成移动介质的外接 SSD 会被映射，解码途中拔掉会 SIGBUS 崩溃。所以：
+
+- 判定只看卷属性（`volumeIsLocal`、`volumeIsInternal`），不读文件；本地的内置磁盘照旧直接读，什么都不变。
+- 其余的按 8 MB 一块顺序复制到 `~/Library/Caches/AnotherPhotoFrame/SourceStaging/<pid>-<UUID>/`，之后的读取（`Data` 映射副本、CI 的 `expandToHDR` / gain map）都用副本，像素与直接读完全相同。
+- 复制前后比较大小、修改时间、文件号和设备，读到的字节数等于大小；中途被改报 `render.source_changed`，读失败（卷断开）报 `render.source_read_failed`，带提示，不会崩溃。SMB 客户端缓存文件属性，别的电脑在复制期间改了文件不一定能发现。
+- 本机空间不够（副本之外留不出 1 GB）、本机写不进去时不复制，照旧直接读。
+- 副本按（路径、大小、修改时间、文件号、设备）复用，预览之后再导出只读一次 NAS；同时要同一个文件的任务等第一个复制完。总量超过 2 GB 时删掉最久没用、没有在用的副本（解码结果还引用的不删，CI 之后还要按路径读）。
+- 进程正常退出时删掉自己的目录；每个进程第一次创建渲染器时在后台清理别的进程留下的目录（目录里的 `.lock` 能锁上，说明那个进程已经不在了）。
 
 ### 2.2 HDR 识别与 SDR 版本（§6.7）
 
@@ -98,6 +114,9 @@ probe（读属性：尺寸、方向）
 （headroom 1 时曲线没有意义，`sdrMethod = none`）；请求 HDR 输出时改写 SDR，警告 `output.hdr_no_headroom`
 （gain map 的增益全为 1 时没有意义）。
 
+- gain map JPEG 的 HDR 版本（D-127）：底图的颜色解释没改过时，由 CI `expandToHDR` 按文件原样展开；改过时（坑 20 改写曲线，或用了 `sourceColorOverride`），
+  把文件里的 gain map（`CIImage` 的 `auxiliaryHDRGainMap`）套用到改写后的底图（`applyingGainMap`，CI 把 gain map 缩放到降采样后的底图），
+  HDR 的暗部、中间调与 SDR 版本一致；按原样展开的话，HDR 用的还是文件原来的解释，比 SDR 版本暗（或亮）。headroom 两种情况都取文件元数据。
 - 画面峰值 = 线性 sRGB 分量最大值的 99.95 分位（降到长边 1024 统计），不用 PQ 元数据的默认 4.93。
 - 兼容 TIFF：只支持经典 TIFF、未压缩、交错、条带布局；底图按 ICC 曲线自己线性化（同样绕开坑 20），与 gain map 一起按 `step × step` 盒式平均降采样后按 ISO 21496-1 完全展开（weight = 1）。解析失败时按 SDR 读入，警告 `source.hdr_not_read`。
 - tone map 只作用于照片图层；背景、水印、文字是 SDR 元素，按参考白放置（§6.7 第 3 条、坑 10）。
@@ -135,7 +154,7 @@ probe（读属性：尺寸、方向）
 ### 2.6 编码与元数据（§6.8、D-06）
 
 - SDR：CI 把页面渲染成 sRGB 8-bit（超出 sRGB 的颜色逐通道截断），再交给 ImageIO 编码（坑 3：只有 sRGB 8-bit 输入时 ImageIO 不改像素）。JPEG 质量 = `quality / 100`（默认 Q100）。
-- 多页导出时，CI 渲染仍由任务线程按页顺序做；ImageIO 编码、补 ICC 和写文件交给后台串行队列（`EncodePipeline`），渲染下一页时前几页还在编码。同时编码的页数最多 4 页，在途的 8-bit 位图合计不超过 64 MB（画布很大时退回逐页）。结果按页序取回：进度、警告、出错时报的错误和取消、出错时的清理都与逐页执行相同，写出的字节也相同。后台用串行队列（GCD 的 overcommit 线程），协作线程池被同时进行的任务占满时编码也一定有线程（全局并发队列在这种情况下会死锁，测试覆盖）。HDR 页面（CI 一步完成渲染和编码）仍逐页做。
+- 多页导出时，CI 渲染仍由渲染线程按页顺序做；ImageIO 编码、补 ICC 和写文件交给后台串行队列（`EncodePipeline`），渲染下一页时前几页还在编码。同时编码的页数最多 4 页，在途的 8-bit 位图合计不超过 64 MB（画布很大时退回逐页）。结果按页序取回：进度、警告、出错时报的错误和取消、出错时的清理都与逐页执行相同，写出的字节也相同。后台用串行队列（GCD 的 overcommit 线程），协作线程池被同时进行的任务占满时编码也一定有线程（全局并发队列在这种情况下会死锁，测试覆盖）。HDR 页面（CI 一步完成渲染和编码）仍逐页做。
 - HDR（只支持 JPEG）：`CIContext.jpegRepresentation` + `.hdrImage`，HDR 图显式 `settingContentHeadroom(源 headroom)`，`.hdrGainMapAsRGB`（坑 4、5、17）。源图不是 HDR 时按 SDR 输出并警告 `output.hdr_source_not_hdr`；HDR + PNG 报 `render.hdr_format_unsupported`。
 - ICC：ImageIO 写 sRGB JPEG 不嵌 ICC（坑 2），写完检查，缺了就在 JFIF / EXIF 段之后插入 APP2 `ICC_PROFILE`（插在 MPF 段之前，gain map 偏移不受影响，测试验证）。PNG 由 ImageIO 写 `sRGB` 块。
 - 元数据默认全部不写出；方向不写（像素已校正）。三个独立开关（预设 `output.metadata`）：
@@ -176,11 +195,13 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 |---|---|
 | `ColorManagementTests` | §6.9：四种 ICC 色卡 ΔE（16 位 TIFF 与 8 位 JPEG，D-19 暂定阈值）、缺 ICC 警告与覆盖、`#FAFAF8` 精确、16 位精度、透明素材无黑边白边、线性光不透明度、方向 1/3/6/8（含降采样解码）、输出 ICC、坑 20、广色域截断 |
 | `LayoutRenderingTests` | Fit、比例裁切、AC-01 / AC-02 / AC-03、全景切片按位重建长卷、手动张数 |
-| `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
+| `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、gain map JPEG 底图改写解释后 HDR 跟随（坑 20、覆盖，解码与导出读回，D-127）、合成的「最大化兼容性」TIFF 及其解析失败降级 |
 | `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
 | `DecodeTests` | 坏标签不藏 ICC、BigTIFF 的 ICC、切片与整份数据结果相同、兼容 TIFF 查表还原与逐采样逐位相同、峰值取值与排序相同、降级时警告不重复、Rec. 2020 覆盖也做坑 20 改写、灰度图诊断、非 ASCII ICC 标签、快门 / 光圈 / ISO 文字、损坏的 EXIF 数值 |
 | `EncodePipelineTests` | 任务数多于核数时不卡住且字节相同、中间一页写不出时报这一页并清理、在途页数按画布大小限制 |
+| `SourceStagingTests` | D-129：从副本解码与直接读逐字节相同、同一版本只复制一次且之后不再读原文件（含 gain map 的第二次读取）、复制途中被改、按上限删最久没用的副本（在用的不删）、本机空间不够时直接读、清理残留目录、真实磁盘映像（判定、输出相同、复制途中强制卸载） |
+| `RenderThreadTests` | D-128：比核数多的渲染都停住时协作线程池仍空闲（预览、其他异步工作照常完成）、停住时取消、开始前已取消、优先级跟随 Task |
 | `RestrictedSVGTests` | 极大数值不崩溃、currentColor、display / visibility、组透明度、长前言后的 DOCTYPE 与 UTF-16 实体、#RRGGBBAA 与 rgb(%)、颜色警告、斜接上限、嵌套 svg 警告 |
 | `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange 与 gainMap、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |
 
@@ -215,7 +236,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 
 ## 5. 尚未实现
 
-- gain map JPEG 的 HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样。
+- 颜色解释没改过的 gain map JPEG，HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样（改写过解释的已经套用到降采样后的底图）。
+- D-127 只用合成的 gain map JPEG（CI 写出的 itur_2020 与无 ICC 文件）验证过，还没有真实的 Lightroom Rec. 2020 gain map 样张。
 - PQ / HLG / 浮点源的画面峰值在降采样后的解码图上统计，预览很小时峰值可能略低于导出，tone map 后的 SDR 预览会稍有差别。
 - 超出 sRGB 色域的感知映射（目前逐通道截断，§6.9、坑 11）。
 - 压缩的「最大化兼容性」TIFF（需要 LZW / ZIP 解压）。
