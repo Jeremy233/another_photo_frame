@@ -86,7 +86,7 @@ import Testing
         wb.selectedPresetId = id
         await wb.settle()
         wb.addLayer(.signature)
-        #expect(undo.undoActionName == "添加图层")
+        #expect(undo.undoActionName == "添加装饰")
         #expect(wb.hasUnsavedBuiltInEdits)
         undo.undo()
         #expect(wb.presetEditor?.draft.layers.contains { $0.layerId == "signature" } == false)

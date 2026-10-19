@@ -32,7 +32,7 @@ extension InspectorTab {
         switch self {
         case .canvas: "画布"
         case .panorama: "全景"
-        case .layers: "图层"
+        case .layers: "装饰"
         case .output: "输出"
         }
     }

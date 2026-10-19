@@ -48,7 +48,7 @@ extension Workbench {
     /// 在正在编辑的预设（单个任务或左栏预设）里加一个图层；需要素材的同时加一个同名素材槽。
     public func addLayer(_ template: LayerTemplate) {
         guard editedPreset != nil else { return }
-        edit("添加图层") { preset in
+        edit("添加装饰") { preset in
             let used = Set(preset.layers.map(\.layerId) + preset.assetSlots.map(\.slotId))
             var id = template.rawValue
             var n = 2
@@ -65,7 +65,7 @@ extension Workbench {
 
     /// 删除图层；它的素材槽（含相机匹配规则的槽）没有别的图层用时一起删除。
     public func removeLayer(_ layerId: String) {
-        edit("删除图层") { preset in
+        edit("删除装饰") { preset in
             guard let i = preset.layers.firstIndex(where: { $0.layerId == layerId }) else { return }
             let removed = preset.layers.remove(at: i)
             Self.dropUnusedSlots([removed.slotId].compactMap { $0 } + removed.cameraMatch.map(\.slotId), in: &preset)
@@ -110,7 +110,7 @@ extension Workbench {
     }
 
     public func updateLayer(_ layerId: String, coalescing key: AnyHashable? = nil, _ body: (inout OverlayLayer) -> Void) {
-        edit("修改图层", coalescing: key) { preset in
+        edit("修改装饰", coalescing: key) { preset in
             if let i = preset.layers.firstIndex(where: { $0.layerId == layerId }) { body(&preset.layers[i]) }
         }
     }

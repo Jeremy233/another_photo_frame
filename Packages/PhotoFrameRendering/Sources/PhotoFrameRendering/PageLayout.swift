@@ -131,7 +131,7 @@ struct PageLayout {
         switch geometry.visibility {
         case .coverOnly where !existing.contains(0):
             warnings.append(RenderWarning(
-                code: "overlay.missing_pages", message: "图层只显示在封面，但不输出封面", layerId: layer.layerId))
+                code: "overlay.missing_pages", message: "装饰只显示在封面，但不输出封面", layerId: layer.layerId))
         case .selectedSlides(let selected):
             let missing = selected.filter { !existing.contains($0) }.sorted()
             if !missing.isEmpty {
@@ -192,7 +192,7 @@ enum OverlayPlanner {
         switch layer.type {
         case .text, .metadataText:
             guard let style = layer.text else {
-                warnings.append(RenderWarning(code: "overlay.missing_text", message: "文字图层没有 text 设置，已跳过",
+                warnings.append(RenderWarning(code: "overlay.missing_text", message: "文字装饰没有 text 设置，已跳过",
                                               layerId: layer.layerId))
                 return nil
             }
@@ -259,10 +259,10 @@ extension OverlayEdge {
 extension OverlayWarning {
     var message: String {
         switch self {
-        case .exceedsCanvas(let o): "图层超出画布（上 \(o.top) 左 \(o.left) 下 \(o.bottom) 右 \(o.right) px）"
-        case .overlapsPhoto(let r): "图层遮挡照片：\(r)"
+        case .exceedsCanvas(let o): "装饰超出画布（上 \(o.top) 左 \(o.left) 下 \(o.bottom) 右 \(o.right) px）"
+        case .overlapsPhoto(let r): "装饰遮挡照片：\(r)"
         case .insufficientMargin(let edge, let available, let required):
-            "\(edge.title)侧留白 \(available) px，放下图层需要 \(required) px"
+            "\(edge.title)侧留白 \(available) px，放下装饰需要 \(required) px"
         }
     }
 }

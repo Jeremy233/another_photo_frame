@@ -328,7 +328,7 @@ extension Workbench {
             }
             // 预设本地绑定存在库里、只认已存储的素材槽：新加的图层要先存储预设。
             if let editor = presetEditor, !editor.entry.preset.assetSlots.contains(where: { $0.slotId == slotId }) {
-                alert = WorkbenchAlert(title: "无法绑定素材", message: "这个图层还没有存储：先点「存储」存储预设，再给新图层绑定素材。")
+                alert = WorkbenchAlert(title: "无法绑定素材", message: "这个装饰还没有存储：先点「存储」存储预设，再给新装饰绑定素材。")
                 return
             }
             await perform("无法绑定素材") {
