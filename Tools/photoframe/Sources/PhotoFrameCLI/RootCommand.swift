@@ -19,7 +19,7 @@ public struct RootCommand: AsyncParsableCommand {
 }
 
 public enum PhotoFrameCLI {
-    public static let version = "0.9.2"
+    public static let version = "0.9.3"
 
     /// 解析并运行一条命令，返回退出码。`arguments` 不含程序名。
     public static func run(_ arguments: [String], environment: CLIEnvironment) async -> Int32 {
