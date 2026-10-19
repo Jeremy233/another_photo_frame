@@ -98,6 +98,9 @@ probe（读属性：尺寸、方向）
 （headroom 1 时曲线没有意义，`sdrMethod = none`）；请求 HDR 输出时改写 SDR，警告 `output.hdr_no_headroom`
 （gain map 的增益全为 1 时没有意义）。
 
+- gain map JPEG 的 HDR 版本（D-127）：底图的颜色解释没改过时，由 CI `expandToHDR` 按文件原样展开；改过时（坑 20 改写曲线，或用了 `sourceColorOverride`），
+  把文件里的 gain map（`CIImage` 的 `auxiliaryHDRGainMap`）套用到改写后的底图（`applyingGainMap`，CI 把 gain map 缩放到降采样后的底图），
+  HDR 的暗部、中间调与 SDR 版本一致；按原样展开的话，HDR 用的还是文件原来的解释，比 SDR 版本暗（或亮）。headroom 两种情况都取文件元数据。
 - 画面峰值 = 线性 sRGB 分量最大值的 99.95 分位（降到长边 1024 统计），不用 PQ 元数据的默认 4.93。
 - 兼容 TIFF：只支持经典 TIFF、未压缩、交错、条带布局；底图按 ICC 曲线自己线性化（同样绕开坑 20），与 gain map 一起按 `step × step` 盒式平均降采样后按 ISO 21496-1 完全展开（weight = 1）。解析失败时按 SDR 读入，警告 `source.hdr_not_read`。
 - tone map 只作用于照片图层；背景、水印、文字是 SDR 元素，按参考白放置（§6.7 第 3 条、坑 10）。
@@ -176,7 +179,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 |---|---|
 | `ColorManagementTests` | §6.9：四种 ICC 色卡 ΔE（16 位 TIFF 与 8 位 JPEG，D-19 暂定阈值）、缺 ICC 警告与覆盖、`#FAFAF8` 精确、16 位精度、透明素材无黑边白边、线性光不透明度、方向 1/3/6/8（含降采样解码）、输出 ICC、坑 20、广色域截断 |
 | `LayoutRenderingTests` | Fit、比例裁切、AC-01 / AC-02 / AC-03、全景切片按位重建长卷、手动张数 |
-| `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、合成的「最大化兼容性」TIFF 及其解析失败降级 |
+| `HDRTests` | gain map 底图、PQ tone map、浮点 TIFF、HDR 输出读回（比例与背景）、HDR 回退、gain map JPEG 底图改写解释后 HDR 跟随（坑 20、覆盖，解码与导出读回，D-127）、合成的「最大化兼容性」TIFF 及其解析失败降级 |
 | `OverlayAndJobTests` | 文字位置、EXIF 占位符、SVG 渲染与拒绝、缺素材、全景页码可见性、元数据策略、进度、取消清理、不覆盖、HEIC 拒绝 |
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
 | `DecodeTests` | 坏标签不藏 ICC、BigTIFF 的 ICC、切片与整份数据结果相同、兼容 TIFF 查表还原与逐采样逐位相同、峰值取值与排序相同、降级时警告不重复、Rec. 2020 覆盖也做坑 20 改写、灰度图诊断、非 ASCII ICC 标签、快门 / 光圈 / ISO 文字、损坏的 EXIF 数值 |
@@ -215,7 +218,8 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 
 ## 5. 尚未实现
 
-- gain map JPEG 的 HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样。
+- 颜色解释没改过的 gain map JPEG，HDR 版本由 `CIImage(expandToHDR:)` 按原图分辨率展开（导出同样如此），`.extendedRange` 预览这类源图比 `.sRGB` 慢。可改用 ImageIO 的 HDR 解码请求在解码时降采样（改写过解释的已经套用到降采样后的底图）。
+- D-127 只用合成的 gain map JPEG（CI 写出的 itur_2020 与无 ICC 文件）验证过，还没有真实的 Lightroom Rec. 2020 gain map 样张。
 - PQ / HLG / 浮点源的画面峰值在降采样后的解码图上统计，预览很小时峰值可能略低于导出，tone map 后的 SDR 预览会稍有差别。
 - 超出 sRGB 色域的感知映射（目前逐通道截断，§6.9、坑 11）。
 - 压缩的「最大化兼容性」TIFF（需要 LZW / ZIP 解压）。
