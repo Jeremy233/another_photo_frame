@@ -15,7 +15,7 @@
 | `Experiments/ColorPoC` | 色彩 PoC 工具，结论见 [color-poc-report.md](color-poc-report.md) |
 | `docs/` | 文档，索引见 [docs/README.md](../README.md) |
 
-## 开发状态（v0.9.2）
+## 开发状态（v0.9.3）
 
 | 模块 | 状态 |
 |---|---|
@@ -27,7 +27,7 @@
 | CLI `photoframe`（[CLI.md](../usage/CLI.md)） | ✅ 已完成 |
 | 本地 stdio MCP（[MCP.md](../usage/MCP.md)） | ✅ 已完成 |
 | GUI `AnotherPhotoFrame.app` | ✅ 可用，持续打磨中 |
-| 代码签名与公证（D-21） | 未定；v0.9.2 未签名 |
+| 代码签名与公证（D-21） | 未定；v0.9.3 未签名 |
 | 平台实测：小红书、抖音的 HDR、PNG 与文件大小上限（D-17、D-30） | 待实测 |
 
 v1.0 发布前还要完成：签名方式、平台实测、色彩验收阈值定稿（D-19）。
