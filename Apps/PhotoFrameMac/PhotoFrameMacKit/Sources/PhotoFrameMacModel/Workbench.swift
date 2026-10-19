@@ -95,6 +95,9 @@ public final class Workbench {
     /// 左栏预设还没存储的修改，按预设 ID。只在内存里：换选别的预设再回来时还在，退出 App 后丢掉，
     /// 内置预设下次启动就是出厂的定义（不写盘，也不改库里的预设）。
     public internal(set) var presetDrafts: [UUID: ExportPreset] = [:]
+    /// 内置预设还没另存的素材绑定（素材槽 → 素材），按预设 ID。与 `presetDrafts` 一样只在内存里：
+    /// 不写进库里的绑定，「还原」时清空，另存为用户预设时存成新预设的本地绑定。
+    public internal(set) var presetBindingDrafts: [UUID: [String: UUID]] = [:]
     var focus: Focus = .batch
 
     enum Focus { case batch, preset, location }
@@ -247,11 +250,16 @@ public final class Workbench {
                 // 改动删掉的素材槽（删除图层、相机规则时）不再留单任务绑定，否则会一直警告绑定的槽没有被预设使用。
                 for slotId in slots.subtracting(job.preset.assetSlots.map(\.slotId)) { job.assetBindings[slotId] = nil }
             }
-        case .preset:
+        case .preset(let id):
             guard var draft = presetEditor?.draft else { return }
             body(&draft)
             guard draft != presetEditor?.draft else { return }
             setPresetDraft(draft)
+            // 同样：删掉的素材槽不再留内置预设在内存里的绑定。
+            if let bound = presetBindingDrafts[id] {
+                let slots = Set(draft.assetSlots.map(\.slotId))
+                setPresetBindingDrafts(bound.filter { slots.contains($0.key) }, for: id)
+            }
         case .source, .location, .none:
             break
         }

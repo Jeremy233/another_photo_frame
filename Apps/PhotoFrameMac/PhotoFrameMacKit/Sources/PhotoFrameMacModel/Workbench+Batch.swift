@@ -68,11 +68,13 @@ extension Workbench {
         }
         await perform("无法添加任务") {
             let preset = try await presetContent(presetId)
+            let bound = presetJobBindings(presetId, for: preset)
             var created: [UUID] = []
             undoable("添加任务") {
                 for id in sourceIds {
                     guard let i = sources.firstIndex(where: { $0.id == id }) else { continue }
-                    let job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    var job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    job.assetBindings = bound
                     sources[i].jobs.append(job)
                     created.append(job.id)
                 }
@@ -98,11 +100,14 @@ extension Workbench {
         }
         await perform("无法应用预设") {
             let preset = try await presetContent(presetId)
+            // 内置预设在内存里的素材绑定跟着预设走，成为任务的单任务绑定（任务原有的单任务绑定优先）。
+            let bound = presetJobBindings(presetId, for: preset)
             var created: [UUID] = []
             undoable("应用预设") {
                 for id in sourceIds {
                     guard let i = sources.firstIndex(where: { $0.id == id }), let destination else { continue }
-                    let job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    var job = DraftJob(sourceId: id, preset: preset, destination: destination)
+                    job.assetBindings = bound
                     sources[i].jobs.append(job)
                     created.append(job.id)
                 }
@@ -111,7 +116,7 @@ extension Workbench {
                     job.preset = preset
                     // 新预设没有的素材槽不再留单任务绑定。
                     let slots = Set(preset.assetSlots.map(\.slotId))
-                    job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }
+                    job.assetBindings = job.assetBindings.filter { slots.contains($0.key) }.merging(bound) { mine, _ in mine }
                 }
             }
             // 读预设期间移除了的任务不再选中。
@@ -294,6 +299,8 @@ extension Workbench {
             if let asset = job.assetBindings[slotId] { return (asset, .job) }
             return persistedBinding(slotId, presetId: job.basePreset.presetId)
         case .preset(let id):
+            // 内置预设在内存里的绑定（还没另存）也显示为预设本地。
+            if let asset = presetBindingDrafts[id]?[slotId] { return (asset, .preset) }
             return persistedBinding(slotId, presetId: id)
         case .source, .location, .none:
             return nil
@@ -312,6 +319,13 @@ extension Workbench {
         case .jobs(let ids):
             undoable("绑定素材") { updateJobs(ids) { $0.assetBindings[slotId] = assetId } }
         case .preset(let id):
+            // 内置预设：绑定和其他修改一样只留在内存里（不写库），新加的图层也能绑定；另存为用户预设时一起存储。
+            if preset(id)?.origin == .builtIn {
+                var drafts = presetBindingDrafts[id] ?? [:]
+                drafts[slotId] = assetId
+                undoable("绑定素材") { setPresetBindingDrafts(drafts, for: id) }
+                return
+            }
             // 预设本地绑定存在库里、只认已存储的素材槽：新加的图层要先存储预设。
             if let editor = presetEditor, !editor.entry.preset.assetSlots.contains(where: { $0.slotId == slotId }) {
                 alert = WorkbenchAlert(title: "无法绑定素材", message: "这个图层还没有存储：先点「存储」存储预设，再给新图层绑定素材。")

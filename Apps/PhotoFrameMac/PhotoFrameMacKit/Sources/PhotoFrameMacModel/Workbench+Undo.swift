@@ -7,17 +7,18 @@ import PhotoFrameCore
 // 开始批处理后清空撤销记录：已提交的任务不会被撤销回「当前」。
 
 extension Workbench {
-    /// 一次操作前后的状态：「当前」的源图和任务、左栏预设的草稿，以及当时右栏在看什么（撤销后回到那里）。
+    /// 一次操作前后的状态：「当前」的源图和任务、左栏预设的草稿（含内置预设在内存里的素材绑定），以及当时右栏在看什么（撤销后回到那里）。
     struct UndoState: Sendable {
         var sources: [SourceItem]
         var presetDrafts: [UUID: ExportPreset]
+        var presetBindingDrafts: [UUID: [String: UUID]]
         var selection: Set<BatchItemID>
         var selectedPresetId: UUID?
         var focus: Focus
 
         /// 用户改的内容一样：不看源图检查、任务校验的结果（它们在后台陆续到达，不是用户的改动），也不看选择。
         func hasSameContent(as other: UndoState) -> Bool {
-            presetDrafts == other.presetDrafts && Self.content(sources) == Self.content(other.sources)
+            presetDrafts == other.presetDrafts && presetBindingDrafts == other.presetBindingDrafts && Self.content(sources) == Self.content(other.sources)
         }
 
         static func content(_ sources: [SourceItem]) -> [SourceItem] {
@@ -32,7 +33,9 @@ extension Workbench {
     }
 
     func undoState() -> UndoState {
-        UndoState(sources: sources, presetDrafts: presetDrafts, selection: selection, selectedPresetId: selectedPresetId, focus: focus)
+        UndoState(
+            sources: sources, presetDrafts: presetDrafts, presetBindingDrafts: presetBindingDrafts,
+            selection: selection, selectedPresetId: selectedPresetId, focus: focus)
     }
 
     /// 执行一个可以撤销的操作，Edit 菜单里显示为「撤销 + `name`」。
@@ -137,6 +140,7 @@ extension Workbench {
 
         let known = Set(presets.map(\.presetId))
         presetDrafts = state.presetDrafts.filter { known.contains($0.key) }
+        presetBindingDrafts = state.presetBindingDrafts.filter { known.contains($0.key) }
         if let editor = presetEditor {
             presetEditor?.draft = presetDrafts[editor.entry.preset.presetId] ?? editor.entry.preset
         }

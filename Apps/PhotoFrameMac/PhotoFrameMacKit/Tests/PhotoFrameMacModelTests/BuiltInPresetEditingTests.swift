@@ -112,4 +112,98 @@ import Testing
         await wb.settle()
         #expect(!wb.hasUnsavedEdits(copy) && wb.presetEditor?.isDirty == false)
     }
+
+    /// 内置预设加了签名图层、绑了素材：绑定只在内存里。返回预设 ID 和素材 ID。
+    private func bindSignatureInMemory(_ f: Fixture) async throws -> (preset: UUID, asset: UUID) {
+        let wb = f.workbench
+        await wb.load()
+        await wb.importAssets([try f.assetPNG("sig.png")], category: .signature)
+        let asset = try #require(wb.assets(in: .signature).first).assetId
+        let id = f.presetId("Instagram Standard")
+        wb.selectedPresetId = id
+        await wb.settle()
+        wb.addLayer(.signature)
+        // 新加的图层不用先存储也能绑定（内置预设没有「存储」）。
+        await wb.bindAsset(asset, slotId: "signature")
+        #expect(wb.alert == nil)
+        return (id, asset)
+    }
+
+    @Test func builtInAssetBindingStaysInMemory() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        let (id, asset) = try await bindSignatureInMemory(f)
+        #expect(wb.presetBindingDrafts[id] == ["signature": asset])
+        #expect(wb.binding(for: "signature")?.assetId == asset && wb.binding(for: "signature")?.level == .preset)
+        #expect(wb.hasUnsavedBuiltInEdits && wb.hasUnsavedEdits(id))
+        // 不写进库里的绑定。
+        #expect(await f.service.listBindings().bindings.isEmpty)
+        #expect(wb.bindings.isEmpty)
+        // 预览用这个绑定。
+        _ = await wb.addSources([try f.photo("A.jpg")])
+        wb.selectedPresetId = nil
+        wb.selectedPresetId = id
+        await wb.settle()
+        #expect(wb.previewSubject?.assetBindings == ["signature": asset])
+        // 用这个预设建的任务带上这个绑定（单任务绑定）。
+        let sourceId = try #require(wb.sources.first?.id)
+        await wb.addJobs(preset: id, to: [sourceId])
+        #expect(wb.sources.first?.jobs.first?.assetBindings == ["signature": asset])
+        #expect(await f.service.listBindings().bindings.isEmpty)
+        // 右栏回到预设，解除绑定：内存里的绑定去掉。
+        wb.focusPreset()
+        await wb.bindAsset(nil, slotId: "signature")
+        #expect(wb.presetBindingDrafts[id] == nil && wb.binding(for: "signature") == nil)
+    }
+
+    @Test func builtInAssetBindingIsForgottenOnNextLaunch() async throws {
+        let f = try Fixture()
+        let (id, _) = try await bindSignatureInMemory(f)
+        let relaunched = Workbench(service: f.hooks, locationStore: f.store, settingsStore: f.settingsStore, debounce: .zero)
+        await relaunched.load()
+        relaunched.selectedPresetId = id
+        await relaunched.settle()
+        #expect(relaunched.presetBindingDrafts.isEmpty && relaunched.bindings.isEmpty)
+        #expect(relaunched.binding(for: "signature") == nil)
+        #expect(!relaunched.hasUnsavedEdits(id))
+    }
+
+    @Test func revertingBuiltInClearsInMemoryBindings() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        wb.undoManager = undo
+        let (id, asset) = try await bindSignatureInMemory(f)
+        wb.revertPresetEdits()
+        #expect(wb.presetBindingDrafts.isEmpty && !wb.hasUnsavedEdits(id) && !wb.hasUnsavedBuiltInEdits)
+        #expect(wb.presetEditor?.isDirty == false)
+        // 撤销「还原」：绑定回来（仍然只在内存里）。
+        undo.undo()
+        #expect(wb.presetBindingDrafts[id] == ["signature": asset])
+        #expect(await f.service.listBindings().bindings.isEmpty)
+
+        // 删除图层：它的素材槽没了，内存里的绑定也不留（与单任务绑定一样）。
+        wb.revertPresetEdits()
+        undo.undo()
+        wb.removeLayer("signature")
+        #expect(wb.presetBindingDrafts.isEmpty && !wb.hasUnsavedBuiltInEdits)
+        #expect(await f.service.listBindings().bindings.isEmpty)
+    }
+
+    @Test func savingBuiltInAsUserPresetStoresInMemoryBindings() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        let (id, asset) = try await bindSignatureInMemory(f)
+        await wb.saveBuiltInEditsAsPreset(name: "Signed Instagram")
+        await wb.settle()
+        let saved = try #require(wb.presets(in: .user).first)
+        // 新的用户预设有这个本地绑定（写进库里）；内置预设的内存绑定清空。
+        let stored = await f.service.listBindings().bindings
+        #expect(stored.count == 1)
+        #expect(stored.first?.presetId == saved.presetId && stored.first?.slotId == "signature" && stored.first?.assetId == asset)
+        #expect(!stored.contains { $0.presetId == id })
+        #expect(wb.presetBindingDrafts.isEmpty && !wb.hasUnsavedEdits(id))
+        #expect(wb.selectedPresetId == saved.presetId && wb.binding(for: "signature")?.level == .preset)
+    }
 }
