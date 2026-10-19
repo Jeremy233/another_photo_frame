@@ -153,6 +153,15 @@ public actor JobQueue {
         return attempt.attemptId
     }
 
+    /// 源图换了位置：这张源图还没开始执行的任务（排队中、失败、已取消）改读新位置，重试时就用它。
+    /// 正在执行和已完成的任务不变（已完成的清单记的是当时的源文件）。
+    public func relinkSource(_ source: PhotoSource) {
+        for (id, record) in records where record.spec.source.sourceId == source.sourceId && running[id] == nil {
+            guard record.status == .queued || record.status == .failed || record.status == .canceled else { continue }
+            records[id]?.spec.source = source
+        }
+    }
+
     // MARK: - 调度设置（D-53）
 
     /// 修改并发上限，立即生效。调低时正在执行的任务继续做完，之后按新上限派发。

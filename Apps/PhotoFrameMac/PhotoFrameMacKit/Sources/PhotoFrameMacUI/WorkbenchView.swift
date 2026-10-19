@@ -45,6 +45,8 @@ public struct WorkbenchView: View {
             #endif
         }
         .task { await workbench.observeJobs() }
+        // NAS 断开、文件被移走时及时标出缺失的原图；重新连上、放回原处时自动恢复。
+        .task { await workbench.observeSourceAvailability(SourceAvailabilityTriggers.stream()) }
         .fileImporter(isPresented: $workbench.isAddingImages, allowedContentTypes: FileTypes.images, allowsMultipleSelection: true) {
             if case .success(let urls) = $0 { Task { await workbench.addSources(urls) } }
         }
@@ -52,6 +54,7 @@ public struct WorkbenchView: View {
             Alert(title: Text(alert.title), message: Text(alert.message))
         }
         .overwriteConfirmation(workbench)
+        .missingSourceDialogs(workbench)
         .onChange(of: workbench.warningPrompt?.id) { _, id in
             if id != nil, let prompt = workbench.warningPrompt { WarningReviewAlert.show(prompt, workbench: workbench) }
         }
