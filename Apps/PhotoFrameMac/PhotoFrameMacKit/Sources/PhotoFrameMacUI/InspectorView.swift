@@ -665,7 +665,17 @@ private struct PanoramaTab: View {
                     let range = workbench.manualSlideCountRange ?? n...n
                     InspectorRow { Stepper("\(n) 张切片", value: fixedCount(n), in: min(n, range.lowerBound)...max(n, range.upperBound)) }
                 }
-                IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
+                InspectorPicker("对齐", selection: workbench.binding(\.panorama.alignment)) {
+                    Text("靠左").tag(PanoramaSettings.Alignment?.some(.left))
+                    Text("居中").tag(PanoramaSettings.Alignment?.some(.center))
+                    Text("靠右").tag(PanoramaSettings.Alignment?.some(.right))
+                    if workbench.field(\.panorama.alignment) == .mixed { Text("多个值").tag(PanoramaSettings.Alignment?.none) }
+                }
+                // 自动时上下边距等于长卷端部的底色宽度，按每张源图算，不显示数值。
+                MixedToggle(title: "自动上下边距", workbench: workbench, path: \.panorama.autoVerticalMargin)
+                if workbench.field(\.panorama.autoVerticalMargin) == .single(false) {
+                    IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
+                }
             }
         }
     }

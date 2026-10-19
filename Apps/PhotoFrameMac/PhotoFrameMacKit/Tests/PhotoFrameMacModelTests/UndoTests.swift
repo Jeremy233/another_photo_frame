@@ -28,7 +28,7 @@ import Testing
         // 撤销前右栏换到了别处：撤销后回到当时改的任务。
         wb.selection = [.source(try #require(wb.job(a)?.sourceId))]
         undo.undo()
-        #expect(wb.job(a)?.preset.canvas.minMarginPx == 60 && wb.job(b)?.preset.canvas.minMarginPx == 60)
+        #expect(wb.job(a)?.preset.canvas.minMarginPx == 20 && wb.job(b)?.preset.canvas.minMarginPx == 20)
         #expect(wb.job(a)?.isModified == false)
         #expect(wb.selection == [.job(a), .job(b)])
         #expect(undo.canRedo && undo.redoActionName == "修改参数")
@@ -36,7 +36,7 @@ import Testing
         undo.redo()
         #expect(wb.job(a)?.preset.canvas.minMarginPx == 90 && wb.job(b)?.preset.canvas.minMarginPx == 90)
         undo.undo()
-        #expect(wb.job(a)?.preset.canvas.minMarginPx == 60)
+        #expect(wb.job(a)?.preset.canvas.minMarginPx == 20)
         // 撤销后重新校验，校验结果还在。
         await wb.settle()
         #expect(wb.job(a)?.validation != nil)
@@ -73,7 +73,7 @@ import Testing
         undo.undo()
         #expect(wb.job(a)?.preset.canvas.minMarginPx == 63 && wb.job(a)?.preset.output.quality != 50)
         undo.undo()
-        #expect(wb.job(a)?.preset.canvas.minMarginPx == 60)
+        #expect(wb.job(a)?.preset.canvas.minMarginPx == 20)
         #expect(!undo.canUndo)
     }
 
@@ -188,7 +188,7 @@ import Testing
         wb.selection = [.job(b)]
         wb.setField(\.canvas.minMarginPx, 91)
         undo.undo()
-        #expect(wb.job(b)?.preset.canvas.minMarginPx == 60)
+        #expect(wb.job(b)?.preset.canvas.minMarginPx == 20)
         #expect(wb.job(a)?.preset.canvas.minMarginPx == 90)
     }
 

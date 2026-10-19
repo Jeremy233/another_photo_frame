@@ -52,7 +52,8 @@ extension Workbench {
         if let size = source?.inspection?.displaySize,
            let layout = try? PanoramaLayout(
                tile: preset.canvas.size, source: size, coverMinimumMargin: preset.canvas.minMarginPx,
-               verticalMargin: preset.panorama.verticalMarginPx, includesCover: preset.panorama.cover) {
+               verticalMargin: preset.panorama.resolvedVerticalMargin(tile: preset.canvas.size, source: size),
+               includesCover: preset.panorama.cover, alignment: preset.panorama.alignment) {
             return layout.automaticSlideCount
         }
         // 还没检查完源图：张数是自动时，校验或预览出来的切片数就是自动张数。

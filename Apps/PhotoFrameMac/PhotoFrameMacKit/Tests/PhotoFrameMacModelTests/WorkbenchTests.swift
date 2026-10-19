@@ -64,14 +64,14 @@ import Testing
         wb.selection = [.job(a), .job(b)]
         #expect(wb.inspectorSubject == .jobs([a, b]))
         #expect(wb.editedPreset == nil)
-        #expect(wb.field(\.canvas.minMarginPx) == .single(60))
+        #expect(wb.field(\.canvas.minMarginPx) == .single(20))
         #expect(wb.field(\.platform) == .mixed)
         wb.setField(\.canvas.minMarginPx, 90)
         #expect(wb.job(a)?.preset.canvas.minMarginPx == 90 && wb.job(b)?.preset.canvas.minMarginPx == 90)
         #expect(wb.job(a)?.isModified == true)
         // 任务的改动不写回库里的预设（§4.2）。
         let builtIn = try await f.service.resolvePreset(.library("Instagram Standard")).preset
-        #expect(builtIn.canvas.minMarginPx == 60)
+        #expect(builtIn.canvas.minMarginPx == 20)
     }
 
     @Test func selectingSourceOrPresetChangesInspector() async throws {

@@ -82,7 +82,7 @@ struct PresetLibraryTests {
         modified.presetId = copy.presetId
         modified.name = copy.name
         #expect(try presets.update(modified).preset.canvas.minMarginPx == 10)
-        #expect(presets.list().builtIn[1].preset.canvas.minMarginPx == 60)
+        #expect(presets.list().builtIn[1].preset.canvas.minMarginPx == 20)
     }
 
     @Test("名称和内容校验")

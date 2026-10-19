@@ -29,14 +29,11 @@ struct PageLayout {
                     warnings.append(RenderWarning(code: "render.crop_ignored_for_panorama",
                                                   message: "全景模式始终不裁切，忽略画布的比例裁切设置"))
                 }
-                let count: SlideCount = switch p.tileCount {
-                case .auto: .automatic
-                case .fixed(let n): .manual(n)
-                }
                 let pano = try PanoramaLayout(
                     tile: canvas.size, source: source, coverMinimumMargin: canvas.minMarginPx,
-                    verticalMargin: p.verticalMarginPx, slideCount: count, maxCarouselItems: maxCarouselItems,
-                    includesCover: p.cover)
+                    verticalMargin: p.resolvedVerticalMargin(tile: canvas.size, source: display),
+                    slideCount: p.slideCount, maxCarouselItems: maxCarouselItems,
+                    includesCover: p.cover, alignment: p.alignment)
                 warnings += pano.warnings.map { warning in
                     if case .exceedsCarouselLimit(let total, let limit) = warning, !p.cover {
                         return RenderWarning(code: warning.code, message: "\(total) 张切片，超过平台轮播上限 \(limit) 页")
