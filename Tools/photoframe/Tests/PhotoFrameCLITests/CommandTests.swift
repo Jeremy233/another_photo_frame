@@ -414,4 +414,23 @@ struct ExportCommandTests {
         #expect(jobs.allSatisfy { $0["status"] as? String == "canceled" })
         #expect(box.tree().isEmpty, "临时目录已删除，没有发布任何东西：\(box.tree())")
     }
+
+    @Test("--jobs 超过上限时按上限执行：最多 8，且不超过本机核数（D-128）；mcp serve 的 --jobs 走同一个服务工厂")
+    func jobsCappedAtCoreCount() async throws {
+        let box = try Sandbox()
+        try box.photo("Badlands.jpg", width: 600, height: 400)
+        let made = Locked<[LocalPhotoFrameService]>([])
+        let factory: CLIEnvironment.ServiceFactory = { options throws(ApplicationError) in
+            let service = try LocalPhotoFrameService.makeDefault(options)
+            made.value.append(service)
+            return service
+        }
+        for (jobs, expected) in [(64, QueueConfiguration.maxConcurrentJobsLimit), (1, 1)] {
+            let result = await runCLI(["export", "Badlands.jpg", "--preset", "xhs-standard", "-o", "Exports-\(jobs)", "--jobs", "\(jobs)"],
+                                      in: box.root, service: factory)
+            #expect(result.status == 0, "\(result.stderr.value)")
+            let service = try #require(made.value.last)
+            #expect(await service.queue.configuration.maxConcurrentJobs == expected)
+        }
+    }
 }

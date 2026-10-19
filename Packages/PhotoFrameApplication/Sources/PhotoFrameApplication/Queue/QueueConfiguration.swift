@@ -53,6 +53,17 @@ public struct QueueConfiguration: Sendable {
         min(4, max(1, ProcessInfo.processInfo.activeProcessorCount / 2))
     }
 
+    /// 并发数设置的上限：最多 8，且不超过本机核数（D-128）。单个任务内部已经并行，更多任务只会互相抢核。
+    public static var maxConcurrentJobsLimit: Int {
+        min(8, max(1, ProcessInfo.processInfo.activeProcessorCount))
+    }
+
+    /// 把设置的并发数限制在 1…``maxConcurrentJobsLimit``。GUI 的设置（包括以前存下的更大的值）、CLI 和 MCP 的 `--jobs`
+    /// 都经过这里（``LocalPhotoFrameService/makeDefault(_:)``、``LocalPhotoFrameService/setMaxConcurrentJobs(_:)``）。
+    public static func clampedMaxConcurrentJobs(_ count: Int) -> Int {
+        min(max(1, count), maxConcurrentJobsLimit)
+    }
+
     /// 默认内存预算：物理内存的一半。
     public static var defaultMemoryBudgetBytes: Int64 {
         Int64(ProcessInfo.processInfo.physicalMemory / 2)

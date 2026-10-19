@@ -42,7 +42,7 @@ v0.9.1 及更早的版本还要把 `PhotoFrameStorage_PhotoFrameStorage.bundle` 
 | `--max-preview-edge <px>` | 2048 | `preview_export` 的 `maxEdge` 上限 |
 | `--max-active-jobs <n>` | 16 | 同时未结束（排队或执行中）的导出任务上限 |
 | `--max-output-mb <n>` | 20480 | 本次会话写出的文件总量上限（导出成品 + 预览文件），在每次写请求前检查 |
-| `--jobs <n>` | 性能核数的一半（1–4，D-53） | 同时执行的任务数 |
+| `--jobs <n>` | 性能核数的一半（1–4，D-53） | 同时执行的任务数；最多 8，且不超过本机核数，更大的值按上限执行（D-128） |
 
 本地库（预设、素材、绑定）与 GUI、CLI 共用，位置规则见 [CLI.md](CLI.md)「本地库」（D-78、D-124）；`PHOTOFRAME_LIBRARY=<目录>` 改用别的库（D-96）。
 

@@ -94,7 +94,7 @@ public protocol PhotoFrameService: Sendable {
     /// 最近一次成功执行的输出清单；还没有成功过时为 nil。
     func manifest(_ job: JobID) async throws(ApplicationError) -> OutputManifest?
 
-    /// 修改调度设置，立即生效（D-53）。
+    /// 修改调度设置，立即生效（D-53）。并发数不超过 ``QueueConfiguration/maxConcurrentJobsLimit``（D-128）。
     func setMaxConcurrentJobs(_ count: Int) async
     func setMemoryBudget(_ bytes: Int64?) async
     /// 清理输出目录中超过 24 小时的残留临时目录（D-55），返回删除的目录。应用启动时对已知的输出目录调用；
@@ -149,7 +149,7 @@ public actor LocalPhotoFrameService: PhotoFrameService {
 
     /// ``makeDefault(_:)`` 的设置。
     public struct Options: Sendable {
-        /// 同时执行的任务数；nil 用默认值（D-53）。
+        /// 同时执行的任务数；nil 用默认值（D-53）。超过 ``QueueConfiguration/maxConcurrentJobsLimit`` 时按上限（D-128）。
         public var maxConcurrentJobs: Int?
         /// 内存预算；nil 用默认值（物理内存一半，D-53）。
         public var memoryBudgetBytes: Int64?
@@ -187,7 +187,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let library = LocalLibrary(root: options.libraryRoot ?? LibraryLocation.defaultRoot(), platforms: catalog)
         let backend = RenderingBackend(assets: library)
         let configuration = QueueConfiguration(
-            maxConcurrentJobs: options.maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs,
+            maxConcurrentJobs: QueueConfiguration.clampedMaxConcurrentJobs(
+                options.maxConcurrentJobs ?? QueueConfiguration.defaultMaxConcurrentJobs),
             memoryBudgetBytes: options.memoryBudgetBytes ?? QueueConfiguration.defaultMemoryBudgetBytes,
             startsPaused: options.startsPaused, platformCatalog: catalog, assets: library)
         return LocalPhotoFrameService(renderer: backend, analyzer: backend, library: library, configuration: configuration)
@@ -639,7 +640,9 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         try await status(job).manifest
     }
 
-    public nonisolated func setMaxConcurrentJobs(_ count: Int) async { await queue.setMaxConcurrentJobs(count) }
+    public nonisolated func setMaxConcurrentJobs(_ count: Int) async {
+        await queue.setMaxConcurrentJobs(QueueConfiguration.clampedMaxConcurrentJobs(count))
+    }
     public nonisolated func setMemoryBudget(_ bytes: Int64?) async { await queue.setMemoryBudget(bytes) }
 
     public nonisolated func removeStaleStaging(in destinationRoot: URL) async -> [URL] {

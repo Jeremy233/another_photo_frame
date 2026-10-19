@@ -21,20 +21,23 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
 
     /// 渲染一个任务。
     ///
-    /// - 支持取消：在阶段之间、每一页之前检查 `Task.isCancelled`；取消或出错时删除本次已写出的文件，
+    /// - 在专用线程上执行（``RenderThread``），不占协作线程池；`progress` 也在那个线程上调用。
+    /// - 支持取消：所在 Task 被取消后，在阶段之间、每一页之前检查到；取消或出错时删除本次已写出的文件，
     ///   再抛出 `CancellationError` 或 `RenderError`。
     /// - 进度按真实阶段与已写出文件数报告（§9.1），不伪造百分比。
     /// - 输出文件名固定：单页／封面 `00.<ext>`，切片 k 为 `<k+1 两位数>.<ext>`。
     public func render(
         job: RenderJob,
-        progress: @Sendable (RenderProgress) -> Void = { _ in }
+        progress: @escaping @Sendable (RenderProgress) -> Void = { _ in }
     ) async throws -> RenderResult {
-        var written: [URL] = []
-        do {
-            return try renderPages(job: job, progress: progress, written: &written)
-        } catch {
-            for url in written { try? FileManager.default.removeItem(at: url) }
-            throw error
+        try await RenderThread.run { [self] cancellation in
+            var written: [URL] = []
+            do {
+                return try renderPages(job: job, cancellation: cancellation, progress: progress, written: &written)
+            } catch {
+                for url in written { try? FileManager.default.removeItem(at: url) }
+                throw error
+            }
         }
     }
 
@@ -44,9 +47,10 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     /// - 版式在导出分辨率上由 PhotoFrameCore 算出，再按预览缩放映射到预览像素（矩形按像素边取整，误差 ≤ 0.5 px）；
     ///   照片与图层直接画进映射后的矩形，不先画大图再缩小。
     /// - `.sRGB` 的像素与 SDR 导出编码前相同（缩放系数为 1 时与 PNG 导出逐像素一致）。
-    /// - 支持取消：在阶段之间、每一页之前检查 `Task.isCancelled`，抛出 `CancellationError`。
+    /// - 与导出一样在专用线程上执行（``RenderThread``）。
+    /// - 支持取消：所在 Task 被取消后，在阶段之间、每一页之前检查到，抛出 `CancellationError`。
     public func renderPreview(_ request: PreviewRequest) async throws -> PreviewResult {
-        try previewPages(request)
+        try await RenderThread.run { [self] cancellation in try previewPages(request, cancellation: cancellation) }
     }
 
     // MARK: - 主流程
@@ -54,11 +58,12 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     /// 导出与预览共用的前半段：校验 → 版式 → 解码 → 图层规划 → HDR 决策（§6.1 第 3 条「预览 ≈ 导出」）。
     /// 两者只在解码采样尺度（`decodeScale`）和最后的输出方式上不同。
     private func prepare(
-        _ inputs: RenderInputs, decodeScale: Double = 1, cachesDecode: Bool = false, progress: (RenderProgress) -> Void
+        _ inputs: RenderInputs, decodeScale: Double = 1, cachesDecode: Bool = false, cancellation: RenderCancellation,
+        progress: (RenderProgress) -> Void
     ) throws -> PreparedRender {
         let output = inputs.preset.output
         try Self.validate(output)
-        try Task.checkCancellation()
+        try cancellation.checkCancellation()
         progress(RenderProgress(stage: .decoding, completedOutputs: 0, totalOutputs: nil))
 
         // 1. 版式（几何全部来自 PhotoFrameCore）
@@ -81,7 +86,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         guard source.displaySize == probe.displaySize else {
             throw RenderError(code: "render.decode_failed", message: "解码尺寸与文件属性不符")
         }
-        try Task.checkCancellation()
+        try cancellation.checkCancellation()
 
         // 3. 图层内容与位置
         progress(RenderProgress(stage: .rendering, completedOutputs: 0, totalOutputs: layout.pages.count))
@@ -125,10 +130,10 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
     }
 
     private func renderPages(
-        job: RenderJob, progress: (RenderProgress) -> Void, written: inout [URL]
+        job: RenderJob, cancellation: RenderCancellation, progress: (RenderProgress) -> Void, written: inout [URL]
     ) throws -> RenderResult {
         let output = job.preset.output
-        var prepared = try prepare(job.inputs, progress: progress)
+        var prepared = try prepare(job.inputs, cancellation: cancellation, progress: progress)
         let (layout, source, writesHDR, photos) = (prepared.layout, prepared.source, prepared.writesHDR, prepared.photos)
         prepared.steps.append("输出：工作空间 → sRGB 8-bit（CI），嵌入 sRGB ICC"
                               + (writesHDR ? "；HDR：CI gain map（RGB），headroom \(fmt(source.headroom ?? 1))" : ""))
@@ -178,7 +183,7 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
         do {
             for (index, plan) in pages.enumerated() {
                 current = index
-                try Task.checkCancellation()
+                try cancellation.checkCancellation()
                 let background = try WorkingColor.ciColor(plan.background)
                 let sdrPage = PageComposer.compose(plan: plan, photo: photos.sdr(for: plan.photo, displaySize: source.displaySize),
                                                    overlays: overlays, background: background)
@@ -216,10 +221,11 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
 
     // MARK: - 预览
 
-    private func previewPages(_ request: PreviewRequest) throws -> PreviewResult {
+    private func previewPages(_ request: PreviewRequest, cancellation: RenderCancellation) throws -> PreviewResult {
         let canvas = request.preset.canvas.size
         let scale = try PreviewScale(canvas: canvas, size: request.size)
-        var prepared = try prepare(request.inputs, decodeScale: max(scale.x, scale.y), cachesDecode: true, progress: { _ in })
+        var prepared = try prepare(request.inputs, decodeScale: max(scale.x, scale.y), cachesDecode: true,
+                                   cancellation: cancellation, progress: { _ in })
         let (layout, source, photos) = (prepared.layout, prepared.source, prepared.photos)
         let showsHDR = prepared.writesHDR && request.color != .sRGB
         switch request.color {
@@ -232,13 +238,13 @@ public final class PhotoFrameRenderer: @unchecked Sendable {
             prepared.steps.append("预览：\(scale)，工作空间 → extended sRGB RGBAh，不截断"
                                   + (showsHDR ? "；HDR 页面，headroom \(fmt(source.headroom ?? 1))" : ""))
         }
-        try Task.checkCancellation()
+        try cancellation.checkCancellation()
 
         // 图层按预览尺寸直接绘制（文字、SVG 按矢量重画）；映射后尺寸相同的图层在各页之间共用。
         var overlayCache: [String: CIImage] = [:]
         var pages: [PreviewPage] = []
         for exportPlan in layout.pages where request.pages?.contains(exportPlan.role.page) ?? true {
-            try Task.checkCancellation()
+            try cancellation.checkCancellation()
             let plan = scale.map(exportPlan)
             var overlays: [String: CIImage] = [:]
             for ((layer, rect), (_, exportRect)) in zip(plan.overlays, exportPlan.overlays) where rect.size.isPositive {
