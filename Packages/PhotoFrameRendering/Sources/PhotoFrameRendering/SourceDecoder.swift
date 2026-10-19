@@ -31,6 +31,8 @@ struct DecodedSource {
     var warnings: [RenderWarning]
     /// 解码出的位图占用的字节数（gain map JPEG 的 HDR 版本由 CI 按需展开，不计入）。预览的解码缓存按它限制总量。
     var pixelBytes = 0
+    /// 源图不在内置磁盘上时的本机副本（D-129）。CI 之后还会按路径读它（gain map），解码结果在用时副本不删。
+    var stagedCopy: SourceStaging.Copy?
 
     var displaySize: PixelSize { SourceImage(storedSize: storedSize, orientation: orientation).displaySize }
 }
@@ -38,6 +40,8 @@ struct DecodedSource {
 /// 源图解码（规范 §6.2、§6.3 第一段）。
 struct SourceDecoder {
     var context: CIContext
+    /// 不在内置磁盘上的源图先复制到本机（D-129）；nil 时总是直接读。
+    var staging: SourceStaging? = .shared
 
     /// 峰值不超过它就视为没有超过 SDR 白（浮点噪声容差）。
     static let sdrWhiteTolerance = 1.0001
@@ -45,8 +49,11 @@ struct SourceDecoder {
     /// - Parameter neededSize: 输出中照片需要的最大像素尺寸（显示方向）。解码时降采样到不小于它的两倍，
     ///   既控制内存（D-18），又给 Lanczos 留出足够的源像素。
     func decode(_ url: URL, neededSize: PixelSize, override: SourceColorOverride?) throws(RenderError) -> DecodedSource {
+        // 不在内置磁盘上的源图先按顺序复制到本机，之后的读取（包括 CI 对 gain map JPEG 的第二次读取）都用副本（D-129）。
+        let staged = try staging?.localCopy(of: url)
+        let readURL = staged?.url ?? url
         let data: Data
-        do { data = try Data(contentsOf: url, options: .mappedIfSafe) } catch {
+        do { data = try Data(contentsOf: readURL, options: .mappedIfSafe) } catch {
             throw .decodeFailed(url, "无法读取文件（\(error.localizedDescription)）")
         }
         let format = try SourceFileFormat.sniff(data)
@@ -69,6 +76,8 @@ struct SourceDecoder {
             sdr: nil, hdr: nil, hdrKind: .none, headroom: nil, properties: props,
             author: AuthorInfo(properties: props, xmp: CGImageSourceCopyMetadataAtIndex(src, 0, nil)),
             transformSteps: [], warnings: [])
+        out.stagedCopy = staged
+        if staged != nil { out.transformSteps.append("源图不在内置磁盘上：先按顺序复制到本机缓存，再从副本读取（D-129）") }
 
         let display = out.displaySize
         let longSource = max(display.width, display.height)
@@ -117,7 +126,7 @@ struct SourceDecoder {
         // 只凭容器属性判定时，展开失败或没有余量再读辅助数据确认一次，结论与只看辅助数据时相同：
         // 辅助数据也读不出 gain map 就当作没有 gain map，继续下面的判定。
         let expanded = hasGainMap
-            ? CIImage(contentsOf: url, options: [.expandToHDR: true, .applyOrientationProperty: true]) : nil
+            ? CIImage(contentsOf: readURL, options: [.expandToHDR: true, .applyOrientationProperty: true]) : nil
         if hasGainMap, !listsGainMap || (expanded?.contentHeadroom ?? 1) > 1 || Self.hasGainMapAuxiliaryData(src) {
             guard let hdr = expanded else {
                 throw .decodeFailed(url, "无法展开 gain map")
@@ -125,7 +134,7 @@ struct SourceDecoder {
             out.sdr = image
             out.hdrKind = .gainMap
             out.headroom = max(Double(hdr.contentHeadroom), 1)
-            if policy.reinterpreted, let applied = Self.applyingGainMap(of: url, to: image) {
+            if policy.reinterpreted, let applied = Self.applyingGainMap(of: readURL, to: image) {
                 // 底图的颜色解释改过（坑 20 改写、输入色彩空间覆盖）：HDR 版本用改写后的底图套用文件里的 gain map（D-127）。
                 // CI 按文件原样展开的 HDR 用的是原来的解释，暗部和中间调会与 SDR 版本不一致。
                 out.hdr = applied

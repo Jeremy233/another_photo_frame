@@ -74,12 +74,24 @@ probe（读属性：尺寸、方向）
 
 | 步骤 | 做法 | 依据 |
 |---|---|---|
+| 源图位置 | 不在内置磁盘上（网络卷、外接或移动介质、磁盘映像）时先按顺序复制到本机缓存，再从副本读（`SourceStaging`，见下） | D-129 |
 | 格式 | 自己看文件头；HEIC 报 `render.unsupported_format` | D-02；坑 18（ImageIO 会把 gain map JPEG 报成 HEIC） |
 | 有没有 ICC | 自己解析：JPEG APP2、PNG `iCCP`/`sRGB`/`cICP`/`gAMA+cHRM`、TIFF 与 BigTIFF 的 34675（单个标签越界只跳过它，不影响找 ICC） | 坑 1 |
 | 缺 ICC | 按 sRGB 解释，警告 `source.profile_missing`；可用 `sourceColorOverride` 覆盖（只对缺 ICC 的源图生效；有 ICC 时忽略并警告 `source.override_ignored`） | D-04 |
 | 降采样 | ImageIO 缩略图 API（保留颜色空间、位深，应用方向）；不需要缩小时完整解码 | D-18，PoC §4 |
 | 浮点源 | 先用 CG 转成 RGBAh 再交给 CI | 坑 15，§6.2 |
 | BT.709/2020 参数曲线 ICC | TRC 为 `para` type 3、g≈2.222、d≈0.081 时改写成 4096 点 `curv`，按 ICC 本身解码 | 坑 20（ColorSync 当 γ2.4 解码，偏暗约 16%） |
+
+**源图暂存到本机（D-129）**：`Data(contentsOf:options: .mappedIfSafe)` 只映射本地、非移动介质卷上的文件（`MNT_LOCAL` 且没有 `MNT_REMOVABLE`）。
+实测 SMB 共享、USB 外接 SSD、hdiutil 磁盘映像上的文件都整个读进内存，gain map JPEG 还要由 CI 按路径再读一遍；
+macOS 没标成移动介质的外接 SSD 会被映射，解码途中拔掉会 SIGBUS 崩溃。所以：
+
+- 判定只看卷属性（`volumeIsLocal`、`volumeIsInternal`），不读文件；本地的内置磁盘照旧直接读，什么都不变。
+- 其余的按 8 MB 一块顺序复制到 `~/Library/Caches/AnotherPhotoFrame/SourceStaging/<pid>-<UUID>/`，之后的读取（`Data` 映射副本、CI 的 `expandToHDR` / gain map）都用副本，像素与直接读完全相同。
+- 复制前后比较大小、修改时间、文件号和设备，读到的字节数等于大小；中途被改报 `render.source_changed`，读失败（卷断开）报 `render.source_read_failed`，带提示，不会崩溃。SMB 客户端缓存文件属性，别的电脑在复制期间改了文件不一定能发现。
+- 本机空间不够（副本之外留不出 1 GB）、本机写不进去时不复制，照旧直接读。
+- 副本按（路径、大小、修改时间、文件号、设备）复用，预览之后再导出只读一次 NAS；同时要同一个文件的任务等第一个复制完。总量超过 2 GB 时删掉最久没用、没有在用的副本（解码结果还引用的不删，CI 之后还要按路径读）。
+- 进程正常退出时删掉自己的目录；每个进程第一次创建渲染器时在后台清理别的进程留下的目录（目录里的 `.lock` 能锁上，说明那个进程已经不在了）。
 
 ### 2.2 HDR 识别与 SDR 版本（§6.7）
 
@@ -188,6 +200,7 @@ swift test --scratch-path "$TMPDIR/PhotoFrameRendering-build"
 | `GoldenTests` + `Golden/*.json` | §13.2：内置预设下的尺寸、照片与图层矩形、颜色采样（容差 3）、背景、元数据、警告列表 |
 | `DecodeTests` | 坏标签不藏 ICC、BigTIFF 的 ICC、切片与整份数据结果相同、兼容 TIFF 查表还原与逐采样逐位相同、峰值取值与排序相同、降级时警告不重复、Rec. 2020 覆盖也做坑 20 改写、灰度图诊断、非 ASCII ICC 标签、快门 / 光圈 / ISO 文字、损坏的 EXIF 数值 |
 | `EncodePipelineTests` | 任务数多于核数时不卡住且字节相同、中间一页写不出时报这一页并清理、在途页数按画布大小限制 |
+| `SourceStagingTests` | D-129：从副本解码与直接读逐字节相同、同一版本只复制一次且之后不再读原文件（含 gain map 的第二次读取）、复制途中被改、按上限删最久没用的副本（在用的不删）、本机空间不够时直接读、清理残留目录、真实磁盘映像（判定、输出相同、复制途中强制卸载） |
 | `RenderThreadTests` | D-128：比核数多的渲染都停住时协作线程池仍空闲（预览、其他异步工作照常完成）、停住时取消、开始前已取消、优先级跟随 Task |
 | `RestrictedSVGTests` | 极大数值不崩溃、currentColor、display / visibility、组透明度、长前言后的 DOCTYPE 与 UTF-16 实体、#RRGGBBAA 与 rgb(%)、颜色警告、斜接上限、嵌套 svg 警告 |
 | `PreviewTests` | 预览：1/4 缩放下画布、照片与图层矩形与导出按比例一致（Fit、裁切、65:24 全景）且位图与矩形相符、补边取整、最大长边、缩放 1 时与 PNG 导出逐像素相同、背景与补边色、照片颜色、HDR 的 extendedRange 与 gainMap、页面筛选、由 `RenderJob` 预览、无效尺寸、取消（开始前与进行中） |

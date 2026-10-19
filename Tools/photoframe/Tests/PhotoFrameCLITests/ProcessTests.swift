@@ -72,6 +72,33 @@ struct ProcessTests {
         #expect(try client.close() == 0)
     }
 
+    @Test("磁盘映像（相当于移动硬盘）上的源图：复制到本机缓存后导出，进程退出时删掉本进程的副本目录（D-129）", .timeLimit(.minutes(2)))
+    func stagedSourceIsRemovedAtExit() throws {
+        let box = try Sandbox()
+        let image = box.root.appending(path: "volume.dmg")
+        let mount = box.root.appending(path: "mnt", directoryHint: .isDirectory)
+        guard hdiutil(["create", "-size", "32m", "-fs", "APFS", "-volname", "PFStagingCLI", image.path, "-quiet"]),
+              hdiutil(["attach", image.path, "-nobrowse", "-noautoopen", "-mountpoint", mount.path, "-quiet"])
+        else {
+            print("[跳过] hdiutil 无法挂载磁盘映像")
+            return
+        }
+        defer { hdiutil(["detach", mount.path, "-force", "-quiet"]) }
+        let photo = try box.photo("Badlands.jpg", width: 1200, height: 800)
+        try FileManager.default.copyItem(at: photo, to: mount.appending(path: "Badlands.jpg"))
+
+        let pid = Locked<Int32>(0)
+        let result = try runProcess(
+            ["export", mount.appending(path: "Badlands.jpg").path, "--preset", "xhs-standard", "-o", "Exports", "--json"], in: box.root
+        ) { process, _ in pid.value = process.processIdentifier }
+        #expect(result.status == 0, "\(result.stderr)")
+        #expect(FileManager.default.fileExists(atPath: box.exports.appending(path: "Xiaohongshu/Badlands_Standard/00_Cover.jpg").path))
+        let staging = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: "AnotherPhotoFrame/SourceStaging")
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? []
+        #expect(!left.contains { $0.hasPrefix("\(pid.value)-") }, "\(left)")
+    }
+
     @Test("SIGINT：取消任务并清理临时目录，退出码 130；已发布的作品目录都是完整的")
     func sigint() throws {
         let box = try Sandbox()
@@ -96,4 +123,17 @@ struct ProcessTests {
             #expect(result.stderr.contains("canceled"))
         }
     }
+}
+
+/// 运行 hdiutil，成功时返回 true。
+@discardableResult
+func hdiutil(_ arguments: [String]) -> Bool {
+    let process = Process()
+    process.executableURL = URL(filePath: "/usr/bin/hdiutil")
+    process.arguments = arguments
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return false }
+    process.waitUntilExit()
+    return process.terminationStatus == 0
 }
