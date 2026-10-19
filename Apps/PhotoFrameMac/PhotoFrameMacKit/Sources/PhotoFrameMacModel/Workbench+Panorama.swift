@@ -35,6 +35,24 @@ extension Workbench {
         }
     }
 
+    /// 「自动计算」上下边框时实际用的宽度：每个任务按自己的源图算，编辑预设时按预览的源图算。
+    /// 值不同时为「多个值」；还没有源图尺寸（或没在编辑）时为 `.none`。
+    public var computedVerticalMargin: FieldValue<Int> {
+        let (subject, jobs) = inspected()
+        let pairs: [(ExportPreset, SourceItem?)] = switch subject {
+        case .jobs: jobs.map { ($0.preset, sourceItem($0.sourceId)) }
+        case .preset: presetEditor.map { [($0.draft, previewSubject.flatMap { sourceItem($0.sourceId) })] } ?? []
+        case .source, .location, .none: []
+        }
+        var values: [Int] = []
+        for (preset, source) in pairs {
+            guard let size = source?.inspection?.displaySize else { return .none }
+            values.append(preset.panorama.resolvedVerticalMargin(tile: preset.canvas.size, source: size))
+        }
+        guard let first = values.first else { return .none }
+        return values.allSatisfy { $0 == first } ? .single(first) : .mixed
+    }
+
     /// 手动张数的步进范围：自动张数 … 平台轮播上限（有封面时减去封面）。只编辑一份预设时才有。
     public var manualSlideCountRange: ClosedRange<Int>? {
         guard let preset = editedPreset else { return nil }
