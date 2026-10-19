@@ -138,4 +138,16 @@ import Testing
         wb.focusPreset()
         #expect(!wb.appliesPresetOnClick)
     }
+
+    @Test func jobRemovedWhileApplyingIsNotSelected() async throws {
+        let f = try Fixture()
+        let (_, jobs) = try await batch(f)
+        let wb = f.workbench
+        wb.selection = Set(jobs.map(BatchItemID.job))
+        // 读预设期间移除了其中一个任务：应用完只选中还在的任务。
+        f.hooks.set { $0.beforeResolvePreset = { await MainActor.run { wb.remove([.job(jobs[1])]) } } }
+        await wb.clickPreset(f.presetId("XHS Standard"))
+        #expect(wb.job(jobs[1]) == nil)
+        #expect(wb.selection == [.job(jobs[0])])
+    }
 }

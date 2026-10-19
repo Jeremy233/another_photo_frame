@@ -174,4 +174,47 @@ import Testing
         // 已提交的任务不会被撤销回「当前」。
         #expect(wb.sources.isEmpty && !undo.canUndo)
     }
+
+    @Test func sameFieldOnAnotherJobIsItsOwnStep() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let a = try await f.addJob("A.jpg")
+        let b = try await f.addJob("B.jpg")
+        let wb = f.workbench
+        let undo = undoManager(for: wb)
+        // 改完 A 马上换到 B 改同一个字段：不合并，撤销只回退 B。
+        wb.selection = [.job(a)]
+        wb.setField(\.canvas.minMarginPx, 90)
+        wb.selection = [.job(b)]
+        wb.setField(\.canvas.minMarginPx, 91)
+        undo.undo()
+        #expect(wb.job(b)?.preset.canvas.minMarginPx == 60)
+        #expect(wb.job(a)?.preset.canvas.minMarginPx == 90)
+    }
+
+    /// 应用里 UndoManager 按事件分组：在 await 之后登记的一步（添加图片）也在事件循环里收好组，能撤销和重做。
+    @Test func eventGroupedStepAfterAwait() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let wb = f.workbench
+        let undo = UndoManager()
+        wb.undoManager = undo
+        let ids = await wb.addSources([try f.photo("A.jpg")])
+        spinRunLoop()
+        #expect(undo.groupingLevel == 0 && undo.canUndo && undo.undoActionName == "添加图片")
+        undo.undo()
+        spinRunLoop()
+        #expect(wb.sources.isEmpty)
+        undo.redo()
+        spinRunLoop()
+        #expect(wb.sources.map(\.id) == ids)
+    }
+}
+
+/// 转几圈主线程的事件循环（UndoManager 在一圈结束时关上按事件开的组）。加个定时器，没有输入源时循环也不会马上返回。
+private func spinRunLoop() {
+    let timer = Timer(timeInterval: 0.01, repeats: true) { _ in }
+    RunLoop.main.add(timer, forMode: .default)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    timer.invalidate()
 }

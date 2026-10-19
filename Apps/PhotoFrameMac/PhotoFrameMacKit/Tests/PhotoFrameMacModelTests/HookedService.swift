@@ -11,6 +11,8 @@ final class HookedService: Workbench.Service, @unchecked Sendable {
     struct Hooks {
         /// 下一次校验之前执行一次。
         var beforeValidate: Hook?
+        /// 下一次读预设之前执行一次。
+        var beforeResolvePreset: Hook?
         /// 下一次替换预设（存储预设的修改）之后执行一次。
         var afterReplacePreset: Hook?
         /// 下一次「存储为预设」之后执行一次。
@@ -45,6 +47,7 @@ final class HookedService: Workbench.Service, @unchecked Sendable {
     func listPresets() async throws(ApplicationError) -> CatalogPresetList { try await inner.listPresets() }
 
     func resolvePreset(_ reference: PresetReference) async throws(ApplicationError) -> CatalogPreset {
+        if let hook = take(\.beforeResolvePreset) { await hook() }
         if lock.withLock({ hooks.failingPresets.contains(reference) }) {
             throw ApplicationError(code: "test.unreadable", message: "读不到这个预设")
         }
