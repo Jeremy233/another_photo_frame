@@ -672,9 +672,9 @@ private struct PanoramaTab: View {
                     if workbench.field(\.panorama.alignment) == .mixed { Text("多个值").tag(PanoramaSettings.Alignment?.none) }
                 }
                 // 自动时上下边距等于长卷端部的底色宽度，按每张源图算，不显示数值。
-                MixedToggle(title: "自动上下边距", workbench: workbench, path: \.panorama.autoVerticalMargin)
+                MixedToggle(title: "自动上下边框", workbench: workbench, path: \.panorama.autoVerticalMargin)
                 if workbench.field(\.panorama.autoVerticalMargin) == .single(false) {
-                    IntField(title: "上下边距", value: workbench.binding(\.panorama.verticalMarginPx))
+                    IntField(title: "上下边框宽度", value: workbench.binding(\.panorama.verticalMarginPx))
                 }
             }
         }

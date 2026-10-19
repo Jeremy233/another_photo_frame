@@ -98,7 +98,7 @@ extension ExportPreset {
         }
         if panorama.verticalMarginPx < 0
             || (canvas.height > 0 && panorama.verticalMarginPx >= canvas.height - panorama.verticalMarginPx) {
-            error("invalid_vertical_margin", "panorama.verticalMarginPx", "切片上下边距无效：\(panorama.verticalMarginPx)")
+            error("invalid_vertical_margin", "panorama.verticalMarginPx", "切片上下边框宽度无效：\(panorama.verticalMarginPx)")
         }
         if case .color(let c) = panorama.padColor { checkColor(c, "panorama.padColor") }
 
