@@ -336,10 +336,11 @@ extension Workbench {
             guard let item = sourceItem(id) else { return nil }
             let first = item.jobs.first
             return subject(item, preset: first?.preset, bindings: first?.assetBindings ?? [:])
-        case .preset:
+        case .preset(let id):
             guard let draft = presetEditor?.draft,
                   let item = targetSourceIds.first.flatMap(sourceItem) ?? sources.first else { return nil }
-            return subject(item, preset: draft, bindings: [:])
+            // 内置预设在内存里的素材绑定（不在库里）按单任务绑定交给渲染。
+            return subject(item, preset: draft, bindings: presetBindingDrafts[id] ?? [:])
         case .location, .none:
             return nil
         }

@@ -449,7 +449,8 @@ private struct PresetInfoCard: View {
             if let editor = workbench.presetEditor {
                 // 内置预设不能存回去：另存在顶部的提示条里。
                 if editor.isBuiltIn {
-                    Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
+                    // 只改了素材绑定（在内存里）也能还原。
+                    Button("还原") { workbench.revertPresetEdits() }.disabled(!workbench.hasUnsavedBuiltInEdits)
                 } else if !editor.isReadOnly {
                     Button("还原") { workbench.revertPresetEdits() }.disabled(!editor.isDirty)
                     Button("存储") {
