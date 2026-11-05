@@ -18,10 +18,20 @@ enum Fixtures {
     static func url(_ name: String) -> URL { directory.appendingPathComponent(name) }
 }
 
+/// 这次测试进程的临时目录：各个测试的目录都建在它下面，进程退出时整个删掉。
+/// （以前每个测试的目录直接放在 $TMPDIR 里、不删，跑一次全量测试留下几十个、几十 MB。）
+private enum TempRoot {
+    static let url: URL = {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PhotoFrameRenderingTests-\(UUID().uuidString)", isDirectory: true)
+        atexit { try? FileManager.default.removeItem(at: TempRoot.url) }
+        return url
+    }()
+}
+
 /// 每个测试自己的临时目录。
 func makeTempDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PhotoFrameRenderingTests-\(UUID().uuidString)", isDirectory: true)
+    let url = TempRoot.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
