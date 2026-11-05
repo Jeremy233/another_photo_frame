@@ -114,7 +114,7 @@ struct CompositeArt {
             switch part {
             case .graphic(let graphic, let tint, let rect):
                 let r = CGRect(x: rect.minX, y: -rect.maxY, width: rect.width, height: rect.height)
-                if let tint { ctx.beginTransparencyLayer(auxiliaryInfo: nil) }
+                if tint != nil { ctx.beginTransparencyLayer(auxiliaryInfo: nil) }
                 switch graphic {
                 case .vector(let svg): svg.draw(in: ctx, box: r)
                 case .bitmap(let image):
@@ -156,12 +156,8 @@ extension OverlayPlanner {
             case .auto: AutoInk.color(on: background)
             case .custom: style.color ?? AutoInk.color(on: background)
             }
-            let h = style.heightPx * (ratio < 1.6 ? 1.8 : 1)
-            let w = h * ratio
-            return .composite(CompositeArt(
-                parts: [.graphic(graphic, tint: try tint.map { c throws(RenderError) in try WorkingColor.cgColor(c) },
-                                 rect: CGRect(x: 0, y: 0, width: w, height: h))],
-                naturalSize: PixelSize(width: max(1, Int(w.rounded(.up))), height: max(1, Int(h.rounded(.up))))))
+            return logoContent(graphic, tint: try tint.map { c throws(RenderError) in try WorkingColor.cgColor(c) }, ratio: ratio,
+                               heightPx: style.heightPx)
         }
         let brand = style.brand == BrandLogoStyle.automatic ? meta.brand : BuiltInWatermarks.brand(id: style.brand)
         guard let brand else {
@@ -185,11 +181,15 @@ extension OverlayPlanner {
             return .text(block)
         }
         let art = try logoArt(brand, variant: style.variant, mode: style.colorMode, custom: style.color, background: background)
-        let h = style.heightPx * (art.ratio < 1.6 ? 1.8 : 1)
-        let w = h * art.ratio
-        let size = PixelSize(width: max(1, Int(w.rounded(.up))), height: max(1, Int(h.rounded(.up))))
-        return .composite(CompositeArt(parts: [.graphic(art.graphic, tint: art.tint, rect: CGRect(x: 0, y: 0, width: w, height: h))],
-                                       naturalSize: size))
+        return logoContent(art.graphic, tint: art.tint, ratio: art.ratio, heightPx: style.heightPx)
+    }
+
+    /// 只有一个图形的 logo：高度是 `heightPx`，接近正方形的（宽高比小于 1.6）按 1.8 倍高度画，和字标看起来差不多大（D-132）。
+    private static func logoContent(_ graphic: CompositeArt.Graphic, tint: CGColor?, ratio: Double, heightPx: Double) -> OverlayContent {
+        let h = heightPx * (ratio < 1.6 ? 1.8 : 1)
+        let w = h * ratio
+        return .composite(CompositeArt(parts: [.graphic(graphic, tint: tint, rect: CGRect(x: 0, y: 0, width: w, height: h))],
+                                       naturalSize: PixelSize(width: max(1, Int(w.rounded(.up))), height: max(1, Int(h.rounded(.up))))))
     }
 
     /// 选文件和颜色（D-132）。
@@ -280,6 +280,9 @@ extension OverlayPlanner {
             }
             return nil
         }
+        // 指定了胶卷时，文字里的 {film} 也是这种胶卷（不是源图填的）。
+        var meta = meta
+        meta.values["film"] = name
         if style.show != .text {
             if let film = picked ?? BuiltInWatermarks.film(named: name), let data = BuiltInWatermarks.iconData(for: film) {
                 icon = (try loadGraphic(data, name: film.icon), nil, CGSize(width: size, height: size))
@@ -309,8 +312,7 @@ extension OverlayPlanner {
     ) throws(RenderError) -> OverlayContent? {
         var block: TextBlock?
         if showText {
-            var text = layer.text ?? TextStyle(template: FilmIconStyle.defaultTemplate, fontWeight: .medium, fontSizePx: 20,
-                                               letterSpacingPx: 1, colorMode: .auto)
+            var text = layer.text ?? FilmIconStyle.defaultTextStyle
             if text.colorMode == .auto { text.color = AutoInk.color(on: background) }
             let filled = MetadataText.fill(text.template ?? FilmIconStyle.defaultTemplate, values: meta.values).text
                 .trimmingCharacters(in: .whitespacesAndNewlines)

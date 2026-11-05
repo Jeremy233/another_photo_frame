@@ -72,6 +72,11 @@ extension Workbench {
     }
 }
 
+extension BrandLogoStyle {
+    /// 颜色选「自定」、还没挑颜色时用的颜色（右栏颜色框里显示的也是它）。
+    public static let defaultCustomColor = PresetColor(hex: "#1A1A1A")
+}
+
 // MARK: - 内置的和自己的素材放在同一个菜单里（D-139）
 
 /// 菜单里的一项：给 ID 和显示的名字。
@@ -139,6 +144,17 @@ extension Workbench {
     public func layerAsset(_ layer: OverlayLayer) -> UUID? {
         guard layer.usesAssetSlot, let slotId = layer.slotId else { return nil }
         return binding(for: slotId)?.assetId
+    }
+
+    /// 品牌 logo 的颜色方式（右栏「颜色」）。改成「自定」而还没有颜色时，写入颜色框里显示的默认色：
+    /// `custom` 必须有 `color`（D-137），否则预设校验不过，预览和导出都会报错。
+    public func setBrandLogoColorMode(_ mode: BrandLogoStyle.ColorMode, forLayer layerId: String) {
+        updateLayer(layerId) { l in
+            var s = l.logo ?? BrandLogoStyle()
+            s.colorMode = mode
+            if mode == .custom, s.color == nil { s.color = BrandLogoStyle.defaultCustomColor }
+            l.logo = s
+        }
     }
 
     /// 品牌 logo、胶卷装饰改用一个素材（D-139）：图层没有素材槽时先加一个（和图层同名），来源改成素材槽，再绑定这个素材。

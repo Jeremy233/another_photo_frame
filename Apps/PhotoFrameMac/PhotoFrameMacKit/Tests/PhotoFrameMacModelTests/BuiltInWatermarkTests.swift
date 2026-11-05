@@ -107,6 +107,51 @@ import Testing
         #expect(wb.assetMenuTitle(portra.assetId) == "Kodak Portra 400（内置）")
     }
 
+    @Test("胶卷装饰没有 text（CLI、MCP 写的预设）：右栏显示、第一次修改都按渲染用的默认文字样式，不变成 14 px 深灰")
+    func filmTextDefaults() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let job = try await f.addJob()
+        let wb = f.workbench
+        wb.selection = [.job(job)]
+        wb.addLayer(.film)
+        #expect(wb.job(job)?.preset.layers.first { $0.layerId == "film" }?.text == FilmIconStyle.defaultTextStyle)
+        wb.updateLayer("film") { $0.text = nil }
+        var layer = try #require(wb.job(job)?.preset.layers.first { $0.layerId == "film" })
+        #expect(layer.displayedTextStyle == FilmIconStyle.defaultTextStyle)
+
+        wb.updateTextStyle("film") { $0.template = "{film} · 120" }
+        layer = try #require(wb.job(job)?.preset.layers.first { $0.layerId == "film" })
+        var expected = FilmIconStyle.defaultTextStyle
+        expected.template = "{film} · 120"
+        #expect(layer.text == expected)
+        // 别的文字装饰照旧。
+        #expect(OverlayLayer(layerId: "t", type: .metadataText).displayedTextStyle == TextStyle())
+    }
+
+    @Test("品牌 logo 颜色改成「自定」：写入界面上显示的默认色，预设仍然有效（D-137：custom 必须有 color）")
+    func customLogoColor() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let job = try await f.addJob()
+        let wb = f.workbench
+        wb.selection = [.job(job)]
+        wb.addLayer(.brandLogo)
+        wb.setBrandLogoColorMode(.custom, forLayer: "brandLogo")
+        var preset = try #require(wb.job(job)?.preset)
+        var logo = try #require(preset.layers.first { $0.layerId == "brandLogo" }?.logo)
+        #expect(logo.colorMode == .custom && logo.color == BrandLogoStyle.defaultCustomColor)
+        #expect(preset.validate().errors.isEmpty, "\(preset.validate())")
+
+        // 已经选过的颜色不变；改回原色时颜色留着。
+        wb.updateLayer("brandLogo") { $0.logo?.color = PresetColor(hex: "#0000FF") }
+        wb.setBrandLogoColorMode(.original, forLayer: "brandLogo")
+        wb.setBrandLogoColorMode(.custom, forLayer: "brandLogo")
+        preset = try #require(wb.job(job)?.preset)
+        logo = try #require(preset.layers.first { $0.layerId == "brandLogo" }?.logo)
+        #expect(logo.colorMode == .custom && logo.color == PresetColor(hex: "#0000FF"))
+    }
+
     @Test("品牌 logo、胶卷选自己的素材：加素材槽、来源改成素材槽、按单任务绑定；改回自动时槽留着（D-139）")
     func useOwnAsset() async throws {
         let f = try Fixture()
@@ -140,6 +185,11 @@ import Testing
         logo = try #require(preset.layers.first { $0.layerId == "brandLogo" })
         #expect(!logo.usesAssetSlot && logo.slotId == "brandLogo" && wb.layerAsset(logo) == nil)
         #expect(preset.validate().warnings.isEmpty, "\(preset.validate())")
+        // 留着的单任务绑定也不在任务上警告「没有被预设使用」。
+        await wb.settle()
+        #expect(wb.job(job)?.assetBindings["brandLogo"] == mine.assetId)
+        #expect(wb.job(job)?.validation?.warnings.contains { $0.code == "slot.unused_job_binding" } == false,
+                "\(wb.job(job)?.validation?.warnings ?? [])")
     }
 }
 

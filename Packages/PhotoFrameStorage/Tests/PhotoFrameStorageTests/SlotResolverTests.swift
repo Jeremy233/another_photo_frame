@@ -111,6 +111,18 @@ struct SlotResolverTests {
         #expect(r.warnings == [.unusedJobBinding(slotId: "nope")])
     }
 
+    @Test("品牌 logo、胶卷改回自动后留着的素材槽：单任务绑定不用、也不提示（D-139）")
+    func retainedSlotJobBinding() throws {
+        var q = p
+        q.layers += [OverlayLayer(layerId: "logo", type: .brandLogo, slotId: "logo", logo: BrandLogoStyle(brand: BrandLogoStyle.automatic)),
+                     OverlayLayer(layerId: "film", type: .filmIcon, slotId: "film", filmIcon: FilmIconStyle(film: "kodak-portra-400"))]
+        q.assetSlots += [AssetSlot(slotId: "logo"), AssetSlot(slotId: "film")]
+        let r = try SlotResolver(library: library, bindings: allThree)
+            .resolve(q, jobBindings: ["logo": jobAsset.assetId, "film": jobAsset.assetId, "nope": jobAsset.assetId])
+        #expect(r.resolved["logo"] == nil && r.resolved["film"] == nil)
+        #expect(r.warnings == [.unusedJobBinding(slotId: "nope")])
+    }
+
     @Test("绑定表可序列化，presetLocal 以 UUID 字符串为键")
     func bindingTableCodable() throws {
         let data = try JSONEncoder().encode(allThree)

@@ -25,9 +25,7 @@ public enum LayerTemplate: String, CaseIterable, Identifiable, Sendable {
 
     static func filmLayer(id: String, show: FilmIconStyle.Show) -> OverlayLayer {
         OverlayLayer(layerId: id, type: .filmIcon, anchor: .bottomRight, offset: OverlayOffset(x: 0, y: 24),
-                     text: TextStyle(template: FilmIconStyle.defaultTemplate, fontWeight: .medium, fontSizePx: 20,
-                                     letterSpacingPx: 1, colorMode: .auto),
-                     filmIcon: FilmIconStyle(show: show))
+                     text: FilmIconStyle.defaultTextStyle, filmIcon: FilmIconStyle(show: show))
     }
 
     func make(id: String) -> (OverlayLayer, AssetSlot?) {
@@ -155,5 +153,22 @@ extension Workbench {
         edit("修改装饰", coalescing: key) { preset in
             if let i = preset.layers.firstIndex(where: { $0.layerId == layerId }) { body(&preset.layers[i]) }
         }
+    }
+
+    /// 改图层的文字样式（右栏「模板」「字体」「字号」……）。图层还没有 `text` 时从 ``OverlayLayer/displayedTextStyle`` 改起。
+    public func updateTextStyle(_ layerId: String, _ body: (inout TextStyle) -> Void) {
+        updateLayer(layerId) { l in
+            var style = l.displayedTextStyle
+            body(&style)
+            l.text = style
+        }
+    }
+}
+
+extension OverlayLayer {
+    /// 右栏显示的文字样式：图层没有 `text` 时是渲染实际用的样式（胶卷装饰是 ``FilmIconStyle/defaultTextStyle``，
+    /// 不是 `TextStyle()` 的 14 px 深灰，否则一改模板，文字的大小和颜色就跟着变了）。
+    public var displayedTextStyle: TextStyle {
+        text ?? (type == .filmIcon ? FilmIconStyle.defaultTextStyle : TextStyle())
     }
 }

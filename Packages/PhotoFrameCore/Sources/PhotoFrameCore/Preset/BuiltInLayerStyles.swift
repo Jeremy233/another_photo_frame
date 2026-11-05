@@ -116,6 +116,9 @@ public struct FilmIconStyle: Hashable, Sendable, Codable {
     public static let fromSlot = "slot"
     /// 胶卷装饰的默认文字模板。
     public static let defaultTemplate = "{film}"
+    /// 图层没有 `text` 时胶卷文字的样式：渲染按它画，界面按它显示、修改（D-137）。
+    public static let defaultTextStyle = TextStyle(template: defaultTemplate, fontWeight: .medium, fontSizePx: 20, letterSpacingPx: 1,
+                                                   colorMode: .auto)
 
     public init(
         film: String = FilmIconStyle.automatic,

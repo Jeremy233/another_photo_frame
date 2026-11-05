@@ -119,6 +119,8 @@ enum ExportChecks {
         func manual(_ key: String) -> String? {
             overrides[key].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
         }
+        // 品牌、型号都手填了时不用读文件。
+        if let make = manual("make"), let model = manual("model") { return CameraIdentity(make: make, model: model) }
         var make: String?, model: String?
         if let src = CGImageSourceCreateWithURL(url as CFURL, nil),
            let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {

@@ -249,7 +249,9 @@ public struct SlotResolver: Sendable {
         if !unknownCamera.isEmpty { warnings.append(.cameraUnknown(layerIds: unknownCamera)) }
         warnings += cameraWarnings
 
-        for slotId in jobBindings.keys.sorted() where !wanted.contains(slotId) {
+        // 品牌 logo、胶卷改回自动或内置时留着的素材槽（D-139）：绑定也留着，不用、不提示。
+        let retained = Set(preset.layers.filter { ($0.type == .brandLogo || $0.type == .filmIcon) && !$0.usesAssetSlot }.compactMap(\.slotId))
+        for slotId in jobBindings.keys.sorted() where !wanted.contains(slotId) && !retained.contains(slotId) {
             warnings.append(.unusedJobBinding(slotId: slotId))
         }
 

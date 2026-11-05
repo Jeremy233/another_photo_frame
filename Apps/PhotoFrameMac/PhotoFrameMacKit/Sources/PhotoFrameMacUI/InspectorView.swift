@@ -460,7 +460,7 @@ private struct PresetInfoCard: View {
 
     @ViewBuilder private var actions: some View {
         switch workbench.inspectorSubject {
-        case .preset(let id):
+        case .preset:
             if let editor = workbench.presetEditor {
                 // 内置预设不能存回去：另存在顶部的提示条里。
                 if editor.isBuiltIn {

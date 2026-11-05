@@ -38,13 +38,14 @@ struct BrandLogoRows: View {
             InspectorRow { Hint("只影响同时有字标和标志的品牌，目前是 Nikon") }
         }
         NumberField(title: "高度", value: binding(\.heightPx))
-        InspectorPicker("颜色", selection: binding(\.colorMode)) {
+        InspectorPicker("颜色", selection: Binding(get: { style.colorMode },
+                                                   set: { workbench.setBrandLogoColorMode($0, forLayer: layer.layerId) })) {
             Text("原色").tag(BrandLogoStyle.ColorMode.original)
             Text("自动（随背景深浅）").tag(BrandLogoStyle.ColorMode.auto)
             Text("自定").tag(BrandLogoStyle.ColorMode.custom)
         }
         if style.colorMode == .custom {
-            ColorField(title: "自定颜色", value: Binding(get: { style.color ?? PresetColor(hex: "#1A1A1A") },
+            ColorField(title: "自定颜色", value: Binding(get: { style.color ?? BrandLogoStyle.defaultCustomColor },
                                                       set: { v in if let v { update { $0.color = v } } }))
         }
         InspectorRow { Hint(colorNote) }
@@ -128,12 +129,8 @@ struct FilmIconRows: View {
         }
         if style.show != .icon {
             InspectorTextField("文字", text: Binding(
-                get: { layer.text?.template ?? FilmIconStyle.defaultTemplate },
-                set: { v in workbench.updateLayer(layer.layerId) { l in
-                    var t = l.text ?? TextStyle(template: FilmIconStyle.defaultTemplate)
-                    t.template = v
-                    l.text = t
-                } }), prompt: FilmIconStyle.defaultTemplate)
+                get: { layer.displayedTextStyle.template ?? FilmIconStyle.defaultTemplate },
+                set: { v in workbench.updateTextStyle(layer.layerId) { $0.template = v } }), prompt: FilmIconStyle.defaultTemplate)
         }
     }
 

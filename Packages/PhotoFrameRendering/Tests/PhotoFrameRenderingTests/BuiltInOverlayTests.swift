@@ -177,6 +177,20 @@ struct BuiltInOverlayTests {
         #expect(drawn.pixels.contains { abs($0.0 - 0x76) < 12 && abs($0.1 - 0x57) < 12 && abs($0.2 - 0xA6) < 12 })
     }
 
+    @Test("胶卷装饰指定了胶卷时，{film} 写指定的胶卷名，不管源图填没填、填的是什么（D-134）")
+    func pickedFilmText() throws {
+        func content(sourceFilm: String?) throws -> OverlayContent? {
+            let layer = OverlayLayer(layerId: "film", type: .filmIcon, filmIcon: FilmIconStyle(film: "ilford-hp5-plus", show: .text))
+            var warnings: [RenderWarning] = []
+            let meta = ResolvedMetadata(values: sourceFilm.map { ["film": $0] } ?? [:], brand: nil)
+            return try OverlayPlanner.filmIcon(layer, meta: meta, background: PresetColor(hex: "#FAFAF8"), warnings: &warnings)
+        }
+        // 图层没有 text：按胶卷文字的默认样式画。
+        let picked = try TextBlock.make(text: "Ilford HP5 Plus", style: FilmIconStyle.defaultTextStyle).0.naturalSize
+        #expect(try content(sourceFilm: nil)?.naturalSize == picked, "源图没填胶卷")
+        #expect(try content(sourceFilm: "Kodak Portra 400")?.naturalSize == picked, "源图填了别的胶卷")
+    }
+
     @Test("普通素材装饰绑定内置素材：用了渐变的 Nikon 标志也能画（D-139）")
     func assetLayerWithBuiltIn() async throws {
         let emblem = try #require(BuiltInAsset.asset(path: "cameras/nikon/nikon-emblem.svg"))
