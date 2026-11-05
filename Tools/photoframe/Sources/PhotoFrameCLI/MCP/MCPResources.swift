@@ -1,4 +1,5 @@
 import MCP
+import PhotoFrameStorage
 
 /// MCP 只读资源（§11.4「Resources（建议）」）：说明文字、平台能力表、预设摘要与内容、访问范围。
 /// 不提供任何本地文件内容。
@@ -39,20 +40,33 @@ enum MCPResources {
           `fitHeight`、`padColor`（`"canvasBackground"` 或颜色）、`verticalMarginPx`（所有切片共用的上下边距）、
           `autoVerticalMargin`（`true` 时自动算上下边距，使它等于长卷端部的底色宽度，忽略 `verticalMarginPx`，默认 `false`）、
           `alignment`（照片在长卷里的位置：`left` / `center` 默认 / `right`，靠左／靠右时照片贴边）
-        - `layers[]`：`layerId`、`type`（`text` / `metadataText` / `asset` / `cameraBadge`）、`enabled`、
+        - `layers[]`：`layerId`、`type`（`text` / `metadataText` / `asset` / `cameraBadge` / `brandLogo` / `filmIcon`）、`enabled`、
           `visibleOn`（`coverOnly` / `allSlides` / `selectedSlides`，后者配 `slides: [0, 2]`，0 = 封面）、
           `anchor`（`topLeft`、`top`、`topRight`、`left`、`center`、`right`、`bottomLeft`、`bottom`、`bottomRight`）、`reference`（`photo` / `canvas`）、`side`（`inside` / `outside`，
           只用于 `photo`）、`offsetPx: [x, y]`、`sizePx`、`maxBoundsPx`、`opacity`（0…1）、`zIndex`、`slotId`（素材图层）、
           `cameraMatch`（素材图层，按 EXIF 相机选槽：`[{"make": "FUJIFILM", "model": "X100VI", "slotId": "camera.x100"}]`，
           品牌按包含、型号按相等匹配，型号规则优先，匹配不到或没有素材时用 `slotId`）、
           `text`（`content` 或 `template`，`fontFamily`、`fontWeight`（`ultraLight` … `regular` … `black`）、`italic`、
-          `fontSizePx`、`letterSpacingPx`、`lineHeight`、`color`、`paddingPx`）
+          `fontSizePx`、`letterSpacingPx`、`lineHeight`、`color`、`colorMode`（`custom` 默认，用 `color`；`auto` 按画布背景深浅用深色或浅色）、`paddingPx`）
+        - `brandLogo` 图层（内置品牌 logo，D-132）：设置写在 `logo` 里（缺少时用默认值）：
+          `brand`（`"auto"` 默认，按源图的相机品牌（EXIF 或手填的 make / model）自动选；或下面的品牌 ID）、
+          `fallback`（认不出品牌时：`none` 默认，不画；`text` 画品牌文字）、`variant`（`wordmark` 默认 / `emblem`，只影响两种都有的品牌）、
+          `heightPx`（logo 高度，默认 56）、`colorMode`（`original` 默认 / `auto` / `custom`）、`color`（`colorMode` 为 `custom` 时必填）
+        - `filmIcon` 图层（内置胶卷图标，D-134）：设置写在 `filmIcon` 里（缺少时用默认值）：
+          `film`（`"auto"` 默认，按源图手填的胶卷；或下面的胶卷 ID）、`show`（`iconAndText` 默认 / `icon` / `text`）、
+          `iconSizePx`（图标边长，默认 72）、`noIcon`（胶卷没有图标时：`brandLogo` 默认，用胶卷品牌的 logo；`text`；`none`）；
+          文字样式写在图层的 `text` 里，模板默认 `{film}`。源图没填胶卷时不画
         - `assetSlots[]`：`slotId`、`kind`、`required`、`label`、`acceptedFormats`（`png` / `svg`）；不含位置和本地路径
         - `output`：`format`（`jpeg` / `png`）、`quality`（1…100）、`colorSpace`、`dynamicRange`（`auto` 跟随源图：源图是 HDR 且格式是 JPEG 时输出 HDR，否则 SDR，新建和内置预设的默认值；`sdr` / `hdr` 强制，D-125）、
           `metadata`（`keepShootingInfo`、`keepAuthorAndCopyright`、`keepGps`，默认都是 false）
         - 颜色只接受 `#RRGGBB`；任何对象都可以带 `x-` 开头的自定义字段。
 
-        EXIF 模板可用的键：`camera`、`make`、`model`、`lens`、`focalLength`、`focalLength35`、`aperture`、`shutter`、`iso`、`date`。
+        模板占位符：EXIF 的 `{camera}`、`{make}`、`{model}`、`{lens}`、`{focalLength}`、`{focalLength35}`、`{aperture}`、`{shutter}`、`{iso}`、`{date}`，
+        以及 `{brand}`（认出的品牌名，认不出时是相机品牌的第一个词，D-133）和 `{film}`（源图手填的胶卷，D-134），所有文字图层都能用。
+        导出和预览工具的 `metadata` 参数（`film`、`make`、`model`、`aperture`、`shutter`、`iso`）优先于 EXIF（D-135）。
+
+        内置品牌 ID（`logo.brand`）：\(BuiltInWatermarks.brands.map(\.id).joined(separator: "、"))。
+        内置胶卷 ID（`filmIcon.film`）：\(BuiltInWatermarks.films.map(\.id).joined(separator: "、"))。
 
         ## 字段路径（D-93，CLI `preset get` / `preset set` 用同一种写法）
         | 写法 | 含义 |

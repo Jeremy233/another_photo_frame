@@ -15,7 +15,10 @@ struct PreviewCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "preview",
         abstract: "渲染预览图（与导出同一条管线，按预览尺寸缩小）。",
-        discussion: "stdout 每行一个写出的文件路径（--json 时为结构化结果）。")
+        discussion: """
+            \(MetadataOptions.discussion)
+            stdout 每行一个写出的文件路径（--json 时为结构化结果）。
+            """)
 
     @Argument(help: ArgumentHelp("源图（JPEG / PNG / TIFF）。", valueName: "图片"))
     var image: String
@@ -41,6 +44,9 @@ struct PreviewCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("bind"), help: JobBinding.help)
     var bindings: [JobBinding] = []
+
+    @OptionGroup
+    var metadata: MetadataOptions
 
     @Flag(help: "替换已存在的同名预览文件。")
     var overwrite = false
@@ -70,7 +76,8 @@ struct PreviewCommand: AsyncParsableCommand {
             preview = try await service.renderPreview(ExportPreviewRequest(
                 source: .id(source.sourceId), preset: entry.preset,
                 options: PreviewOptions(maxLongEdge: maxEdge, pages: pages.isEmpty ? nil : Set(pages), dynamicRange: dynamicRange),
-                assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override))
+                assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override,
+                metadataOverrides: metadata.overrides))
         } catch {
             throw ctx.fail(error)
         }

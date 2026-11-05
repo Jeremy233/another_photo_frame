@@ -17,7 +17,7 @@ struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PreviewTitleBar(preview: preview)
+            PreviewTitleBar(preview: preview, assetTitle: workbench.previewedAsset?.title)
             Hairline()
             ZStack {
                 Palette.preview
@@ -58,6 +58,8 @@ struct PreviewPane: View {
             } else {
                 renderedPage
             }
+        } else if let asset = workbench.previewedAsset {
+            AssetPreview(workbench: workbench, selection: asset.image)
         } else {
             EmptyState(title: "没有预览", symbol: "photo", description: "选中一个任务或源图")
         }
@@ -70,6 +72,57 @@ struct PreviewPane: View {
                           showsSeams: preview.showsSeams, preview: preview)
         } else if let page = preview.pageImage {
             PageImage(page: page, image: preview.pageDisplayImage, preview: preview)
+        }
+    }
+}
+
+/// 左栏「素材」选中的素材（没有选中图片时）：按窗口大小放进画面，放在灰色棋盘格上，黑色、白色的 logo 都看得清。
+private struct AssetPreview: View {
+    let workbench: Workbench
+    let selection: AssetSelection
+    @State private var image: NSImage?
+
+    var body: some View {
+        // 用 ZStack 而不是 Group：Group 把修饰符分给子视图，图片还没读到时没有子视图，`.task` 就不会运行。
+        ZStack {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .background(Checkerboard())
+                    .frame(maxWidth: 720, maxHeight: 540)
+                    .padding(48)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: selection) { image = await load() }
+    }
+
+    private func load() async -> NSImage? {
+        switch selection {
+        case .builtIn(let path):
+            return BuiltInAssetItem.item(path: path).flatMap(BuiltInAssetTile.image)
+        case .user(let id):
+            guard let url = await workbench.assetContentURL(id) else { return nil }
+            return NSImage(contentsOf: url)
+        }
+    }
+}
+
+/// 透明区域的棋盘格（两种中灰）。
+private struct Checkerboard: View {
+    var body: some View {
+        Canvas { context, size in
+            let cell: CGFloat = 8
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.56)))
+            var dark = Path()
+            for row in 0..<Int((size.height / cell).rounded(.up)) {
+                for column in 0..<Int((size.width / cell).rounded(.up)) where (row + column).isMultiple(of: 2) {
+                    dark.addRect(CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell))
+                }
+            }
+            context.fill(dark, with: .color(Color(white: 0.48)))
         }
     }
 }
@@ -97,10 +150,12 @@ private struct LoadingIndicator: View {
 /// 预览上方一行：左边源图文件名，正中（按整栏宽度居中）预设名，右侧是原图对比、缩放、「显示」菜单。
 private struct PreviewTitleBar: View {
     @Bindable var preview: PreviewModel
+    /// 预览的是左栏选中的素材时，左边显示素材名。
+    var assetTitle: String?
 
     var body: some View {
         TitleBarLayout(spacing: 10) {
-            title(preview.subject?.sourceURL.lastPathComponent ?? "")
+            title(preview.subject?.sourceURL.lastPathComponent ?? assetTitle ?? "")
             title(preview.subject?.preset?.name ?? "")
             // 控件之间看得见的空隙都是 BarMetrics.gap；无边框菜单自带内缩，间距要减掉。
             HStack(spacing: 0) {

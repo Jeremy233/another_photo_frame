@@ -37,6 +37,8 @@
 | Yashica | https://www.yashica.com/ 页头 PNG（只有 PNG） |
 | Zeiss | https://www.zeiss.com/etc.clientlibs/zeiss-aem-app/jupiter/clientlibs/jupiter-components.app/resources/assets/icons/symbols/zeiss-logo.svg |
 
+App 内置这些文件（`resources/generate_swift.py` 把它们生成进程序，D-131）。为了让 App 的受限 SVG 解析器（D-09）能读，Canon、Pentax、Hasselblad、Konica Minolta 文件里的 `<style>` 类样式改写成了元素上的 `style` 属性，外观不变；渐变和画板裁切由解析器的受信任模式处理（D-137）。
+
 深色画布用的白字版（各品牌文件夹里的 `*-rev` 文件）：Fujifilm、Konica Minolta、Minolta、Konica、Plaubel 是同一文件把黑色字改成白色（彩色部分不变，和 Fujifilm 官方反白用法一致）；Olympus 是把深蓝字改成白色。用「原色」时，深色画布上自动换成这几个版本。
 
 Kodak 的红黄标志在「原色」和「自动」下都保持红黄配色，只有「自定」颜色时换成同形状的单色版 `kodak-mono.svg`。

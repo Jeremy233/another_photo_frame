@@ -151,7 +151,7 @@ public actor PhotoFrameMCPServer {
         let args = try MCPArguments(arguments, allowed: ["category"])
         var category: AssetCategory?
         if let text = try args.string("category") {
-            guard let c = AssetCategoryArgument(rawValue: text) else { throw .invalidArguments("category 只能是 signature、watermark、camera-badge") }
+            guard let c = AssetCategoryArgument(rawValue: text) else { throw .invalidArguments("category 只能是 signature、watermark、camera-badge、film-icon") }
             category = c.category
         }
         let list = await service.listAssets(category: category)
@@ -162,8 +162,12 @@ public actor PhotoFrameMCPServer {
 
     /// `images`、`presets` 各自最多几项（任务总数另受 `maxActiveJobs` 限制）。
     static let maxListItems = 64
+    /// `metadata` 每个字段最多几个字符（D-135 的手填值都很短，这里只防止误传超长文字）。
+    static let maxMetadataLength = 200
 
-    private static let exportArguments: Set<String> = ["images", "presets", "outputDirectory", "overwrite", "assumeProfile", "bindings"]
+    private static let exportArguments: Set<String> = [
+        "images", "presets", "outputDirectory", "overwrite", "assumeProfile", "bindings", "metadata",
+    ]
 
     /// 解析导出参数并校验（与 CLI `export` 相同：先校验全部任务，D-72）。推算出的每个作品目录再按白名单检查一次。
     private func validatedRequest(_ arguments: [String: Value]?) async throws(ApplicationError) -> (ExportRequest, ValidationResult) {
@@ -174,6 +178,7 @@ public actor PhotoFrameMCPServer {
         // 每个任务先写到 <输出目录>/.photoframe-staging/<attemptId>/，清理残留时也会删那里的旧目录：它同样不能经链接指向白名单外。
         try policy.checkWritable(AtomicExporter.stagingRoot(for: destination), argument: "outputDirectory")
         let override = try Self.assumedProfile(args)
+        let metadata = try Self.metadataOverrides(args)
         let assetBindings = try await bindings(args)
 
         var presets: [ExportPreset] = []
@@ -190,7 +195,7 @@ public actor PhotoFrameMCPServer {
         let request = ExportRequest(
             sourceIds: sourceIds, presets: presets,
             destination: ExportDestination(rootDirectory: destination, conflictPolicy: try args.bool("overwrite") ? .overwrite : .versionSuffix),
-            assetBindings: assetBindings, sourceColorOverride: override)
+            assetBindings: assetBindings, sourceColorOverride: override, metadataOverrides: metadata)
         var validation = try await service.validate(request)
         for i in validation.items.indices {
             do {
@@ -303,7 +308,7 @@ public actor PhotoFrameMCPServer {
 
     private func previewExport(_ arguments: [String: Value]?) async throws(ApplicationError) -> CallTool.Result {
         let args = try MCPArguments(arguments, allowed: [
-            "image", "preset", "maxEdge", "pages", "dynamicRange", "outputDirectory", "overwrite", "assumeProfile", "bindings",
+            "image", "preset", "maxEdge", "pages", "dynamicRange", "outputDirectory", "overwrite", "assumeProfile", "bindings", "metadata",
         ])
         let limits = policy.limits
         // 默认 1200，但不超过 --max-preview-edge（否则不传 maxEdge 的调用全部失败）。
@@ -331,12 +336,13 @@ public actor PhotoFrameMCPServer {
         }
         if directory != nil { try await checkOutputQuota() }
         let override = try Self.assumedProfile(args)
+        let metadata = try Self.metadataOverrides(args)
         let assetBindings = try await bindings(args)
         let entry = try await service.resolvePreset(.library(args.requiredString("preset")))
         let source = try await service.addSource(image)
         let preview = try await service.renderPreview(ExportPreviewRequest(
             source: .id(source.sourceId), preset: entry.preset, options: PreviewOptions(maxLongEdge: maxEdge, pages: pages, dynamicRange: range),
-            assetBindings: assetBindings, sourceColorOverride: override))
+            assetBindings: assetBindings, sourceColorOverride: override, metadataOverrides: metadata))
         let warnings = (entry.warnings + preview.warnings).map(WarningJSON.init)
         let preset = PresetRefJSON(presetId: entry.preset.presetId.uuidString, name: entry.preset.name)
         let positions = preview.roles.map(\.carouselPosition)
@@ -367,6 +373,11 @@ public actor PhotoFrameMCPServer {
         guard let text = try args.string("assumeProfile") else { return nil }
         guard let profile = AssumedProfile(rawValue: text) else { throw .invalidArguments("assumeProfile 只能是 \(AssumedProfile.allCases.map(\.rawValue).joined(separator: "、"))") }
         return profile.override
+    }
+
+    /// `metadata`：手填元数据（D-135），只有 ``MetadataField`` 的字段；值原样传给 `metadataOverrides`，空的不传。
+    private static func metadataOverrides(_ args: MCPArguments) throws(ApplicationError) -> [String: String] {
+        try args.stringFields("metadata", allowed: MetadataField.allCases.map(\.rawValue), maxLength: maxMetadataLength)
     }
 
     private func bindings(_ args: MCPArguments) async throws(ApplicationError) -> [String: UUID] {

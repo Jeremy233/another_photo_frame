@@ -38,7 +38,7 @@ struct InspectorView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-        case .source: Text("源图")
+        case .source, .sources: Text("源图")
         case .location: Text("位置")
         case .none: EmptyView()
         }
@@ -56,6 +56,12 @@ struct InspectorView: View {
                     NoticeBar(symbol: "hand.point.up.left", text: Self.startHint)
                 }
             }
+        case .sources(let ids):
+            // 几张源图：只有可以一起改的胶卷、相机与参数（D-135）。
+            InfoCard(symbol: "photo.on.rectangle", title: "\(ids.count) 张源图",
+                     lines: ids.compactMap { workbench.sourceItem($0)?.source.displayName }.prefix(3).map { $0 }
+                         + (ids.count > 3 ? ["…"] : [])) { EmptyView() }
+            SourceMetadataSection(workbench: workbench, ids: ids)
         case .location(let id):
             if let location = workbench.location(id) { LocationInspector(workbench: workbench, location: location) }
         case .jobs, .preset(_):

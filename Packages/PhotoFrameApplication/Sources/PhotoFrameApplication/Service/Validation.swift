@@ -90,34 +90,43 @@ enum ExportChecks {
     /// 预设没有启用的素材图层时，解析结果与素材库、绑定、相机都无关（只有「单任务绑定没被使用」的提示），
     /// 这时不读本地库，用空的解析器得到同样的结果。
     static func resolveSlots(
-        _ resolver: inout LazySlotResolver, preset: ExportPreset, bindings: [String: UUID], source: URL
+        _ resolver: inout LazySlotResolver, preset: ExportPreset, bindings: [String: UUID], source: URL,
+        overrides: [String: String] = [:]
     ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
         guard resolver.isConfigured else { return (nil, []) }
         let usesAssets = preset.layers.contains { $0.enabled && $0.type.usesAssetSlot }
         let current = usesAssets ? resolver.get() : SlotResolver(library: InMemoryAssetLibrary(), bindings: AssetBindingTable())
-        return try resolveSlots(current, preset: preset, bindings: bindings, source: source)
+        return try resolveSlots(current, preset: preset, bindings: bindings, source: source, overrides: overrides)
     }
 
     static func resolveSlots(
-        _ resolver: SlotResolver?, preset: ExportPreset, bindings: [String: UUID], source: URL
+        _ resolver: SlotResolver?, preset: ExportPreset, bindings: [String: UUID], source: URL,
+        overrides: [String: String] = [:]
     ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
         guard let resolver else { return (nil, []) }
         let usesCamera = preset.layers.contains { $0.enabled && !$0.cameraMatch.isEmpty }
         do {
-            let slots = try resolver.resolve(preset, jobBindings: bindings, camera: usesCamera ? camera(of: source) : nil)
+            let slots = try resolver.resolve(preset, jobBindings: bindings,
+                                             camera: usesCamera ? camera(of: source, overrides: overrides) : nil)
             return (slots, slots.warnings.map { ApplicationWarning(code: $0.code, message: $0.message) })
         } catch {
             throw ApplicationError(code: error.code, message: error.message, hint: error.hint)
         }
     }
 
-    /// 源图的相机（TIFF Make / Model）。读不到属性时是空的相机信息。
-    static func camera(of url: URL) -> CameraIdentity {
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
-        else { return CameraIdentity(make: nil, model: nil) }
-        let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
-        return CameraIdentity(make: tiff[kCGImagePropertyTIFFMake] as? String, model: tiff[kCGImagePropertyTIFFModel] as? String)
+    /// 源图的相机（TIFF Make / Model）；手填的品牌、型号优先（D-135）。读不到属性时是空的相机信息。
+    static func camera(of url: URL, overrides: [String: String] = [:]) -> CameraIdentity {
+        func manual(_ key: String) -> String? {
+            overrides[key].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        var make: String?, model: String?
+        if let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+            let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+            make = tiff[kCGImagePropertyTIFFMake] as? String
+            model = tiff[kCGImagePropertyTIFFModel] as? String
+        }
+        return CameraIdentity(make: manual("make") ?? make, model: manual("model") ?? model)
     }
 }
 

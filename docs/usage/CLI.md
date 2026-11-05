@@ -42,9 +42,11 @@ v0.9.1 及更早的版本还需要把旁边的 `PhotoFrameStorage_PhotoFrameStor
 ```text
 photoframe export <图片...> --preset <id|名称|文件> [--preset ...] --output <目录>
                   [--assume-profile srgb|display-p3|adobe-rgb|prophoto-rgb|rec2020]
+                  [--film <名称>] [--camera-make <文字>] [--camera-model <文字>] [--aperture <值>] [--shutter <值>] [--iso <值>]
                   [--overwrite] [--dry-run] [--json] [--quiet] [--jobs <n>]
 photoframe preview <图片> --preset <id|名称|文件> --output <目录>
                   [--assume-profile srgb|display-p3|adobe-rgb|prophoto-rgb|rec2020]
+                  [--film <名称>] [--camera-make <文字>] [--camera-model <文字>] [--aperture <值>] [--shutter <值>] [--iso <值>]
                   [--max-edge <px>] [--page <n> ...] [--overwrite] [--json]
 photoframe image inspect <图片> [--json]
 
@@ -58,10 +60,10 @@ photoframe preset rename <预设> <新名称> [--json]
 photoframe preset move <预设> --to user|imported [--json]
 photoframe preset delete <预设> [--json]
 
-photoframe asset list [--category signature|watermark|camera-badge] [--json]
-photoframe asset import <文件> --category signature|watermark|camera-badge [--name <名称>] [--json]
+photoframe asset list [--category signature|watermark|camera-badge|film-icon] [--json]
+photoframe asset import <文件> --category signature|watermark|camera-badge|film-icon [--name <名称>] [--json]
 photoframe asset rename <素材> <新名称> [--json]
-photoframe asset set-category <素材> signature|watermark|camera-badge [--json]
+photoframe asset set-category <素材> signature|watermark|camera-badge|film-icon [--json]
 photoframe asset delete <素材> [--json]
 photoframe asset bind <素材> --slot <slotId> [--preset <预设>]
 photoframe asset unbind --slot <slotId> [--preset <预设>]
@@ -117,6 +119,9 @@ photoframe --help | --version
 | `-o, --output` | 输出根目录，不存在时创建 |
 | `--assume-profile` | 没有 ICC 的源图按什么色彩空间解释：`srgb`、`display-p3`、`adobe-rgb`、`prophoto-rgb`、`rec2020`（与 GUI 右栏「按此解释」的选项一一对应）。见下文「输入色彩空间」 |
 | `--bind <slotId>=<素材>` | 单任务素材绑定，可重复。见「素材绑定」 |
+| `--film <名称>` | 手填的胶卷，`{film}` 和胶卷图层用它。见下文「手填元数据」（D-135） |
+| `--camera-make <文字>`、`--camera-model <文字>` | 手填的相机品牌、型号，优先于源图 EXIF 的 Make / Model；品牌 logo 和 `{brand}` 按它认品牌 |
+| `--aperture <值>`、`--shutter <值>`、`--iso <值>` | 手填的光圈、快门、ISO，优先于 EXIF；只写数字时补单位（`8` → `f/8`、`1/250` → `1/250s`、`400` → `ISO 400`） |
 | `--overwrite` | 作品目录已存在时替换，而不是加版本后缀。只替换本软件之前导出的目录（目录上有扩展属性 `org.anotherphotoframe.published`，里面只有本软件命名的图片）；否则拒绝，退出码 5（D-49） |
 | `--dry-run` | 只校验并列出将写出的文件，不渲染、不写任何文件（连输出目录都不创建） |
 | `--json` | stdout 输出 JSON |
@@ -154,7 +159,7 @@ stderr 进度只有真实阶段和已完成的输出数，不估算百分比（�
 
 | 选项 | 说明 |
 |---|---|
-| `--assume-profile`、`--bind` | 同 `export` |
+| `--assume-profile`、`--bind`、`--film`、`--camera-make`、`--camera-model`、`--aperture`、`--shutter`、`--iso` | 同 `export` |
 | `--max-edge <px>` | 预览页长边上限，默认 1200，不会大于导出尺寸 |
 | `--page <n>` | 只预览这些轮播页（0 = 封面，切片 k 是 k + 1，D-27）。可重复；默认全部 |
 | `--dynamic-range sdr\|hdr` | 默认 `sdr`；`hdr` 见上（D-106） |
@@ -169,6 +174,27 @@ GUI 里这样设置的任务都能用 CLI 复现。
   有 ICC 的那几张照常按自己的 ICC 处理）。
 - 作用于本次命令的所有任务，记录在任务里（`JobSpec.sourceColorOverride`），重试也沿用。
 - 用 `image inspect` 先看 `colorProfile.origin`：`assumedSRGB` 表示没有 ICC。
+
+### 手填元数据：`--film`、`--camera-make`……（D-135）
+
+胶片扫描通常没有 EXIF（或者只有扫描仪的 EXIF），胶卷、相机和拍摄参数可以在命令行上手填，与 GUI 右栏「胶卷、相机与参数」相同。
+手填的值**优先于源图的 EXIF**，作用于本次命令的每张源图；不写或写空字符串（`--iso ""`）的项照常取 EXIF。不改原文件。
+
+| 选项 | 键（`metadataOverrides`） | 用在哪里 |
+|---|---|---|
+| `--film <名称>` | `film` | `{film}` 和胶卷图层（`filmIcon`，D-134）。内置胶卷按名称匹配（只比字母和数字、不分大小写，`kodak portra-400` 和 `Kodak Portra 400` 相同）；不在内置列表里的胶卷也可以写，`{film}` 照样显示 |
+| `--camera-make <文字>` | `make` | `{make}`、`{camera}`；品牌 logo（`brandLogo`，D-132）和 `{brand}`（D-133）按它和型号认品牌 |
+| `--camera-model <文字>` | `model` | `{model}`、`{camera}`、认品牌 |
+| `--aperture <值>` | `aperture` | `{aperture}`；只写数字时补成 `f/…`（`8` → `f/8`） |
+| `--shutter <值>` | `shutter` | `{shutter}`；只写数字时补上 `s`（`1/250` → `1/250s`） |
+| `--iso <值>` | `iso` | `{iso}`；只写数字时补成 `ISO …`（`400` → `ISO 400`） |
+
+值原样放进请求（`ExportRequest.metadataOverrides`，记录在任务里，重试也沿用），单位由渲染时补上。MCP 的 `metadata` 参数是同样的六项（[MCP.md](MCP.md)）。
+
+```bash
+photoframe export Scans/*.tif --preset instagram-standard -o Exports \
+  --film "Kodak Portra 400" --camera-make Mamiya --camera-model "7 II" --aperture 8 --shutter 1/250 --iso 400
+```
 
 ### `image inspect`
 
@@ -230,7 +256,7 @@ photoframe preset get "My IG" canvas
 | `asset unbind --slot <slotId> [--preset <预设>]` | 清除对应的绑定 | （无） |
 | `asset bindings` | 列出保存的绑定 | 每行：`preset`/`default`、presetId（默认绑定为 `-`）、slotId、assetId |
 
-分组的命令行写法：`signature`、`watermark`、`camera-badge`。
+分组的命令行写法：`signature`、`watermark`、`camera-badge`、`film-icon`。
 
 ## 退出码（D-71）
 
@@ -509,6 +535,7 @@ photoframe preset get "My IG" canvas
 | D-106 | `preview --dynamic-range hdr`：导出写 HDR 的页写成 gain map JPEG |
 | D-124 | 本地库位置：`PHOTOFRAME_LIBRARY` > 带 App Group 的容器 > 已存在的 Group Containers 目录 > `~/Library/Application Support/AnotherPhotoFrame/` |
 | D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图），内置和新建预设默认 `auto` |
+| D-135 | `export` / `preview` 的 `--film`、`--camera-make`、`--camera-model`、`--aperture`、`--shutter`、`--iso`：手填元数据，优先于 EXIF，与 GUI 相同 |
 
 ## 测试
 

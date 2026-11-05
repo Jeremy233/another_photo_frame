@@ -14,6 +14,8 @@ public struct PreviewSubject: Hashable, Sendable {
     public var preset: ExportPreset?
     public var assetBindings: [String: UUID]
     public var colorOverride: SourceColorOverride?
+    /// 手填的胶卷、相机与参数（D-135）。
+    public var metadataOverrides: [String: String] = [:]
     /// 素材库的版本：预设本地绑定和默认绑定在渲染时才解析，绑定或素材变了就是新的内容。
     public var libraryRevision: Int
     /// 原图不见了：不渲染，保留上一次的画面（``PreviewModel/isStale``）。文件回来后这一项变回 false，按最新的参数重新渲染。
@@ -230,7 +232,8 @@ public final class PreviewModel {
             renderRequests += 1
             let request = ExportPreviewRequest(
                 source: .id(subject.sourceId), preset: preset, options: options,
-                assetBindings: subject.assetBindings, sourceColorOverride: subject.colorOverride)
+                assetBindings: subject.assetBindings, sourceColorOverride: subject.colorOverride,
+                metadataOverrides: subject.metadataOverrides)
             let result: Result<ExportPreview, ApplicationError>
             do throws(ApplicationError) { result = .success(try await service.renderPreview(request)) } catch { result = .failure(error) }
             guard !Task.isCancelled else { return }
@@ -383,7 +386,8 @@ extension Workbench {
         func subject(_ item: SourceItem, preset: ExportPreset?, bindings: [String: UUID]) -> PreviewSubject {
             PreviewSubject(
                 sourceId: item.id, sourceURL: item.source.fileURL, preset: preset, assetBindings: bindings,
-                colorOverride: item.colorOverride, libraryRevision: libraryRevision, sourceMissing: item.isMissing)
+                colorOverride: item.colorOverride, metadataOverrides: item.metadataOverrides,
+                libraryRevision: libraryRevision, sourceMissing: item.isMissing)
         }
         let (inspectorSubject, jobs) = inspected()
         switch inspectorSubject {
@@ -393,6 +397,11 @@ extension Workbench {
             return subject(item, preset: job.preset, bindings: job.assetBindings)
         case .source(let id):
             guard let item = sourceItem(id) else { return nil }
+            let first = item.jobs.first
+            return subject(item, preset: first?.preset, bindings: first?.assetBindings ?? [:])
+        case .sources(let ids):
+            // 多选源图时预览第一张（右栏的修改作用于全部选中的源图）。
+            guard let item = ids.first.flatMap(sourceItem) else { return nil }
             let first = item.jobs.first
             return subject(item, preset: first?.preset, bindings: first?.assetBindings ?? [:])
         case .preset(let id):

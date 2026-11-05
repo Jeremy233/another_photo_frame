@@ -38,6 +38,8 @@ public final class Workbench {
     public var showsInspector = true
     public var sidebarTab: SidebarTab = .presets
     public var assetDisplay: AssetDisplayMode = .text
+    /// 左栏「素材」选中的素材；没有选中图片时中间预览显示它（``previewedAsset``）。
+    public var selectedAsset: AssetSelection?
     public var inspectorTab: InspectorTab = .canvas
     /// 打开「添加图片」面板（底栏按钮、⌘O）。
     public var isAddingImages = false
@@ -197,6 +199,8 @@ public final class Workbench {
         let jobs = selectedJobs()
         if !jobs.isEmpty { return (.jobs(jobs.map(\.id)), jobs) }
         if selection.count == 1, case .source(let id) = selection.first { return (.source(id), []) }
+        let sourceIds = sources.map(\.id).filter { selection.contains(.source($0)) }
+        if sourceIds.count > 1, sourceIds.count == selection.count { return (.sources(sourceIds), []) }
         return (.none, [])
     }
 
@@ -221,7 +225,7 @@ public final class Workbench {
         switch subject {
         case .jobs: return jobs.map(\.preset)
         case .preset: return presetEditor.map { [$0.draft] } ?? []
-        case .source, .location, .none: return []
+        case .source, .sources, .location, .none: return []
         }
     }
 
@@ -235,7 +239,7 @@ public final class Workbench {
         switch inspectorSubject {
         case .jobs: true
         case .preset: presetEditor?.isReadOnly == false
-        case .source, .location, .none: false
+        case .source, .sources, .location, .none: false
         }
     }
 
@@ -276,7 +280,7 @@ public final class Workbench {
                 let slots = Set(draft.assetSlots.map(\.slotId))
                 setPresetBindingDrafts(bound.filter { slots.contains($0.key) }, for: id)
             }
-        case .source, .location, .none:
+        case .source, .sources, .location, .none:
             break
         }
     }

@@ -82,35 +82,28 @@ private struct PresetList: View {
     @State private var deleting: DeleteRequest?
     @State private var importing = false
 
-    private let groups: [CatalogPresetOrigin] = [.builtIn, .user, .imported]
-
     @State private var collapsed: Set<String> = []
 
-    /// 树形列表，三角常驻（参照 Compressor 左栏）：内置 ▸ 平台 ▸ 预设；用户保存、导入各一组。
+    /// 树形列表，三角常驻（参照 Compressor 左栏）：内置 ▸ 平台 ▸ 预设；用户（自己保存的和导入的，D-138）。
     var body: some View {
         // 任务列表有选择时，点预设直接应用到选中的行（`clickPreset`），左栏的选择不变。
         List(selection: Binding(get: { workbench.selectedPresetId }, set: { workbench.choosePreset($0) })) {
-            ForEach(groups, id: \.kind) { group in
-                DisclosureGroup(isExpanded: expanded(group.kind)) {
-                    if group == .builtIn {
-                        ForEach(platforms, id: \.name) { platform in
-                            DisclosureGroup(isExpanded: expanded("platform-\(platform.name)")) {
-                                rows(platform.presets, group: group)
-                            } label: {
-                                // 与下面的预设图标同一种中性灰。
-                                SidebarRow(title: platform.name, symbol: "rectangle.stack").fontWeight(.medium)
-                            }
-                        }
-                    } else {
-                        rows(workbench.presets(in: group), group: group)
+            DisclosureGroup(isExpanded: expanded("builtIn")) {
+                ForEach(platforms, id: \.name) { platform in
+                    DisclosureGroup(isExpanded: expanded("platform-\(platform.name)")) {
+                        rows(platform.presets)
+                    } label: {
+                        // 与下面的预设图标同一种中性灰。
+                        SidebarRow(title: platform.name, symbol: "rectangle.stack").fontWeight(.medium)
                     }
-                } label: {
-                    Text(group.groupTitle).fontWeight(.semibold)
                 }
-                .dropDestination(for: String.self) { items, _ in
-                    move(items, to: group)
-                    return group != .builtIn
-                }
+            } label: {
+                Text(CatalogPresetOrigin.builtIn.groupTitle).fontWeight(.semibold)
+            }
+            DisclosureGroup(isExpanded: expanded("user")) {
+                rows(workbench.userPresets)
+            } label: {
+                Text(CatalogPresetOrigin.user.groupTitle).fontWeight(.semibold)
             }
         }
         .listStyle(.sidebar)
@@ -125,7 +118,7 @@ private struct PresetList: View {
 
     private var selectedPreset: CatalogPresetSummary? { workbench.selectedPresetId.flatMap(workbench.preset) }
 
-    @ViewBuilder private func rows(_ presets: [CatalogPresetSummary], group: CatalogPresetOrigin) -> some View {
+    @ViewBuilder private func rows(_ presets: [CatalogPresetSummary]) -> some View {
         ForEach(presets, id: \.presetId) { preset in
             PresetRow(preset: preset, isModified: workbench.hasUnsavedEdits(preset.presetId))
                 .tag(preset.presetId)
@@ -184,11 +177,6 @@ private struct PresetList: View {
                     Task { await workbench.renamePreset(preset.presetId, to: name) }
                 }
             }
-            if preset.origin == .user {
-                Button("移到「导入」") { Task { await workbench.movePreset(preset.presetId, to: .imported) } }
-            } else {
-                Button("移到「用户保存」") { Task { await workbench.movePreset(preset.presetId, to: .user) } }
-            }
             Divider()
             Button("删除…", role: .destructive) { confirmDelete(preset) }
         }
@@ -214,17 +202,6 @@ private struct PresetList: View {
         } else {
             save(panel.runModal())
         }
-    }
-
-    /// 在「用户保存」和「导入」之间拖动（D-81）。
-    private func move(_ items: [String], to group: CatalogPresetOrigin) {
-        let target: PresetOrigin? = switch group {
-        case .user: .user
-        case .imported: .imported
-        default: nil
-        }
-        guard let target, case .preset(let id)? = items.first.flatMap(DragPayload.init(string:)) else { return }
-        Task { await workbench.movePreset(id, to: target) }
     }
 }
 
@@ -321,37 +298,78 @@ private struct AssetList: View {
     @State private var deleting: DeleteRequest?
     @State private var importCategory: AssetCategory?
     @State private var importing = false
-    @State private var collapsed: Set<AssetCategory> = []
-    @State private var selectedId: UUID?
+    /// 展开的组。切到这个标签页时只展开「内置」「用户」两个大组，里面的各组都收起（D-138）。
+    @State private var expandedGroups: Set<String> = ["builtIn", "user"]
 
-    private func expanded(_ category: AssetCategory) -> Binding<Bool> {
-        Binding(get: { !collapsed.contains(category) }, set: { if $0 { collapsed.remove(category) } else { collapsed.insert(category) } })
+    private func expanded(_ key: String) -> Binding<Bool> {
+        Binding(get: { expandedGroups.contains(key) }, set: { if $0 { expandedGroups.insert(key) } else { expandedGroups.remove(key) } })
+    }
+
+    /// 组名；组里有素材时后面显示个数。
+    private func groupLabel(_ title: String, count: Int, weight: Font.Weight) -> some View {
+        HStack {
+            Text(title).fontWeight(weight)
+            Spacer()
+            if count > 0 { Text("\(count) 个").foregroundStyle(.secondary).font(.caption) }
+        }
     }
 
     var body: some View {
-        List(selection: $selectedId) {
-            ForEach(AssetCategory.allCases, id: \.self) { category in
-                DisclosureGroup(isExpanded: expanded(category)) {
+        List(selection: $workbench.selectedAsset) {
+            // 内置素材（D-136、D-138）：不能改名、删除，右键「复制为我的素材」。选中时（没有选中图片的话）中间预览显示它。
+            DisclosureGroup(isExpanded: expanded("builtIn")) {
+                ForEach(BuiltInAssetItem.groups, id: \.title) { group in
+                    DisclosureGroup(isExpanded: expanded("builtIn-\(group.title)")) {
+                        if workbench.assetDisplay == .icons {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 8) {
+                                ForEach(group.items) { item in
+                                    let tag = AssetSelection.builtIn(item.path)
+                                    BuiltInAssetTile(item: item, isSelected: workbench.selectedAsset == tag)
+                                        .onTapGesture { workbench.selectedAsset = tag }
+                                        .contextMenu { builtInMenu(item) }
+                                }
+                            }
+                        } else {
+                            ForEach(group.items) { item in
+                                AssetRow(title: item.title, help: "\(item.title)\n\(BuiltInAssetTile.note)")
+                                    .tag(AssetSelection.builtIn(item.path))
+                                    .contextMenu { builtInMenu(item) }
+                            }
+                        }
+                    } label: {
+                        groupLabel(group.title, count: group.items.count, weight: .medium)
+                    }
+                }
+            } label: {
+                Text("内置").fontWeight(.semibold)
+            }
+            // 自己的素材：签名、水印、相机图标、胶卷图标，放在「用户」大组里（D-138）。
+            DisclosureGroup(isExpanded: expanded("user")) {
+                ForEach(AssetCategory.allCases, id: \.self) { category in
                     let assets = workbench.assets(in: category)
-                    if workbench.assetDisplay == .icons {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 8) {
+                    DisclosureGroup(isExpanded: expanded("user-\(category.rawValue)")) {
+                        if workbench.assetDisplay == .icons {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 8) {
+                                ForEach(assets) { asset in
+                                    AssetTile(workbench: workbench, asset: asset, isSelected: workbench.selectedAsset == .user(asset.assetId))
+                                        .onTapGesture { workbench.selectedAsset = .user(asset.assetId) }
+                                        .contextMenu { menu(for: asset) }
+                                }
+                            }
+                        } else {
                             ForEach(assets) { asset in
-                                AssetTile(workbench: workbench, asset: asset, isSelected: selectedId == asset.assetId)
-                                    .onTapGesture { selectedId = asset.assetId }
+                                AssetRow(title: asset.displayName, help: help(asset))
+                                    .tag(AssetSelection.user(asset.assetId))
+                                    .draggable(DragPayload.asset(asset.assetId).string)
                                     .contextMenu { menu(for: asset) }
                             }
                         }
-                    } else {
-                        ForEach(assets) { asset in
-                            SidebarRow(title: asset.displayName, symbol: asset.format == .svg ? "scribble" : "photo", help: help(asset))
-                                .tag(asset.assetId)
-                                .draggable(DragPayload.asset(asset.assetId).string)
-                                .contextMenu { menu(for: asset) }
-                        }
+                    } label: {
+                        groupLabel(category.title, count: assets.count, weight: .medium)
                     }
-                } label: {
-                    Text(category.title).fontWeight(.semibold)
                 }
+            } label: {
+                Text("用户").fontWeight(.semibold)
             }
         }
         .listStyle(.sidebar)
@@ -366,7 +384,14 @@ private struct AssetList: View {
         }
     }
 
-    private var selected: AssetInfo? { selectedId.flatMap { id in workbench.assets.first { $0.assetId == id } } }
+    private var selected: AssetInfo? {
+        guard case .user(let id) = workbench.selectedAsset else { return nil }
+        return workbench.assets.first { $0.assetId == id }
+    }
+    private var selectedBuiltIn: BuiltInAssetItem? {
+        guard case .builtIn(let path) = workbench.selectedAsset else { return nil }
+        return BuiltInAssetItem.item(path: path)
+    }
 
     private func help(_ asset: AssetInfo) -> String {
         "\(asset.displayName)\n\(asset.format.rawValue.uppercased()) · \(asset.category.title)"
@@ -387,11 +412,11 @@ private struct AssetList: View {
             .help("导入素材（PNG 或受限 SVG）")
             .accessibilityLabel("导入素材")
             Menu {
-                if let asset = selected { menu(for: asset) }
+                if let asset = selected { menu(for: asset) } else if let item = selectedBuiltIn { builtInMenu(item) }
             } label: {
                 Image(systemName: "gearshape")
             }
-            .disabled(selected == nil)
+            .disabled(selected == nil && selectedBuiltIn == nil)
             .help("选中素材的操作")
             .accessibilityLabel("选中素材的操作")
             Spacer()
@@ -420,10 +445,29 @@ private struct AssetList: View {
         Button("删除…", role: .destructive) { confirmDelete(asset) }
     }
 
+    @ViewBuilder private func builtInMenu(_ item: BuiltInAssetItem) -> some View {
+        Section("内置素材不能修改或删除") {
+            Button("复制为我的素材") {
+                guard let content = BuiltInAssetTile.copyContent(item) else { return }
+                Task { await workbench.copyBuiltInAsset(item, content: content.data, isSVG: content.isSVG) }
+            }
+        }
+    }
+
     private func confirmDelete(_ asset: AssetInfo) {
         deleting = DeleteRequest(title: "删除素材「\(asset.displayName)」？", message: "素材会从库里删除，不能撤销。指向它的绑定会回退到下一级。") {
             Task { await workbench.deleteAsset(asset.assetId) }
         }
+    }
+}
+
+/// 「仅文字」方式下素材的一行：只有名称，前面不加图标；过长截断，悬停显示完整信息。
+private struct AssetRow: View {
+    let title: String
+    let help: String
+
+    var body: some View {
+        Text(title).lineLimit(1).truncationMode(.tail).help(help)
     }
 }
 
@@ -484,5 +528,57 @@ private struct AssetTile: View {
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return NSImage(cgImage: cg, size: .zero)
+    }
+}
+
+/// 内置素材的方块（D-136）：图片直接从程序里的数据读。
+struct BuiltInAssetTile: View {
+    let item: BuiltInAssetItem
+    var isSelected = false
+    private static let cache = NSCache<NSString, NSImage>()
+    /// 悬停提示里的说明。
+    static let note = "内置 · 商标归品牌所有，只用于标示拍摄器材和胶卷"
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Group {
+                if let image = Self.image(item) {
+                    Image(nsImage: image).resizable().scaledToFit()
+                } else {
+                    Image(systemName: "photo").foregroundStyle(Palette.icon)
+                }
+            }
+            .frame(width: 64, height: 48)
+            Text(item.title).font(.caption).lineLimit(1).truncationMode(.tail)
+        }
+        .padding(4)
+        .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.3)) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 6))
+        .contentShape(.rect)
+        .help("\(item.title)\n\(Self.note)")
+    }
+
+    static func image(_ item: BuiltInAssetItem) -> NSImage? {
+        let key = item.path as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let data = item.data, let image = NSImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
+    }
+
+    /// 复制为自己的素材时的内容：受限 SVG 原样复制；用了渐变、裁切的 SVG 过不了导入检查（D-09），画成 1024 px 高的 PNG。
+    static func copyContent(_ item: BuiltInAssetItem) -> (data: Data, isSVG: Bool)? {
+        guard let data = item.data else { return nil }
+        if !item.isSVG { return (data, false) }
+        if !String(decoding: data, as: UTF8.self).contains("url(") { return (data, true) }
+        guard let image = NSImage(data: data), image.size.height > 0 else { return nil }
+        let h = 1024.0, w = (h * image.size.width / image.size.height).rounded()
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w), pixelsHigh: Int(h), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0)?.retagging(with: .sRGB) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:]).map { ($0, false) }
     }
 }

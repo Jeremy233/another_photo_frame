@@ -160,7 +160,8 @@ enum OverlayPlanner {
     static func plan(
         inputs: RenderInputs, layout: inout PageLayout, properties: [CFString: Any], warnings: inout [RenderWarning]
     ) throws(RenderError) -> [String: PlannedOverlay] {
-        let metadataValues = MetadataText.values(from: properties).merging(inputs.metadataOverrides) { $1 }
+        let metadata = MetadataText.resolve(from: properties, overrides: inputs.metadataOverrides)
+        let background = inputs.preset.canvas.background
         let layers = inputs.preset.layers.enumerated()
             .filter { $0.element.enabled && !inputs.skippedLayerIds.contains($0.element.layerId) }
             .sorted { ($0.element.zIndex, $0.offset) < ($1.element.zIndex, $1.offset) }
@@ -168,7 +169,8 @@ enum OverlayPlanner {
 
         var planned: [String: PlannedOverlay] = [:]
         for layer in layers {
-            guard let content = try content(for: layer, assets: inputs.assets, values: metadataValues, warnings: &warnings)
+            guard let content = try content(for: layer, assets: inputs.assets, metadata: metadata, background: background,
+                                            warnings: &warnings)
             else { continue }
             let geometry: OverlayGeometry
             do { geometry = try layer.geometry(contentSize: content.naturalSize) } catch {
@@ -187,11 +189,16 @@ enum OverlayPlanner {
     }
 
     static func content(
-        for layer: OverlayLayer, assets: [String: RenderAsset], values: [String: String], warnings: inout [RenderWarning]
+        for layer: OverlayLayer, assets: [String: RenderAsset], metadata: ResolvedMetadata, background: PresetColor,
+        warnings: inout [RenderWarning]
     ) throws(RenderError) -> OverlayContent? {
         switch layer.type {
+        case .brandLogo:
+            return try brandLogo(layer, meta: metadata, background: background, warnings: &warnings)
+        case .filmIcon:
+            return try filmIcon(layer, meta: metadata, background: background, warnings: &warnings)
         case .text, .metadataText:
-            guard let style = layer.text else {
+            guard var style = layer.text else {
                 warnings.append(RenderWarning(code: "overlay.missing_text", message: "文字装饰没有 text 设置，已跳过",
                                               layerId: layer.layerId))
                 return nil
@@ -200,7 +207,7 @@ enum OverlayPlanner {
             if layer.type == .text {
                 text = style.content ?? ""
             } else {
-                let filled = MetadataText.fill(style.template ?? "", values: values)
+                let filled = MetadataText.fill(style.template ?? "", values: metadata.values)
                 text = filled.text
                 if !filled.missing.isEmpty {
                     warnings.append(RenderWarning(
@@ -215,6 +222,7 @@ enum OverlayPlanner {
                 warnings.append(RenderWarning(code: "overlay.empty_text", message: "文字为空，已跳过", layerId: layer.layerId))
                 return nil
             }
+            if style.colorMode == .auto { style.color = AutoInk.color(on: background) }
             let (block, notes) = try TextBlock.make(text: text, style: style)
             warnings += notes.map { RenderWarning(code: "overlay.font_missing", message: $0, layerId: layer.layerId) }
             return .text(block)

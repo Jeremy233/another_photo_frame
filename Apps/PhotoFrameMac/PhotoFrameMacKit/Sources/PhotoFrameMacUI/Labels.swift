@@ -42,8 +42,8 @@ extension CatalogPresetOrigin {
     var groupTitle: String {
         switch self {
         case .builtIn: "内置"
-        case .user: "用户保存"
-        case .imported: "导入"
+        // 左栏把自己保存的和导入的合成一组「用户」（D-138）。
+        case .user, .imported: "用户"
         case .file: "文件"
         }
     }
@@ -55,6 +55,7 @@ extension AssetCategory {
         case .signature: "签名"
         case .watermark: "水印"
         case .cameraBadge: "相机图标"
+        case .filmIcon: "胶卷图标"
         }
     }
 }

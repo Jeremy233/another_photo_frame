@@ -58,3 +58,6 @@ Apps/PhotoFrameMac/Config/Signing.local.xcconfig
 
 # macOS Finder 元数据（放在最后，避免被上面的例外规则重新包含）
 .DS_Store
+
+# Python
+__pycache__/

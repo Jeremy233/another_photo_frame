@@ -35,6 +35,8 @@ public struct SourceItem: Identifiable, Hashable, Sendable {
     public var inspectionError: ApplicationError?
     /// 没有 ICC 时按什么色彩空间解释（D-04、D-75）；nil 按 sRGB 并警告。
     public var colorOverride: SourceColorOverride?
+    /// 手填的胶卷、相机与参数（D-135，键见 ``SourceMetadataField``），优先于 EXIF。
+    public var metadataOverrides: [String: String] = [:]
     public var jobs: [DraftJob]
     /// 原图不见了（移走、改名、删除，或所在的卷断开）。任务和改动都留着，文件回来或重新链接后恢复。
     public var isMissing = false
@@ -138,6 +140,8 @@ public enum BatchItemID: Hashable, Sendable {
 public enum InspectorSubject: Equatable, Sendable {
     case none
     case source(SourceID)
+    /// 几张源图（没有选任务）：只显示可以一起改的「胶卷、相机与参数」（D-135）。
+    case sources([SourceID])
     /// 一个或多个任务。多个时只显示可以批量修改的共同字段。
     case jobs([UUID])
     case preset(UUID)

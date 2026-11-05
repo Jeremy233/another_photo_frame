@@ -193,15 +193,19 @@ public struct ExportPreviewRequest: Hashable, Sendable {
     public var assetBindings: [String: UUID]
     /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
     public var sourceColorOverride: SourceColorOverride?
+    /// 手填的元数据（D-135）：`film`、`make`、`model`、`aperture`、`shutter`、`iso` 等，优先于源图的 EXIF。
+    public var metadataOverrides: [String: String]
 
     public init(
         source: SourceReference, preset: ExportPreset, options: PreviewOptions = PreviewOptions(),
-        assetBindings: [String: UUID] = [:], sourceColorOverride: SourceColorOverride? = nil
+        assetBindings: [String: UUID] = [:], sourceColorOverride: SourceColorOverride? = nil,
+        metadataOverrides: [String: String] = [:]
     ) {
         self.source = source
         self.preset = preset
         self.options = options
         self.assetBindings = assetBindings
         self.sourceColorOverride = sourceColorOverride
+        self.metadataOverrides = metadataOverrides
     }
 }

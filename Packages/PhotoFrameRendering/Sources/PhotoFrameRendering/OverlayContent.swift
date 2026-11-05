@@ -14,10 +14,13 @@ enum OverlayContent {
     case text(TextBlock)
     case bitmap(CGImage)
     case vector(RestrictedSVG)
+    /// 内置品牌 logo、胶卷图标和文字（D-132、D-134）。
+    case composite(CompositeArt)
 
     var naturalSize: PixelSize {
         switch self {
         case .text(let t): t.naturalSize
+        case .composite(let c): c.naturalSize
         case .bitmap(let img): PixelSize(width: img.width, height: img.height)
         case .vector(let svg):
             // 素材导入时已限制尺寸；绕过导入的文件（例如被替换）也不能因为超大或非有限的尺寸让整数转换崩溃。
@@ -74,6 +77,11 @@ enum OverlayContent {
             return try Self.draw(size: target) { ctx in
                 if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
                 svg.draw(in: ctx, box: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+            }
+        case .composite(let art):
+            return try Self.draw(size: target) { ctx in
+                if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
+                art.draw(in: ctx, box: size, alignment: alignment)
             }
         case .bitmap(let full):
             // 等比放进图层框并居中，不变形。缩小超过一半时先降采样到目标的两倍，避免双线性混叠。

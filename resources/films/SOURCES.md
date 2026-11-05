@@ -36,9 +36,11 @@
 
 和盒子对照后改过的颜色：ProImage 100 改成黄色加黑色；HP5、FP4、Delta 改成 Ilford 的白盒加黑色品牌条，字分别是黑、蓝、紫（Delta 3200 原来误用了红色）；Kentmere 改成蓝色加白色品牌条。
 
+Tri-X 数字的立体阴影是 6 份平移过的路径合在一条 `path` 里，不用 `<use>`：内置 SVG 要在 App 的受限 SVG 格式（D-09）之内。
+
 ## 重新生成
 
-`generator/flat_films.py` 是生成脚本，`generator/textpath.py` 负责排版和转路径（HarfBuzz 排字，含字距调整）。它把 SVG 写进各胶片厂的文件夹，并重写 `films.json`。需要 `pip install fonttools uharfbuzz`，并把上表的字体文件放进一个文件夹，然后在 `resources/films` 里运行：
+`generator/flat_films.py` 是生成脚本，`generator/textpath.py` 负责排版和转路径（HarfBuzz 排字，含字距调整）。它把 SVG 写进各胶片厂的文件夹，并重写 `films.json`；之后运行 `python3 resources/generate_swift.py` 把改动生成进程序。需要 `pip install fonttools uharfbuzz`，并把上表的字体文件放进一个文件夹，然后在 `resources/films` 里运行：
 
 ```bash
 FONT_DIR=<字体文件夹> python3 generator/flat_films.py .

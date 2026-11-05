@@ -113,11 +113,11 @@ def svg(fid, brand, line, lstyle, iso, istyle, proc, bg, band, isoc, lc, effect)
     stroke = f' stroke="{isoc}" stroke-width="{2*sw:.1f}" stroke-linejoin="round"' if sw else ''
     if effect == 'extrude':
         # Tri-X: a short block shadow down and to the left, like the lettering on the box
+        # (plain paths, no <use>: built-in SVGs stay inside the restricted subset, D-09)
         sh = darker(isoc, 0.45); n = 6; step = size*0.006
-        out.append(f'<defs><path id="{fid}-iso" d="{d}"/></defs>')
-        for i in range(n, 0, -1):
-            out.append(f'<use href="#{fid}-iso" x="{-i*step:.1f}" y="{i*step:.1f}" fill="{sh}"/>')
-        out.append(f'<use href="#{fid}-iso" fill="{isoc}"/>')
+        shadow = ''.join(text_path(iso, istyle, size, x - i*step, base + i*step)[0] for i in range(n, 0, -1))
+        out.append(f'<path fill="{sh}" d="{shadow}"/>')
+        out.append(f'<path fill="{isoc}" d="{d}"/>')
     else:
         out.append(f'<path fill="{isoc}"{stroke} d="{d}"/>')
     # bottom band: brand only (the process is kept in the data but not drawn)

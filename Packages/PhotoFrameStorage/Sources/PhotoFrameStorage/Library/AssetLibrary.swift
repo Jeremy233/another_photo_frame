@@ -2,11 +2,13 @@ import CryptoKit
 import Foundation
 import PhotoFrameCore
 
-/// 素材分组（UI 设计文档第 7 节：签名、水印、相机图标）。只用于整理和显示，不影响绑定。
+/// 素材分组（UI 设计文档第 7 节：签名、水印、相机图标、胶卷图标）。只用于整理和显示，不影响绑定。
 public enum AssetCategory: String, Hashable, Sendable, Codable, CaseIterable {
     case signature
     case watermark
     case cameraBadge
+    /// 自己的胶卷图标（D-136），例如从内置胶卷图标复制来改的。
+    case filmIcon
 }
 
 /// 素材元信息。**不含任何文件路径**，可以直接交给 CLI `--json` 和 MCP `list_assets`。

@@ -17,8 +17,22 @@ struct LayersTab: View {
             InspectorSection {
                 InspectorRow {
                     Menu("添加装饰") {
-                        ForEach(LayerTemplate.allCases) { template in
+                        ForEach(LayerTemplate.assetAndTextItems) { template in
                             Button(template.title) { workbench.addLayer(template) }
+                        }
+                        // 内置装饰（D-136）。「相机图标」暂时不在菜单里，已有的相机图标照常编辑。
+                        Section("内置") {
+                            Button(LayerTemplate.brandLogo.title) { workbench.addLayer(.brandLogo) }
+                            Menu(LayerTemplate.brandText.title) {
+                                ForEach(LayerTemplate.brandTextItems) { template in
+                                    Button(template.menuTitle) { workbench.addLayer(template) }
+                                }
+                            }
+                            Menu(LayerTemplate.film.title) {
+                                ForEach(LayerTemplate.filmItems) { template in
+                                    Button(template.menuTitle) { workbench.addLayer(template) }
+                                }
+                            }
                         }
                     }
                     .fixedSize()
@@ -47,7 +61,12 @@ private struct LayerSection: View {
             } else if layer.type == .metadataText {
                 InspectorTextField("模板", text: text(\.template))
             }
-            if layer.type.usesText {
+            if layer.type == .brandLogo {
+                BrandLogoRows(workbench: workbench, layer: layer)
+            } else if layer.type == .filmIcon {
+                FilmIconRows(workbench: workbench, layer: layer)
+            }
+            if layer.type.usesText || (layer.type == .filmIcon && layer.filmIcon?.show != .icon) {
                 TextStyleRows(workbench: workbench, layer: layer)
             }
             // 「位置」专指输出位置，图层贴在哪个角叫「锚点」。
@@ -103,7 +122,14 @@ private struct TextStyleRows: View {
         Toggle("斜体", isOn: Binding(get: { style.italic }, set: { v in update { $0.italic = v } }))
         NumberField(title: "字号", value: Binding(get: { style.fontSizePx }, set: { v in update { $0.fontSizePx = v } }))
         NumberField(title: "字间距", value: Binding(get: { style.letterSpacingPx }, set: { v in update { $0.letterSpacingPx = v } }))
-        ColorField(title: "颜色", value: Binding(get: { style.color }, set: { v in if let v { update { $0.color = v } } }))
+        // 「自动」随画布背景深浅用深色或浅色（D-133）。
+        InspectorPicker("颜色", selection: Binding(get: { style.colorMode }, set: { v in update { $0.colorMode = v } })) {
+            Text("自定").tag(TextStyle.ColorMode.custom)
+            Text("自动（随背景深浅）").tag(TextStyle.ColorMode.auto)
+        }
+        if style.colorMode == .custom {
+            ColorField(title: "自定颜色", value: Binding(get: { style.color }, set: { v in if let v { update { $0.color = v } } }))
+        }
     }
 
     private var style: TextStyle { layer.text ?? TextStyle() }
@@ -118,7 +144,7 @@ private struct TextStyleRows: View {
 }
 
 /// 小数输入框（px）。
-private struct NumberField: View {
+struct NumberField: View {
     let title: String
     @Binding var value: Double
 
@@ -264,6 +290,7 @@ struct SourceInspector<AfterCard: View>: View {
                  badgeHelp: item.dynamicRange == .taggedWithoutHighlights ? "源图标为 HDR，但没有超出 SDR 的高光，按 SDR 导出" : nil) { EmptyView() }
         // 「警告」里有源图检查的提示和读不出来时的错误（与任务的警告同一种列表）。
         afterCard
+        SourceMetadataSection(workbench: workbench, ids: [item.id])
         if let info = item.inspection {
             InspectorSection("图像") {
                 LabeledContent("尺寸") { Text(info.displaySize.text) }

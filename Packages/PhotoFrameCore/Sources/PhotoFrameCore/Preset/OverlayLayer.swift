@@ -4,15 +4,22 @@
 /// 与几何计算共用；渲染前用 ``geometry(contentSize:)`` 转成 ``OverlayGeometry``，再交给 ``OverlayPlacement`` 计算位置。
 ///
 /// JSON 字段：`layerId`、`type`、`enabled`、`visibleOn`、`slides`、`anchor`、`reference`、`side`、
-/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）、`cameraMatch`（D-111）。
+/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）、`cameraMatch`（D-111）、
+/// `logo`（`brandLogo` 装饰）、`filmIcon`（`filmIcon` 装饰，D-137）。
 public struct OverlayLayer: Hashable, Sendable, Codable {
     public enum LayerType: String, Hashable, Sendable, Codable, CaseIterable {
         case text, asset, metadataText, cameraBadge
+        /// 内置品牌 logo（D-132）。
+        case brandLogo
+        /// 内置胶卷图标和胶卷文字（D-134）。
+        case filmIcon
 
         /// 是否需要通过 `slotId` 绑定本地素材。
         public var usesAssetSlot: Bool { self == .asset || self == .cameraBadge }
         /// 是否有文本内容。
         public var usesText: Bool { self == .text || self == .metadataText }
+        /// 是否用 `text` 的字体样式（文字装饰，以及胶卷装饰的文字部分）。
+        public var usesTextStyle: Bool { usesText || self == .filmIcon }
     }
 
     public var layerId: String
@@ -37,6 +44,10 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
     public var cameraMatch: [CameraMatchRule]
     /// `text` / `metadataText` 图层的文字与样式。
     public var text: TextStyle?
+    /// `brandLogo` 装饰的设置；缺少时用默认值。
+    public var logo: BrandLogoStyle?
+    /// `filmIcon` 装饰的设置；缺少时用默认值。
+    public var filmIcon: FilmIconStyle?
     public var extensions: ExtensionFields
 
     public init(
@@ -54,6 +65,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         slotId: String? = nil,
         cameraMatch: [CameraMatchRule] = [],
         text: TextStyle? = nil,
+        logo: BrandLogoStyle? = nil,
+        filmIcon: FilmIconStyle? = nil,
         extensions: ExtensionFields = [:]
     ) {
         self.layerId = layerId
@@ -70,6 +83,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         self.slotId = slotId
         self.cameraMatch = cameraMatch
         self.text = text
+        self.logo = logo
+        self.filmIcon = filmIcon
         self.extensions = extensions
     }
 
@@ -93,7 +108,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case layerId, type, enabled, visibleOn, slides, anchor, reference, side
-        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, cameraMatch, text
+        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, cameraMatch, text, logo, filmIcon
     }
 
     enum VisibleOn: String, Codable {
@@ -145,6 +160,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         slotId = try c.decodeIfPresent(String.self, forKey: .slotId)
         cameraMatch = try c.decodeIfPresent([CameraMatchRule].self, forKey: .cameraMatch) ?? []
         text = try c.decodeIfPresent(TextStyle.self, forKey: .text)
+        logo = try c.decodeIfPresent(BrandLogoStyle.self, forKey: .logo)
+        filmIcon = try c.decodeIfPresent(FilmIconStyle.self, forKey: .filmIcon)
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
 
@@ -176,6 +193,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         try c.encodeIfPresent(slotId, forKey: .slotId)
         if !cameraMatch.isEmpty { try c.encode(cameraMatch, forKey: .cameraMatch) }
         try c.encodeIfPresent(text, forKey: .text)
+        try c.encodeIfPresent(logo, forKey: .logo)
+        try c.encodeIfPresent(filmIcon, forKey: .filmIcon)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
     }
 }

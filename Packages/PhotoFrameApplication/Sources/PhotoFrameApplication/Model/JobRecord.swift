@@ -51,16 +51,34 @@ public struct JobSpec: Hashable, Sendable, Codable {
     public var assetBindings: [String: UUID]
     /// 源图没有 ICC 时按什么色彩空间解释（D-04）；nil 按 sRGB 并警告。源图自带 ICC 时忽略（渲染时警告）。
     public var sourceColorOverride: SourceColorOverride?
+    /// 手填的元数据（D-135）：`film`、`make`、`model`、`aperture`、`shutter`、`iso` 等，优先于源图的 EXIF。
+    public var metadataOverrides: [String: String]
 
     public init(
         source: PhotoSource, preset: ExportPreset, destination: ExportDestination, assetBindings: [String: UUID] = [:],
-        sourceColorOverride: SourceColorOverride? = nil
+        sourceColorOverride: SourceColorOverride? = nil, metadataOverrides: [String: String] = [:]
     ) {
         self.source = source
         self.preset = preset
         self.destination = destination
         self.assetBindings = assetBindings
         self.sourceColorOverride = sourceColorOverride
+        self.metadataOverrides = metadataOverrides
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case source, preset, destination, assetBindings, sourceColorOverride, metadataOverrides
+    }
+
+    /// 旧的任务记录没有 `metadataOverrides`。
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        source = try c.decode(PhotoSource.self, forKey: .source)
+        preset = try c.decode(ExportPreset.self, forKey: .preset)
+        destination = try c.decode(ExportDestination.self, forKey: .destination)
+        assetBindings = try c.decode([String: UUID].self, forKey: .assetBindings)
+        sourceColorOverride = try c.decodeIfPresent(SourceColorOverride.self, forKey: .sourceColorOverride)
+        metadataOverrides = try c.decodeIfPresent([String: String].self, forKey: .metadataOverrides) ?? [:]
     }
 }
 

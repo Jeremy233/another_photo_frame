@@ -11,6 +11,22 @@ extension LayerTemplate {
         case .cameraBadge: "相机图标"
         case .exifText: "EXIF 文字"
         case .text: "文字"
+        case .brandLogo: "品牌 logo"
+        case .brandText, .shotOn, .cameraSettings: "品牌文字"
+        case .film, .filmIcon, .filmText: "胶卷"
+        }
+    }
+
+    /// 子菜单里的名字（「品牌文字 ▸」「胶卷 ▸」的各项）。
+    public var menuTitle: String {
+        switch self {
+        case .brandText: "仅品牌"
+        case .shotOn: "Shot on 相机"
+        case .cameraSettings: "相机与参数"
+        case .film: "图标和文字"
+        case .filmIcon: "只有图标"
+        case .filmText: "只有文字"
+        default: title
         }
     }
 }
@@ -22,6 +38,8 @@ extension OverlayLayer.LayerType {
         case .asset: "素材"
         case .metadataText: "EXIF 文字"
         case .cameraBadge: "相机图标"
+        case .brandLogo: "品牌 logo"
+        case .filmIcon: "胶卷"
         }
     }
 }

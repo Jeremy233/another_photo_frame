@@ -16,10 +16,27 @@ import PhotoFrameStorage
 ///   导入比这里更严（D-87）：还拒绝动画元素和处理指令；这里动画元素跳过，处理指令忽略。
 /// - 忽略：`SVGPolicy.ignoredElements`；其他不支持的元素连同子树跳过并警告（例如渐变、文字、滤镜）。
 /// 颜色按 sRGB 解释：几个命名色、`#RGB` / `#RGBA` / `#RRGGBB` / `#RRGGBBAA`、`rgb()`（数字或百分比）。
+///
+/// 内置素材（D-131，程序自带、不是用户文件）用 `trusted` 解析：另外支持 `linearGradient` / `radialGradient`，
+/// 填充可以写文件内部引用 `url(#id)`；`defs`、`clipPath` 安静跳过（内置 logo 的裁切只是画板边框）。
+/// 其余规则不变，仍然不允许 `href`、`style`、`use` 和外部引用。
 struct RestrictedSVG {
     enum Command {
         case fill(CGPath, CGColor, evenOdd: Bool)
         case stroke(CGPath, CGColor, width: CGFloat, cap: CGLineCap, join: CGLineJoin, miterLimit: CGFloat)
+        /// 渐变填充（只在 trusted 时出现）。
+        case gradientFill(CGPath, Gradient, evenOdd: Bool)
+    }
+
+    struct Gradient {
+        enum Shape {
+            case linear(CGPoint, CGPoint)
+            case radial(center: CGPoint, radius: CGFloat, focus: CGPoint)
+        }
+        var shape: Shape
+        var gradient: CGGradient
+        /// 把渐变坐标变到用户空间。
+        var matrix: CGAffineTransform
     }
 
     /// viewBox（没有时为 0, 0, width, height）。
@@ -32,7 +49,7 @@ struct RestrictedSVG {
     typealias Policy = AssetValidator.SVGPolicy
     static let limits = AssetImportLimits.default
 
-    static func parse(_ data: Data) throws(RenderError) -> RestrictedSVG {
+    static func parse(_ data: Data, trusted: Bool = false) throws(RenderError) -> RestrictedSVG {
         guard data.count <= limits.maxSVGBytes else { throw reject("文件超过 \(limits.maxSVGBytes >> 20) MiB") }
         // 与素材导入相同：查整个文件、不分大小写。按字节找（String.contains 查 8 MiB 要约 200 ms，每次预览都会解析）。
         // UTF-16 等编码在这里查不到，由 Builder 的 ENTITY 回调拦下。
@@ -40,7 +57,7 @@ struct RestrictedSVG {
         if lower.range(of: Data("<!doctype".utf8)) != nil || lower.range(of: Data("<!entity".utf8)) != nil {
             throw reject("不允许 DOCTYPE / ENTITY 声明")
         }
-        let delegate = Builder()
+        let delegate = Builder(trusted: trusted)
         let parser = XMLParser(data: data)
         parser.shouldResolveExternalEntities = false
         parser.shouldProcessNamespaces = false
@@ -49,7 +66,8 @@ struct RestrictedSVG {
         if let error = delegate.error { throw error }
         guard ok else { throw reject("XML 解析失败：\(parser.parserError?.localizedDescription ?? "未知错误")") }
         guard let root = delegate.root else { throw reject("没有 <svg> 根元素") }
-        return RestrictedSVG(viewBox: root.viewBox, size: root.size, commands: delegate.commands, warnings: delegate.warnings)
+        let commands = delegate.resolvedCommands()
+        return RestrictedSVG(viewBox: root.viewBox, size: root.size, commands: commands, warnings: delegate.warnings)
     }
 
     static func reject(_ why: String) -> RenderError {
@@ -84,6 +102,19 @@ struct RestrictedSVG {
                 ctx.setLineJoin(join)
                 ctx.setMiterLimit(miterLimit)
                 ctx.strokePath()
+            case .gradientFill(let path, let g, let evenOdd):
+                ctx.saveGState()
+                ctx.addPath(path)
+                ctx.clip(using: evenOdd ? .evenOdd : .winding)
+                ctx.concatenate(g.matrix)
+                switch g.shape {
+                case .linear(let a, let b):
+                    ctx.drawLinearGradient(g.gradient, start: a, end: b, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+                case .radial(let center, let radius, let focus):
+                    ctx.drawRadialGradient(g.gradient, startCenter: focus, startRadius: 0, endCenter: center, endRadius: radius,
+                                           options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+                }
+                ctx.restoreGState()
             }
         }
         ctx.restoreGState()
@@ -113,6 +144,8 @@ struct RestrictedSVG {
         /// visibility（继承）：hidden / collapse 的图形不画，子元素可以用 visible 重新显示。
         var visible = true
         var transform = CGAffineTransform.identity
+        /// 填充引用的渐变 id（trusted），有值时不用 `fill`。
+        var fillGradient: String?
     }
 
     struct Root {
@@ -121,6 +154,21 @@ struct RestrictedSVG {
     }
 
     final class Builder: NSObject, XMLParserDelegate {
+        let trusted: Bool
+        /// 渐变定义（trusted）：元素名、属性、`stop`（位置、颜色、不透明度）。
+        struct GradientDef {
+            var element: String
+            var attributes: [String: String]
+            var stops: [(offset: Double, color: RGBA, opacity: Double)] = []
+        }
+        var gradientDefs: [String: GradientDef] = [:]
+        var pendingGradient: GradientDef?
+        /// 渐变填充：命令序号 → 引用的 id 与填充时的信息。定义可能写在使用之后，解析完再换成 ``Command/gradientFill``。
+        var pendingFills: [Int: (id: String, objectBox: CGRect, transform: CGAffineTransform, opacity: Double)] = [:]
+        static let trustedQuietElements: Set<String> = ["defs", "linearGradient", "radialGradient", "stop", "clipPath"]
+
+        init(trusted: Bool) { self.trusted = trusted }
+
         var root: Root?
         var commands: [Command] = []
         var warnings: [String] = []
@@ -150,8 +198,22 @@ struct RestrictedSVG {
                 if k.hasSuffix("href") { return fail(parser, "不允许外部引用（\(key)）") }
                 if k.hasPrefix("on") { return fail(parser, "不允许事件属性（\(key)）") }
                 let v = value.lowercased()
-                if v.contains("url(") || v.contains("javascript:") || v.contains("data:") {
+                let allowedLocal = trusted && RestrictedSVG.onlyLocalReferences(v)
+                if (v.contains("url(") && !allowedLocal) || v.contains("javascript:") || v.contains("data:") {
                     return fail(parser, "不允许引用（\(key)=\(value.prefix(40))）")
+                }
+            }
+            if trusted {
+                if local == "linearGradient" || local == "radialGradient" {
+                    pendingGradient = GradientDef(element: local, attributes: attributes)
+                } else if local == "stop", pendingGradient != nil {
+                    let props = properties(attributes)
+                    let offset = props["offset"].map(RestrictedSVG.fraction) ?? 0
+                    let color = props["stop-color"].flatMap {
+                        RestrictedSVG.parseColor($0.trimmingCharacters(in: .whitespaces).lowercased())
+                    } ?? (0, 0, 0, 1)
+                    let opacity = props["stop-opacity"].flatMap(Double.init) ?? 1
+                    pendingGradient?.stops.append((offset, color, opacity))
                 }
             }
             if skipDepth > 0 { skipDepth += 1; return }
@@ -168,7 +230,7 @@ struct RestrictedSVG {
             // display: none 的子树整个不画；只是隐藏，不算不支持，不警告。
             if hidden(props) { skipDepth = 1; return }
             guard RestrictedSVG.Policy.containerElements.contains(local) || RestrictedSVG.Policy.shapeElements.contains(local) else {
-                warnings.append("跳过不支持的元素 <\(local)>")
+                if !(trusted && Self.trustedQuietElements.contains(local)) { warnings.append("跳过不支持的元素 <\(local)>") }
                 skipDepth = 1
                 return
             }
@@ -189,6 +251,11 @@ struct RestrictedSVG {
 
         func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
             depth -= 1
+            let local = name.split(separator: ":").last.map(String.init) ?? name
+            if trusted, local == "linearGradient" || local == "radialGradient", let g = pendingGradient {
+                if let id = g.attributes["id"] { gradientDefs[id] = g }
+                pendingGradient = nil
+            }
             if skipDepth > 0 { skipDepth -= 1; return }
             if !stack.isEmpty { stack.removeLast() }
         }
@@ -222,7 +289,13 @@ struct RestrictedSVG {
         func emit(_ path: CGPath, _ s: Style) {
             var p = s.transform
             guard let transformed = path.copy(using: &p) else { return }
-            if let f = s.fill, s.fillOpacity * f.a > 0 {
+            if let id = s.fillGradient {
+                // 先放一个透明填充占位，解析完在 resolvedCommands() 里换成渐变。
+                if s.fillOpacity > 0 {
+                    pendingFills[commands.count] = (id, path.boundingBoxOfPath, s.transform, s.fillOpacity)
+                    commands.append(.fill(transformed, color((0, 0, 0, 0), alpha: 0), evenOdd: s.evenOdd))
+                }
+            } else if let f = s.fill, s.fillOpacity * f.a > 0 {
                 commands.append(.fill(transformed, color(f, alpha: s.fillOpacity * f.a), evenOdd: s.evenOdd))
             }
             if let k = s.stroke, s.strokeWidth > 0, s.strokeOpacity * k.a > 0 {
@@ -231,6 +304,50 @@ struct RestrictedSVG {
                 commands.append(.stroke(transformed, color(k, alpha: s.strokeOpacity * k.a),
                                         width: s.strokeWidth * scale, cap: s.cap, join: s.join, miterLimit: s.miterLimit))
             }
+        }
+
+        /// 把渐变占位换成真正的渐变命令；找不到定义的去掉并警告。
+        func resolvedCommands() -> [Command] {
+            commands.enumerated().compactMap { i, command in
+                guard let fill = pendingFills[i] else { return command }
+                guard case .fill(let path, _, let evenOdd) = command,
+                      let def = gradientDefs[fill.id], let g = gradient(def, objectBox: fill.objectBox,
+                                                                       transform: fill.transform, opacity: fill.opacity)
+                else {
+                    warnings.append("找不到渐变 #\(fill.id)，已跳过")
+                    return nil
+                }
+                return .gradientFill(path, g, evenOdd: evenOdd)
+            }
+        }
+
+        func gradient(_ def: GradientDef, objectBox: CGRect, transform: CGAffineTransform, opacity: Double) -> Gradient? {
+            guard !def.stops.isEmpty else { return nil }
+            var last = 0.0
+            var locations: [CGFloat] = []
+            var colors: [CGColor] = []
+            for stop in def.stops {
+                last = max(last, min(max(stop.offset, 0), 1))   // 位置不能往回走（SVG 规则）
+                locations.append(last)
+                colors.append(color(stop.color, alpha: stop.color.a * stop.opacity * opacity))
+            }
+            guard let cg = CGGradient(colorsSpace: WorkingColor.sRGB, colors: colors as CFArray, locations: locations) else { return nil }
+            let a = def.attributes
+            func v(_ k: String, _ fallback: Double) -> Double { a[k].map(RestrictedSVG.fraction) ?? fallback }
+            let shape: Gradient.Shape
+            if def.element == "linearGradient" {
+                shape = .linear(CGPoint(x: v("x1", 0), y: v("y1", 0)), CGPoint(x: v("x2", 1), y: v("y2", 0)))
+            } else {
+                let cx = v("cx", 0.5), cy = v("cy", 0.5)
+                shape = .radial(center: CGPoint(x: cx, y: cy), radius: v("r", 0.5), focus: CGPoint(x: v("fx", cx), y: v("fy", cy)))
+            }
+            // 渐变坐标 → gradientTransform →（objectBoundingBox 时）图形外框 → 元素的 transform。
+            var m = a["gradientTransform"].map(self.transform) ?? .identity
+            if a["gradientUnits"] != "userSpaceOnUse" {
+                m = m.concatenating(CGAffineTransform(a: objectBox.width, b: 0, c: 0, d: objectBox.height,
+                                                      tx: objectBox.minX, ty: objectBox.minY))
+            }
+            return Gradient(shape: shape, gradient: cg, matrix: m.concatenating(transform))
         }
 
         func color(_ c: RGBA, alpha: Double) -> CGColor {
@@ -266,7 +383,14 @@ struct RestrictedSVG {
                     s.unknownColor = v
                 }
             }
-            if let v = props["fill"] { s.fill = paint(v, inherited: parent.fill, style: s) }
+            if let v = props["fill"] {
+                if trusted, let id = RestrictedSVG.localReference(v) {
+                    s.fillGradient = id
+                } else {
+                    s.fill = paint(v, inherited: parent.fill, style: s)
+                    if v.trimmingCharacters(in: .whitespaces).lowercased() != "inherit" { s.fillGradient = nil }
+                }
+            }
             if let v = props["stroke"] { s.stroke = paint(v, inherited: parent.stroke, style: s) }
             if let v = props["stroke-width"].flatMap(length) { s.strokeWidth = v }
             if let v = props["stroke-miterlimit"].flatMap(Double.init), v >= 1, v.isFinite { s.miterLimit = v }
@@ -376,6 +500,27 @@ struct RestrictedSVG {
     }
 
     /// 数字列表（逗号或空白分隔，支持 `1.5.5`、`1-2`、指数）。
+    /// 只含 `url(#id)` 这种文件内部引用（trusted 才接受）。
+    static func onlyLocalReferences(_ v: String) -> Bool {
+        let pattern = #"url\(\s*['"]?#[A-Za-z0-9_.:-]+['"]?\s*\)"#
+        return !v.replacingOccurrences(of: pattern, with: "", options: .regularExpression).contains("url(")
+    }
+
+    /// `url(#id)` 里的 id。
+    static func localReference(_ v: String) -> String? {
+        let t = v.trimmingCharacters(in: .whitespaces)
+        guard t.lowercased().hasPrefix("url("), onlyLocalReferences(t.lowercased()), let hash = t.firstIndex(of: "#") else { return nil }
+        let id = t[t.index(after: hash)...].prefix { $0.isLetter || $0.isNumber || "_.:-".contains($0) }
+        return id.isEmpty ? nil : String(id)
+    }
+
+    /// 渐变的位置和坐标：数字，或百分比（除以 100）。
+    static func fraction(_ v: String) -> Double {
+        let t = v.trimmingCharacters(in: .whitespaces)
+        if t.hasSuffix("%") { return (Double(t.dropLast()) ?? 0) / 100 }
+        return Double(t) ?? 0
+    }
+
     static func numbers(_ s: String) -> [Double] {
         var scanner = PathData.Scanner(Array(s.utf8))
         var out: [Double] = []

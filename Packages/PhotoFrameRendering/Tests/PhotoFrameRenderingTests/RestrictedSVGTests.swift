@@ -15,7 +15,7 @@ struct RestrictedSVGTests {
 
     static func path(_ c: RestrictedSVG.Command) -> CGPath {
         switch c {
-        case .fill(let p, _, _), .stroke(let p, _, _, _, _, _): p
+        case .fill(let p, _, _), .stroke(let p, _, _, _, _, _), .gradientFill(let p, _, _): p
         }
     }
 
@@ -23,6 +23,7 @@ struct RestrictedSVGTests {
     static func rgba(_ c: RestrictedSVG.Command) -> [Double] {
         switch c {
         case .fill(_, let color, _), .stroke(_, let color, _, _, _, _): (color.components ?? []).map(Double.init)
+        case .gradientFill: []
         }
     }
 

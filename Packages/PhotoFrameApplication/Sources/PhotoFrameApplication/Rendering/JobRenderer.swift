@@ -43,12 +43,16 @@ public struct JobRenderRequest: Sendable {
     public var slots: SlotResolution?
     /// 没有 ICC 的源图按什么色彩空间解释（D-04）。
     public var sourceColorOverride: SourceColorOverride?
+    /// 手填的元数据（D-135）：`film`、`make`、`model`、`aperture`、`shutter`、`iso` 等，优先于源图的 EXIF。
+    public var metadataOverrides: [String: String]
 
     public init(
         jobId: JobID, attemptId: AttemptID, source: PhotoSource, preset: ExportPreset,
-        platform: PlatformProfile? = nil, slots: SlotResolution? = nil, sourceColorOverride: SourceColorOverride? = nil
+        platform: PlatformProfile? = nil, slots: SlotResolution? = nil, sourceColorOverride: SourceColorOverride? = nil,
+        metadataOverrides: [String: String] = [:]
     ) {
         self.sourceColorOverride = sourceColorOverride
+        self.metadataOverrides = metadataOverrides
         self.jobId = jobId
         self.attemptId = attemptId
         self.source = source

@@ -122,7 +122,8 @@ extension Workbench {
             }
             for j in restored[s].jobs.indices {
                 var job = restored[s].jobs[j]
-                if let old = liveJobs[job.id], live?.colorOverride == restored[s].colorOverride {
+                if let old = liveJobs[job.id], live?.colorOverride == restored[s].colorOverride,
+                   live?.metadataOverrides == restored[s].metadataOverrides {
                     job.validation = old.validation
                     var unvalidated = old
                     unvalidated.validation = nil
