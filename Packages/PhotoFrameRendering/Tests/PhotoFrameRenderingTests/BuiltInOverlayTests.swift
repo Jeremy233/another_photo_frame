@@ -191,6 +191,21 @@ struct BuiltInOverlayTests {
         #expect(try content(sourceFilm: "Kodak Portra 400")?.naturalSize == picked, "源图填了别的胶卷")
     }
 
+    @Test("没有图标时选「不显示」：整个胶卷装饰都不画，「图标和文字」时文字也不画（D-134，2026-11-05 确认）")
+    func noIconHidesEverything() throws {
+        func content(show: FilmIconStyle.Show, noIcon: FilmIconStyle.NoIcon) throws -> OverlayContent? {
+            let layer = OverlayLayer(layerId: "film", type: .filmIcon, filmIcon: FilmIconStyle(show: show, noIcon: noIcon))
+            var warnings: [RenderWarning] = []
+            // Vision3 50D 没有内置图标。
+            return try OverlayPlanner.filmIcon(layer, meta: ResolvedMetadata(values: ["film": "Kodak Vision3 50D"], brand: nil),
+                                               background: PresetColor(hex: "#FAFAF8"), warnings: &warnings)
+        }
+        #expect(try content(show: .iconAndText, noIcon: .none) == nil)
+        #expect(try content(show: .icon, noIcon: .none) == nil)
+        #expect(try content(show: .iconAndText, noIcon: .text) != nil)
+        #expect(try content(show: .text, noIcon: .none) != nil, "只有文字时不看「没有图标时」")
+    }
+
     @Test("普通素材装饰绑定内置素材：用了渐变的 Nikon 标志也能画（D-139）")
     func assetLayerWithBuiltIn() async throws {
         let emblem = try #require(BuiltInAsset.asset(path: "cameras/nikon/nikon-emblem.svg"))

@@ -129,6 +129,19 @@ import Testing
         #expect(OverlayLayer(layerId: "t", type: .metadataText).displayedTextStyle == TextStyle())
     }
 
+    @Test("胶卷装饰的右栏：选了自己的图标时也能调「图标大小」，只是没有「没有图标时」；只有文字时两个都没有")
+    func filmRows() {
+        let builtIn = FilmIconStyle(film: "kodak-portra-400")
+        #expect(builtIn.offersIconSize && builtIn.offersNoIconChoice)
+        #expect(FilmIconStyle().offersIconSize && FilmIconStyle().offersNoIconChoice, "自动")
+        let own = FilmIconStyle(film: FilmIconStyle.fromSlot)
+        #expect(own.offersIconSize, "自己的图标也按图标大小画")
+        #expect(!own.offersNoIconChoice)
+        let textOnly = FilmIconStyle(film: FilmIconStyle.fromSlot, show: .text)
+        #expect(!textOnly.offersIconSize && !textOnly.offersNoIconChoice)
+        #expect(!FilmIconStyle(show: .text).offersIconSize)
+    }
+
     @Test("品牌 logo 颜色改成「自定」：写入界面上显示的默认色，预设仍然有效（D-137：custom 必须有 color）")
     func customLogoColor() async throws {
         let f = try Fixture()

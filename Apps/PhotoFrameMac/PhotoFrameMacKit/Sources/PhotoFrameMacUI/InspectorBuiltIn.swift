@@ -104,7 +104,7 @@ struct FilmIconRows: View {
         InspectorPicker("来源", selection: source) {
             Text("自动（按源图填的胶卷）").tag(FilmIconStyle.automatic)
             ForEach(choices.makers, id: \.maker) { group in
-                Section(group.maker.capitalized) { ForEach(group.films) { Text($0.title).tag($0.id) } }
+                Section(BuiltInWatermarks.makerName(group.maker)) { ForEach(group.films) { Text($0.title).tag($0.id) } }
             }
             if !choices.user.isEmpty {
                 Section("用户") { ForEach(choices.user) { Text($0.title).tag(AssetSourceTag.tag($0.id)) } }
@@ -119,12 +119,14 @@ struct FilmIconRows: View {
             Text("只有图标").tag(FilmIconStyle.Show.icon)
             Text("只有文字").tag(FilmIconStyle.Show.text)
         }
-        if style.show != .text, style.film != FilmIconStyle.fromSlot {
+        if style.offersNoIconChoice {
             InspectorPicker("没有图标时", selection: binding(\.noIcon)) {
                 Text("用胶卷品牌 logo").tag(FilmIconStyle.NoIcon.brandLogo)
                 Text("只显示文字").tag(FilmIconStyle.NoIcon.text)
                 Text("不显示").tag(FilmIconStyle.NoIcon.none)
             }
+        }
+        if style.offersIconSize {
             NumberField(title: "图标大小", value: binding(\.iconSizePx))
         }
         if style.show != .icon {
@@ -255,7 +257,7 @@ private struct FilmMenu: View {
     var body: some View {
         Menu {
             ForEach(Self.makers, id: \.self) { maker in
-                Section(maker.capitalized) {
+                Section(BuiltInWatermarks.makerName(maker)) {
                     ForEach(BuiltInWatermarks.films.filter { $0.maker == maker }) { film in
                         Button(film.name) { pick(film.name) }
                     }

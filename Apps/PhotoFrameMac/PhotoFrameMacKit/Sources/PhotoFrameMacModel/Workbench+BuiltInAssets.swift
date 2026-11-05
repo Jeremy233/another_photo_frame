@@ -77,6 +77,13 @@ extension BrandLogoStyle {
     public static let defaultCustomColor = PresetColor(hex: "#1A1A1A")
 }
 
+extension FilmIconStyle {
+    /// 右栏显示「没有图标时」：要画图标、而且图标来自内置胶卷时才有用（选了自己的图标时总有图，D-139）。
+    public var offersNoIconChoice: Bool { show != .text && film != FilmIconStyle.fromSlot }
+    /// 右栏显示「图标大小」：要画图标时都有，自己的图标也按它画（2026-11-05 确认）。
+    public var offersIconSize: Bool { show != .text }
+}
+
 // MARK: - 内置的和自己的素材放在同一个菜单里（D-139）
 
 /// 菜单里的一项：给 ID 和显示的名字。

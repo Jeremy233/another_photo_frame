@@ -73,6 +73,13 @@ struct BuiltInWatermarksTests {
         #expect(BuiltInWatermarks.filmBrand(forFilmName: "Ilford Pan F") == nil)
     }
 
+    @Test("胶片厂的名字按胶卷名里的写法（CineStill，不是 Cinestill）")
+    func makerNames() {
+        let makers = BuiltInWatermarks.films.map(\.maker).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        #expect(makers.map(BuiltInWatermarks.makerName) == ["Kodak", "Fujifilm", "Ilford", "Kentmere", "CineStill", "Lomography"])
+        #expect(BuiltInWatermarks.makerName("agfa") == "Agfa", "没有胶卷时首字母大写")
+    }
+
     @Test("内置素材：31 个 logo（Nikon 有字标和标志）+ 29 个胶卷图标，ID 固定、不重复（D-139）")
     func builtInAssets() throws {
         let all = BuiltInAsset.all
