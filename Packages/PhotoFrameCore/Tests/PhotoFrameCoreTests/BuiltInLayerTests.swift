@@ -65,4 +65,29 @@ struct BuiltInLayerTests {
         #expect(Set(issues.warnings.map(\.path)) == ["layers[2].logo", "layers[2].filmIcon"], "\(issues)")
         #expect(!issues.contains { $0.code == "preset.empty_text" }, "胶卷装饰没有 text 时用默认样式，不警告")
     }
+
+    @Test("品牌 logo、胶卷选了素材槽（slot）时用 slotId；改回自动时留着的槽不报警告（D-139）")
+    func slotSource() {
+        var p = Self.preset([
+            OverlayLayer(layerId: "logo", type: .brandLogo, slotId: "logo", logo: BrandLogoStyle(brand: BrandLogoStyle.fromSlot)),
+            OverlayLayer(layerId: "film", type: .filmIcon, slotId: "film", filmIcon: FilmIconStyle(film: FilmIconStyle.fromSlot)),
+        ])
+        p.assetSlots = [AssetSlot(slotId: "logo", label: "品牌 logo"), AssetSlot(slotId: "film", label: "胶卷图标")]
+        #expect(p.layers.allSatisfy(\.usesAssetSlot) && p.referencedSlotIds == ["logo", "film"])
+        #expect(p.validate().errors.isEmpty && p.validate().warnings.isEmpty, "\(p.validate())")
+
+        // 改回自动：槽留着，不用，也不警告。
+        p.layers[0].logo?.brand = BrandLogoStyle.automatic
+        p.layers[1].filmIcon?.film = "kodak-portra-400"
+        #expect(!p.layers.contains(where: \.usesAssetSlot) && p.referencedSlotIds.isEmpty)
+        #expect(p.validate().errors.isEmpty && p.validate().warnings.isEmpty, "\(p.validate())")
+
+        // 选了素材槽却没有 slotId、或者槽不存在。
+        p.layers[0].logo?.brand = BrandLogoStyle.fromSlot
+        p.layers[0].slotId = nil
+        p.layers[1].filmIcon?.film = FilmIconStyle.fromSlot
+        p.layers[1].slotId = "missing"
+        let issues = p.validate()
+        #expect(issues.errors.map(\.code) == ["preset.missing_slot_reference", "preset.unknown_slot_reference"], "\(issues)")
+    }
 }

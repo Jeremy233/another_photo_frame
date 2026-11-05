@@ -12,10 +12,16 @@ struct BrandLogoRows: View {
     let layer: OverlayLayer
 
     var body: some View {
-        InspectorPicker("来源", selection: binding(\.brand)) {
+        let choices = workbench.brandLogoChoices
+        // 内置品牌和自己「相机图标」组里的素材并列，同名时加「（内置）」「（用户）」，没有优先级（D-139）。
+        InspectorPicker("来源", selection: source) {
             Text("自动（按相机品牌）").tag(BrandLogoStyle.automatic)
-            Section("现役品牌") { ForEach(BuiltInWatermarks.brands.filter { !$0.classic }) { Text($0.name).tag($0.id) } }
-            Section("经典品牌") { ForEach(BuiltInWatermarks.brands.filter(\.classic)) { Text($0.name).tag($0.id) } }
+            Section("现役品牌") { ForEach(choices.current) { Text($0.title).tag($0.id) } }
+            Section("经典品牌") { ForEach(choices.classic) { Text($0.title).tag($0.id) } }
+            if !choices.user.isEmpty {
+                Section("用户") { ForEach(choices.user) { Text($0.title).tag(AssetSourceTag.tag($0.id)) } }
+            }
+            AssetSourceTag.otherItem(workbench: workbench, layer: layer, listed: choices.user.map(\.id))
         }
         if style.brand == BrandLogoStyle.automatic {
             LabeledContent("当前照片") { MatchLabel(text: currentMatch.text, matched: currentMatch.matched) }
@@ -24,11 +30,13 @@ struct BrandLogoRows: View {
                 Text("显示品牌文字").tag(BrandLogoStyle.Fallback.text)
             }
         }
-        InspectorPicker("样式", selection: binding(\.variant)) {
-            Text("字标").tag(BrandLogoStyle.Variant.wordmark)
-            Text("标志").tag(BrandLogoStyle.Variant.emblem)
+        if style.brand != BrandLogoStyle.fromSlot {
+            InspectorPicker("样式", selection: binding(\.variant)) {
+                Text("字标").tag(BrandLogoStyle.Variant.wordmark)
+                Text("标志").tag(BrandLogoStyle.Variant.emblem)
+            }
+            InspectorRow { Hint("只影响同时有字标和标志的品牌，目前是 Nikon") }
         }
-        InspectorRow { Hint("只影响同时有字标和标志的品牌，目前是 Nikon") }
         NumberField(title: "高度", value: binding(\.heightPx))
         InspectorPicker("颜色", selection: binding(\.colorMode)) {
             Text("原色").tag(BrandLogoStyle.ColorMode.original)
@@ -44,6 +52,15 @@ struct BrandLogoRows: View {
 
     private var style: BrandLogoStyle { layer.logo ?? BrandLogoStyle() }
 
+    /// 来源菜单的选择：`auto`、品牌 ID，或选了素材时的 ``AssetSourceTag``。
+    private var source: Binding<String> {
+        Binding(get: { style.brand == BrandLogoStyle.fromSlot ? AssetSourceTag.current(workbench: workbench, layer: layer) : style.brand },
+                set: { v in
+                    if let id = AssetSourceTag.assetId(v) { Task { await workbench.useAsset(id, forLayer: layer.layerId) } }
+                    else if v != AssetSourceTag.unbound { update { $0.brand = v } }
+                })
+    }
+
     /// 预览的源图认出的品牌（手填的相机优先，D-135）。
     private var currentMatch: (text: String, matched: Bool) {
         guard let camera = workbench.previewCamera else { return ("源图没有相机品牌（可在源图上手动填写）", false) }
@@ -52,7 +69,10 @@ struct BrandLogoRows: View {
     }
 
     private var colorNote: String {
-        switch style.colorMode {
+        if style.brand == BrandLogoStyle.fromSlot {
+            return style.colorMode == .original ? "照素材原样画" : "整个素材换成一种颜色：自动是浅色画布用黑色、深色画布用白色"
+        }
+        return switch style.colorMode {
         case .original: "彩色 logo 用品牌自己的颜色，深色画布上换成白字版；单色 logo 没有自己的颜色，浅色画布用黑色、深色画布用白色"
         case .auto: "浅色画布用黑色、深色画布用白色；带底色的标志（Leica、Zeiss、Kodak 等）仍用原色"
         case .custom: "整个 logo 换成这个颜色；带底色的标志仍用原色，Kodak 换成同形状的单色版"
@@ -78,13 +98,17 @@ struct FilmIconRows: View {
     let layer: OverlayLayer
 
     var body: some View {
-        InspectorPicker("来源", selection: binding(\.film)) {
+        let choices = workbench.filmChoices
+        // 内置胶卷和自己「胶卷图标」组里的素材并列，同名时加「（内置）」「（用户）」，没有优先级（D-139）。
+        InspectorPicker("来源", selection: source) {
             Text("自动（按源图填的胶卷）").tag(FilmIconStyle.automatic)
-            ForEach(Self.makers, id: \.self) { maker in
-                Section(maker.capitalized) {
-                    ForEach(BuiltInWatermarks.films.filter { $0.maker == maker }) { Text($0.name).tag($0.id) }
-                }
+            ForEach(choices.makers, id: \.maker) { group in
+                Section(group.maker.capitalized) { ForEach(group.films) { Text($0.title).tag($0.id) } }
             }
+            if !choices.user.isEmpty {
+                Section("用户") { ForEach(choices.user) { Text($0.title).tag(AssetSourceTag.tag($0.id)) } }
+            }
+            AssetSourceTag.otherItem(workbench: workbench, layer: layer, listed: choices.user.map(\.id))
         }
         if style.film == FilmIconStyle.automatic {
             LabeledContent("当前照片") { MatchLabel(text: currentFilm.text, matched: currentFilm.matched) }
@@ -94,7 +118,7 @@ struct FilmIconRows: View {
             Text("只有图标").tag(FilmIconStyle.Show.icon)
             Text("只有文字").tag(FilmIconStyle.Show.text)
         }
-        if style.show != .text {
+        if style.show != .text, style.film != FilmIconStyle.fromSlot {
             InspectorPicker("没有图标时", selection: binding(\.noIcon)) {
                 Text("用胶卷品牌 logo").tag(FilmIconStyle.NoIcon.brandLogo)
                 Text("只显示文字").tag(FilmIconStyle.NoIcon.text)
@@ -113,9 +137,16 @@ struct FilmIconRows: View {
         }
     }
 
-    static let makers: [String] = BuiltInWatermarks.films.map(\.maker).reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
-
     private var style: FilmIconStyle { layer.filmIcon ?? FilmIconStyle() }
+
+    /// 来源菜单的选择：`auto`、胶卷 ID，或选了素材时的 ``AssetSourceTag``。
+    private var source: Binding<String> {
+        Binding(get: { style.film == FilmIconStyle.fromSlot ? AssetSourceTag.current(workbench: workbench, layer: layer) : style.film },
+                set: { v in
+                    if let id = AssetSourceTag.assetId(v) { Task { await workbench.useAsset(id, forLayer: layer.layerId) } }
+                    else if v != AssetSourceTag.unbound { binding(\.film).wrappedValue = v }
+                })
+    }
 
     private var currentFilm: (text: String, matched: Bool) {
         guard let film = workbench.previewFilm, !film.isEmpty else { return ("源图没有填胶卷，不显示", false) }
@@ -129,6 +160,25 @@ struct FilmIconRows: View {
             s[keyPath: path] = v
             l.filmIcon = s
         } })
+    }
+}
+
+/// 品牌 logo、胶卷来源菜单里「素材」一项的 tag（D-139）：`asset:<素材 ID>`；选了素材槽但还没绑定时是 `slot`。
+@MainActor enum AssetSourceTag {
+    static let unbound = "slot"
+    static func tag(_ id: UUID) -> String { "asset:\(id.uuidString)" }
+    static func assetId(_ tag: String) -> UUID? { tag.hasPrefix("asset:") ? UUID(uuidString: String(tag.dropFirst(6))) : nil }
+    static func current(workbench: Workbench, layer: OverlayLayer) -> String { workbench.layerAsset(layer).map(tag) ?? unbound }
+
+    /// 当前选的素材不在「用户」一组里时（还没绑定、绑的是内置素材、素材已删除）补一项，菜单才显示得出当前的选择。
+    @ViewBuilder static func otherItem(workbench: Workbench, layer: OverlayLayer, listed: [UUID]) -> some View {
+        if layer.usesAssetSlot {
+            if let id = workbench.layerAsset(layer) {
+                if !listed.contains(id) { Text(workbench.assetMenuTitle(id) ?? "已删除的素材").tag(tag(id)) }
+            } else {
+                Text("未选素材").tag(unbound)
+            }
+        }
     }
 }
 
@@ -203,10 +253,11 @@ struct SourceMetadataSection: View {
 /// 胶卷输入框旁的菜单：从内置胶卷里选。
 private struct FilmMenu: View {
     let pick: (String) -> Void
+    static let makers: [String] = BuiltInWatermarks.films.map(\.maker).reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
 
     var body: some View {
         Menu {
-            ForEach(FilmIconRows.makers, id: \.self) { maker in
+            ForEach(Self.makers, id: \.self) { maker in
                 Section(maker.capitalized) {
                     ForEach(BuiltInWatermarks.films.filter { $0.maker == maker }) { film in
                         Button(film.name) { pick(film.name) }

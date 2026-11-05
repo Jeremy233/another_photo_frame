@@ -76,13 +76,20 @@ struct BuiltInOverlayTests {
     }
 
     /// 画在画布左上角（留白里），返回这一块的像素。
-    static func corner(_ layer: OverlayLayer, background: String = "#FAFAF8", overrides: [String: String])
+    static func corner(_ layer: OverlayLayer, background: String = "#FAFAF8", overrides: [String: String],
+                       slot: BuiltInAsset? = nil)
         async throws -> (pixels: [(Int, Int, Int)], warnings: [RenderWarning])
     {
         var placed = layer
         placed.anchor = .topLeft
         placed.reference = .canvas
-        let result = try await render(try photo(), makePreset(background: background, layers: [placed]), overrides: overrides)
+        // 素材槽来源（D-139）：图层的槽绑到一个内置素材，渲染器拿到的是它的内容地址。
+        let slots = placed.slotId.map { [AssetSlot(slotId: $0)] } ?? []
+        let assets = zip(placed.slotId.map { [$0] } ?? [], slot.map { [$0] } ?? []).reduce(into: [String: RenderAsset]()) {
+            $0[$1.0] = RenderAsset(fileURL: $1.1.contentURL, format: $1.1.format)
+        }
+        let result = try await render(try photo(), makePreset(background: background, layers: [placed], slots: slots),
+                                      assets: assets, overrides: overrides)
         let img = try readSRGB8(try #require(result.outputs.first).fileURL)
         var pixels: [(Int, Int, Int)] = []
         for y in 0..<56 { for x in 0..<400 { pixels.append(img[x, y]) } }
@@ -139,5 +146,43 @@ struct BuiltInOverlayTests {
         // 没有图标的胶卷：用胶卷品牌的 logo 加文字。
         let fallback = try await Self.corner(layer, overrides: ["film": "Kodak Vision3 50D"])
         #expect(fallback.pixels.contains { $0.0 > 180 && $0.1 < 80 && $0.2 < 80 }, "Kodak 红")
+    }
+
+    @Test("品牌 logo 用素材槽里的素材：原色照原样画，自定颜色整个换色；内置的渐变 SVG 按受信任模式解析（D-139）")
+    func logoFromSlot() async throws {
+        let leica = try #require(BuiltInAsset.asset(path: "cameras/leica/leica.svg"))
+        func layer(_ style: BrandLogoStyle) -> OverlayLayer {
+            OverlayLayer(layerId: "logo", type: .brandLogo, slotId: "logo", logo: style)
+        }
+        // 认不出的相机也照样画：素材槽不看相机。
+        let original = try await Self.corner(layer(BrandLogoStyle(brand: BrandLogoStyle.fromSlot, heightPx: 30)),
+                                             overrides: ["make": "GoPro"], slot: leica)
+        #expect(original.warnings.isEmpty, "\(original.warnings)")
+        #expect(original.pixels.contains { $0.0 > 180 && $0.1 < 60 && $0.2 < 60 }, "Leica 红")
+        let blue = try await Self.corner(layer(BrandLogoStyle(brand: BrandLogoStyle.fromSlot, heightPx: 30, colorMode: .custom,
+                                                              color: PresetColor(hex: "#0000FF"))), overrides: [:], slot: leica)
+        #expect(blue.pixels.contains { $0.2 > 200 && $0.0 < 60 } && !blue.pixels.contains { $0.0 > 180 && $0.1 < 60 && $0.2 < 60 })
+        // 槽里没有素材：警告并跳过。
+        let missing = try await Self.corner(layer(BrandLogoStyle(brand: BrandLogoStyle.fromSlot)), overrides: [:])
+        #expect(missing.warnings.map(\.code) == ["overlay.asset_missing"])
+    }
+
+    @Test("胶卷装饰用素材槽里的图标：源图没填胶卷也画图标（D-139）")
+    func filmFromSlot() async throws {
+        let portra = try #require(BuiltInAsset.all.first { $0.title == "Kodak Portra 400" })
+        let layer = OverlayLayer(layerId: "film", type: .filmIcon, slotId: "film",
+                                 filmIcon: FilmIconStyle(film: FilmIconStyle.fromSlot, iconSizePx: 48))
+        let drawn = try await Self.corner(layer, overrides: [:], slot: portra)
+        #expect(drawn.warnings.isEmpty, "\(drawn.warnings)")
+        #expect(drawn.pixels.contains { abs($0.0 - 0x76) < 12 && abs($0.1 - 0x57) < 12 && abs($0.2 - 0xA6) < 12 })
+    }
+
+    @Test("普通素材装饰绑定内置素材：用了渐变的 Nikon 标志也能画（D-139）")
+    func assetLayerWithBuiltIn() async throws {
+        let emblem = try #require(BuiltInAsset.asset(path: "cameras/nikon/nikon-emblem.svg"))
+        let layer = OverlayLayer(layerId: "badge", type: .asset, maxBoundsPx: PixelSize(width: 56, height: 56), slotId: "badge")
+        let drawn = try await Self.corner(layer, overrides: [:], slot: emblem)
+        #expect(drawn.warnings.isEmpty, "\(drawn.warnings)")
+        #expect(drawn.pixels.contains { $0.0 > 200 && $0.1 > 170 && $0.2 < 90 }, "Nikon 黄")
     }
 }

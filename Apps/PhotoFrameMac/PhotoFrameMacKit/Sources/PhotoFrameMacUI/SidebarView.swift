@@ -326,6 +326,8 @@ private struct AssetList: View {
                                     let tag = AssetSelection.builtIn(item.path)
                                     BuiltInAssetTile(item: item, isSelected: workbench.selectedAsset == tag)
                                         .onTapGesture { workbench.selectedAsset = tag }
+                                        // 内置素材也能拖到素材槽上绑定（D-139）。
+                                        .draggable(DragPayload.asset(item.assetId).string)
                                         .contextMenu { builtInMenu(item) }
                                 }
                             }
@@ -333,6 +335,7 @@ private struct AssetList: View {
                             ForEach(group.items) { item in
                                 AssetRow(title: item.title, help: "\(item.title)\n\(BuiltInAssetTile.note)")
                                     .tag(AssetSelection.builtIn(item.path))
+                                    .draggable(DragPayload.asset(item.assetId).string)
                                     .contextMenu { builtInMenu(item) }
                             }
                         }

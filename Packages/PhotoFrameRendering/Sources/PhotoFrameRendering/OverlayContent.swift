@@ -4,6 +4,7 @@ import CoreText
 import Foundation
 import ImageIO
 import PhotoFrameCore
+import PhotoFrameStorage
 
 /// 一个图层的绘制内容：先给出自然尺寸（交给 `OverlayLayer.geometry(contentSize:)`），
 /// 再按 Core 解析出的最终尺寸绘制成工作空间里的 CIImage（extent = (0, 0, size)）。
@@ -36,6 +37,16 @@ enum OverlayContent {
     // MARK: - 准备
 
     static func load(asset: RenderAsset) throws(RenderError) -> OverlayContent {
+        // 绑定到素材槽的内置素材（D-139）：内容在程序里，SVG 按受信任模式解析（D-137）。
+        if let builtIn = BuiltInAsset.asset(contentURL: asset.fileURL) {
+            guard let data = builtIn.data else {
+                throw RenderError(code: "render.builtin_missing", message: "内置素材缺失：\(builtIn.path)")
+            }
+            switch try OverlayPlanner.loadGraphic(data, name: builtIn.path) {
+            case .vector(let svg): return .vector(svg)
+            case .bitmap(let image): return .bitmap(image)
+            }
+        }
         let data: Data
         do { data = try Data(contentsOf: asset.fileURL, options: .mappedIfSafe) } catch {
             throw RenderError(code: "render.asset_unreadable", message: "无法读取素材 \(asset.fileURL.lastPathComponent)")

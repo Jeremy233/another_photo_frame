@@ -99,6 +99,9 @@ photoframe --help | --version
 2. **预设本地**：`asset bind <素材> --slot <slotId> --preset <预设>`，保存在本机，不随预设导出；
 3. **用户默认**：`asset bind <素材> --slot <slotId>`，按 slotId 对所有预设生效（D-90）。
 
+品牌 logo、胶卷装饰的 `logo.brand` / `filmIcon.film` 写 `slot` 时，画图层 `slotId` 素材槽里的素材（D-139），绑定方式同上。
+GUI 里也能把内置的 logo 和胶卷图标绑定到素材槽（它们有固定的 assetId）；CLI 暂时还不能按名称引用内置素材。
+
 素材引用是 assetId，或显示名称（不区分大小写，必须唯一）。绑定指向的素材已删除或格式不被接受时警告并回退到下一级（D-28）；
 必需素材都找不到时校验失败（`slot.missing_required`，退出码 4），没有被启用图层用到的必需槽不影响（D-29）。
 
@@ -536,6 +539,7 @@ photoframe preset get "My IG" canvas
 | D-124 | 本地库位置：`PHOTOFRAME_LIBRARY` > 带 App Group 的容器 > 已存在的 Group Containers 目录 > `~/Library/Application Support/AnotherPhotoFrame/` |
 | D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图），内置和新建预设默认 `auto` |
 | D-135 | `export` / `preview` 的 `--film`、`--camera-make`、`--camera-model`、`--aperture`、`--shutter`、`--iso`：手填元数据，优先于 EXIF，与 GUI 相同 |
+| D-139 | `logo.brand` / `filmIcon.film` 可以写 `slot`，画图层素材槽里的素材；内置素材有固定的 assetId，CLI 暂时不能按名称引用 |
 
 ## 测试
 

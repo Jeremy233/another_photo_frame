@@ -49,11 +49,13 @@ enum MCPResources {
           `text`（`content` 或 `template`，`fontFamily`、`fontWeight`（`ultraLight` … `regular` … `black`）、`italic`、
           `fontSizePx`、`letterSpacingPx`、`lineHeight`、`color`、`colorMode`（`custom` 默认，用 `color`；`auto` 按画布背景深浅用深色或浅色）、`paddingPx`）
         - `brandLogo` 图层（内置品牌 logo，D-132）：设置写在 `logo` 里（缺少时用默认值）：
-          `brand`（`"auto"` 默认，按源图的相机品牌（EXIF 或手填的 make / model）自动选；或下面的品牌 ID）、
+          `brand`（`"auto"` 默认，按源图的相机品牌（EXIF 或手填的 make / model）自动选；或下面的品牌 ID；
+          或 `"slot"`，画图层 `slotId` 素材槽里绑定的素材，D-139）、
           `fallback`（认不出品牌时：`none` 默认，不画；`text` 画品牌文字）、`variant`（`wordmark` 默认 / `emblem`，只影响两种都有的品牌）、
           `heightPx`（logo 高度，默认 56）、`colorMode`（`original` 默认 / `auto` / `custom`）、`color`（`colorMode` 为 `custom` 时必填）
         - `filmIcon` 图层（内置胶卷图标，D-134）：设置写在 `filmIcon` 里（缺少时用默认值）：
-          `film`（`"auto"` 默认，按源图手填的胶卷；或下面的胶卷 ID）、`show`（`iconAndText` 默认 / `icon` / `text`）、
+          `film`（`"auto"` 默认，按源图手填的胶卷；或下面的胶卷 ID；或 `"slot"`，图标用图层 `slotId` 素材槽里的素材，D-139）、
+          `show`（`iconAndText` 默认 / `icon` / `text`）、
           `iconSizePx`（图标边长，默认 72）、`noIcon`（胶卷没有图标时：`brandLogo` 默认，用胶卷品牌的 logo；`text`；`none`）；
           文字样式写在图层的 `text` 里，模板默认 `{film}`。源图没填胶卷时不画
         - `assetSlots[]`：`slotId`、`kind`、`required`、`label`、`acceptedFormats`（`png` / `svg`）；不含位置和本地路径

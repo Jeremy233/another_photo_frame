@@ -237,9 +237,17 @@ private struct SlotBindingRow: View {
 
     var body: some View {
         LabeledContent("素材") {
+            // 自己的素材和内置素材都能选，同名时加「（内置）」「（用户）」（D-139）。
+            let choices = workbench.slotChoices
             Menu(label) {
-                ForEach(workbench.assets) { asset in
-                    Button(asset.displayName) { bind(asset.assetId) }
+                ForEach(choices.user) { choice in
+                    Button(choice.title) { bind(choice.id) }
+                }
+                Divider()
+                ForEach(choices.builtIn, id: \.title) { group in
+                    Menu(group.title) {
+                        ForEach(group.items) { choice in Button(choice.title) { bind(choice.id) } }
+                    }
                 }
                 Divider()
                 Button("清除绑定") { bind(nil) }
@@ -262,7 +270,7 @@ private struct SlotBindingRow: View {
 
     private var label: String {
         guard let binding = workbench.binding(for: slotId) else { return "未绑定" }
-        let name = workbench.assets.first { $0.assetId == binding.assetId }?.displayName ?? "已删除的素材"
+        let name = workbench.assetMenuTitle(binding.assetId) ?? "已删除的素材"
         // 与 CLI、警告同一套叫法（D-14）。
         let level = switch binding.level {
         case .job: "单任务"

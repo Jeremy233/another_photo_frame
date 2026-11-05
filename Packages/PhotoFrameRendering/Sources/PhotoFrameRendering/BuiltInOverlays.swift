@@ -145,9 +145,24 @@ struct CompositeArt {
 
 extension OverlayPlanner {
     /// 品牌 logo（D-132）。
-    static func brandLogo(_ layer: OverlayLayer, meta: ResolvedMetadata, background: PresetColor,
+    static func brandLogo(_ layer: OverlayLayer, assets: [String: RenderAsset] = [:], meta: ResolvedMetadata, background: PresetColor,
                           warnings: inout [RenderWarning]) throws(RenderError) -> OverlayContent? {
         let style = layer.logo ?? BrandLogoStyle()
+        if style.brand == BrandLogoStyle.fromSlot {
+            // 素材槽里的素材（D-139）：原色照原样画；自动、自定把整个图形换成一种颜色。
+            guard let (graphic, ratio) = try slotGraphic(layer, assets: assets, warnings: &warnings) else { return nil }
+            let tint: PresetColor? = switch style.colorMode {
+            case .original: nil
+            case .auto: AutoInk.color(on: background)
+            case .custom: style.color ?? AutoInk.color(on: background)
+            }
+            let h = style.heightPx * (ratio < 1.6 ? 1.8 : 1)
+            let w = h * ratio
+            return .composite(CompositeArt(
+                parts: [.graphic(graphic, tint: try tint.map { c throws(RenderError) in try WorkingColor.cgColor(c) },
+                                 rect: CGRect(x: 0, y: 0, width: w, height: h))],
+                naturalSize: PixelSize(width: max(1, Int(w.rounded(.up))), height: max(1, Int(h.rounded(.up))))))
+        }
         let brand = style.brand == BrandLogoStyle.automatic ? meta.brand : BuiltInWatermarks.brand(id: style.brand)
         guard let brand else {
             if style.brand != BrandLogoStyle.automatic {
@@ -211,6 +226,27 @@ extension OverlayPlanner {
         return (graphic, try tint.map { c throws(RenderError) in try WorkingColor.cgColor(c) }, ratio)
     }
 
+    /// 图层素材槽里的素材（内置的或导入的，D-139）和它的宽高比。没有可用素材时警告并返回 nil。
+    static func slotGraphic(_ layer: OverlayLayer, assets: [String: RenderAsset], warnings: inout [RenderWarning])
+        throws(RenderError) -> (CompositeArt.Graphic, ratio: Double)?
+    {
+        guard let slotId = layer.slotId, let asset = assets[slotId] else {
+            warnings.append(RenderWarning(code: "overlay.asset_missing", message: "素材槽 \(layer.slotId ?? "?") 没有可用素材，已跳过",
+                                          layerId: layer.layerId))
+            return nil
+        }
+        switch try OverlayContent.load(asset: asset) {
+        case .vector(let svg):
+            warnings += svg.warnings.map { RenderWarning(code: "overlay.svg_partial", message: $0, layerId: layer.layerId) }
+            let ratio = svg.size.height > 0 && svg.size.width.isFinite ? svg.size.width / svg.size.height : 1
+            return (.vector(svg), ratio > 0 && ratio.isFinite ? ratio : 1)
+        case .bitmap(let image):
+            return (.bitmap(image), Double(image.width) / Double(max(1, image.height)))
+        case .text, .composite:
+            return nil
+        }
+    }
+
     static func loadGraphic(_ data: Data, name: String) throws(RenderError) -> CompositeArt.Graphic {
         if name.hasSuffix(".svg") { return .vector(try RestrictedSVG.parse(data, trusted: true)) }
         guard let src = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
@@ -220,9 +256,22 @@ extension OverlayPlanner {
     }
 
     /// 胶卷图标和文字（D-134）。源图没填胶卷时不画（数码照片的常态，不警告）。
-    static func filmIcon(_ layer: OverlayLayer, meta: ResolvedMetadata, background: PresetColor,
+    static func filmIcon(_ layer: OverlayLayer, assets: [String: RenderAsset] = [:], meta: ResolvedMetadata, background: PresetColor,
                          warnings: inout [RenderWarning]) throws(RenderError) -> OverlayContent? {
         let style = layer.filmIcon ?? FilmIconStyle()
+        let fromSlot = style.film == FilmIconStyle.fromSlot
+        let size = style.iconSizePx
+        var icon: (CompositeArt.Graphic, CGColor?, CGSize)?
+        var showText = style.show != .icon
+        if fromSlot {
+            // 素材槽里的图标（D-139）：源图没填胶卷时也画图标，文字照常按源图填的胶卷。
+            if style.show != .text {
+                guard let (graphic, ratio) = try slotGraphic(layer, assets: assets, warnings: &warnings) else { return nil }
+                icon = (graphic, nil, CGSize(width: size * ratio, height: size))
+            }
+            return try filmComposite(layer, icon: icon, showText: showText, size: size, meta: meta, background: background,
+                                     warnings: &warnings)
+        }
         let picked = style.film == FilmIconStyle.automatic ? nil : BuiltInWatermarks.film(id: style.film)
         let name = style.film == FilmIconStyle.automatic ? meta.film : picked?.name
         guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
@@ -231,9 +280,6 @@ extension OverlayPlanner {
             }
             return nil
         }
-        let size = style.iconSizePx
-        var icon: (CompositeArt.Graphic, CGColor?, CGSize)?
-        var showText = style.show != .icon
         if style.show != .text {
             if let film = picked ?? BuiltInWatermarks.film(named: name), let data = BuiltInWatermarks.iconData(for: film) {
                 icon = (try loadGraphic(data, name: film.icon), nil, CGSize(width: size, height: size))
@@ -252,6 +298,15 @@ extension OverlayPlanner {
                 }
             }
         }
+        return try filmComposite(layer, icon: icon, showText: showText, size: size, meta: meta, background: background,
+                                 warnings: &warnings)
+    }
+
+    /// 胶卷装饰的排法：图标在左，文字在右，竖直居中。
+    private static func filmComposite(
+        _ layer: OverlayLayer, icon: (CompositeArt.Graphic, CGColor?, CGSize)?, showText: Bool, size: Double,
+        meta: ResolvedMetadata, background: PresetColor, warnings: inout [RenderWarning]
+    ) throws(RenderError) -> OverlayContent? {
         var block: TextBlock?
         if showText {
             var text = layer.text ?? TextStyle(template: FilmIconStyle.defaultTemplate, fontWeight: .medium, fontSizePx: 20,
@@ -266,7 +321,6 @@ extension OverlayPlanner {
             }
         }
         guard icon != nil || block != nil else { return nil }
-        // 图标在左，文字在右，竖直居中。
         let gap = icon != nil && block != nil ? max(4, size * 0.2) : 0
         let iconSize = icon?.2 ?? .zero
         let textSize = block.map { CGSize(width: $0.naturalSize.width, height: $0.naturalSize.height) } ?? .zero

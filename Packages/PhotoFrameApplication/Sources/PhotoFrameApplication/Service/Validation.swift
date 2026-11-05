@@ -94,7 +94,7 @@ enum ExportChecks {
         overrides: [String: String] = [:]
     ) throws(ApplicationError) -> (SlotResolution?, [ApplicationWarning]) {
         guard resolver.isConfigured else { return (nil, []) }
-        let usesAssets = preset.layers.contains { $0.enabled && $0.type.usesAssetSlot }
+        let usesAssets = preset.layers.contains { $0.enabled && $0.usesAssetSlot }
         let current = usesAssets ? resolver.get() : SlotResolver(library: InMemoryAssetLibrary(), bindings: AssetBindingTable())
         return try resolveSlots(current, preset: preset, bindings: bindings, source: source, overrides: overrides)
     }

@@ -24,7 +24,7 @@ public struct BrandLogoStyle: Hashable, Sendable, Codable {
         case custom
     }
 
-    /// 「自动」时写 `auto`，否则是 `brands.json` 里的品牌 ID。
+    /// 「自动」时写 `auto`；用素材槽里的素材时写 `slot`（D-139）；否则是 `brands.json` 里的品牌 ID。
     public var brand: String
     public var fallback: Fallback
     public var variant: Variant
@@ -37,6 +37,8 @@ public struct BrandLogoStyle: Hashable, Sendable, Codable {
 
     /// `brand` 写这个值时按源图的相机品牌自动选。
     public static let automatic = "auto"
+    /// `brand` 写这个值时画图层素材槽（`slotId`）里绑定的素材，内置的或自己导入的都可以（D-139）。
+    public static let fromSlot = "slot"
 
     public init(
         brand: String = BrandLogoStyle.automatic,
@@ -101,7 +103,7 @@ public struct FilmIconStyle: Hashable, Sendable, Codable {
         case none
     }
 
-    /// 「自动」时写 `auto`（按源图填的胶卷），否则是 `films.json` 里的胶卷 ID。
+    /// 「自动」时写 `auto`（按源图填的胶卷）；用素材槽里的图标时写 `slot`（D-139）；否则是 `films.json` 里的胶卷 ID。
     public var film: String
     public var show: Show
     /// 图标边长（px）。
@@ -110,6 +112,8 @@ public struct FilmIconStyle: Hashable, Sendable, Codable {
     public var extensions: ExtensionFields
 
     public static let automatic = "auto"
+    /// `film` 写这个值时图标用图层素材槽（`slotId`）里绑定的素材（D-139）。
+    public static let fromSlot = "slot"
     /// 胶卷装饰的默认文字模板。
     public static let defaultTemplate = "{film}"
 

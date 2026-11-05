@@ -79,4 +79,67 @@ import Testing
         #expect(wb.sourceItem(sa)?.metadataOverrides.isEmpty == true && wb.sourceItem(sb)?.metadataOverrides.isEmpty == true,
                 "空白表示不填")
     }
+
+    @Test("内置的和自己的素材在同一个菜单里：同名加「（内置）」「（用户）」，不同名照原样（D-139）")
+    func menuTitles() async throws {
+        let labeled = MenuTitles.label(builtIn: [("nikon", "Nikon"), ("leica", "Leica")],
+                                       user: [(1, " nikon "), (2, "My Leica")])
+        #expect(labeled.builtIn.map(\.title) == ["Nikon（内置）", "Leica"])
+        #expect(labeled.user.map(\.title) == [" nikon （用户）", "My Leica"])
+
+        let f = try Fixture()
+        await f.workbench.load()
+        let wb = f.workbench
+        await wb.importAssets([try f.assetPNG("Nikon.png")], category: .cameraBadge)
+        await wb.importAssets([try f.assetPNG("Kodak Portra 400.png")], category: .filmIcon)
+        let brands = wb.brandLogoChoices
+        #expect(brands.current.contains { $0.id == "nikon" && $0.title == "Nikon（内置）" })
+        #expect(brands.user.map(\.title) == ["Nikon（用户）"] && brands.classic.count == 13)
+        let films = wb.filmChoices
+        #expect(films.user.map(\.title) == ["Kodak Portra 400（用户）"])
+        #expect(films.makers.flatMap(\.films).contains { $0.title == "Kodak Portra 400（内置）" })
+        let slots = wb.slotChoices
+        #expect(slots.builtIn.map(\.title) == ["内置 · 品牌 logo", "内置 · 经典品牌 logo", "内置 · 胶卷图标"])
+        #expect(slots.builtIn.map(\.items.count) == [18, 13, 29])
+        // 素材槽菜单里内置的 Nikon 叫「Nikon 字标」「Nikon 标志」，不和「Nikon」重名。
+        #expect(Set(slots.user.map(\.title)) == ["Nikon", "Kodak Portra 400（用户）"])
+        let portra = try #require(BuiltInAssetItem.groups[2].items.first { $0.title == "Kodak Portra 400" })
+        #expect(wb.assetMenuTitle(portra.assetId) == "Kodak Portra 400（内置）")
+    }
+
+    @Test("品牌 logo、胶卷选自己的素材：加素材槽、来源改成素材槽、按单任务绑定；改回自动时槽留着（D-139）")
+    func useOwnAsset() async throws {
+        let f = try Fixture()
+        await f.workbench.load()
+        let job = try await f.addJob()
+        let wb = f.workbench
+        wb.selection = [.job(job)]
+        wb.addLayer(.brandLogo)
+        wb.addLayer(.filmIcon)
+        await wb.importAssets([try f.assetPNG("Nikon.png")], category: .cameraBadge)
+        let mine = try #require(wb.assets(in: .cameraBadge).first)
+
+        await wb.useAsset(mine.assetId, forLayer: "brandLogo")
+        var preset = try #require(wb.job(job)?.preset)
+        var logo = try #require(preset.layers.first { $0.layerId == "brandLogo" })
+        #expect(logo.logo?.brand == BrandLogoStyle.fromSlot && logo.slotId == "brandLogo")
+        #expect(preset.assetSlots.contains { $0.slotId == "brandLogo" && $0.label == "品牌 logo" })
+        #expect(wb.job(job)?.assetBindings["brandLogo"] == mine.assetId && wb.layerAsset(logo) == mine.assetId)
+
+        // 胶卷选内置素材也走素材槽（素材槽菜单里的内置图标）。
+        let portra = try #require(BuiltInAssetItem.groups[2].items.first { $0.title == "Kodak Portra 400" })
+        await wb.useAsset(portra.assetId, forLayer: "filmIcon")
+        preset = try #require(wb.job(job)?.preset)
+        #expect(preset.layers.first { $0.layerId == "filmIcon" }?.filmIcon?.film == FilmIconStyle.fromSlot)
+        #expect(wb.job(job)?.assetBindings["filmIcon"] == portra.assetId)
+        #expect(preset.validate().errors.isEmpty, "\(preset.validate())")
+
+        // 改回自动：槽和绑定留着，不再使用。
+        wb.updateLayer("brandLogo") { $0.logo?.brand = BrandLogoStyle.automatic }
+        preset = try #require(wb.job(job)?.preset)
+        logo = try #require(preset.layers.first { $0.layerId == "brandLogo" })
+        #expect(!logo.usesAssetSlot && logo.slotId == "brandLogo" && wb.layerAsset(logo) == nil)
+        #expect(preset.validate().warnings.isEmpty, "\(preset.validate())")
+    }
 }
+

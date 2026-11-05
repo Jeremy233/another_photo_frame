@@ -194,9 +194,9 @@ enum OverlayPlanner {
     ) throws(RenderError) -> OverlayContent? {
         switch layer.type {
         case .brandLogo:
-            return try brandLogo(layer, meta: metadata, background: background, warnings: &warnings)
+            return try brandLogo(layer, assets: assets, meta: metadata, background: background, warnings: &warnings)
         case .filmIcon:
-            return try filmIcon(layer, meta: metadata, background: background, warnings: &warnings)
+            return try filmIcon(layer, assets: assets, meta: metadata, background: background, warnings: &warnings)
         case .text, .metadataText:
             guard var style = layer.text else {
                 warnings.append(RenderWarning(code: "overlay.missing_text", message: "文字装饰没有 text 设置，已跳过",

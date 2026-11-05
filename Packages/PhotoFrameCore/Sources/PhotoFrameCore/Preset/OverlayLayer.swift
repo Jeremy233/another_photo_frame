@@ -14,7 +14,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         /// 内置胶卷图标和胶卷文字（D-134）。
         case filmIcon
 
-        /// 是否需要通过 `slotId` 绑定本地素材。
+        /// 这类图层是否总是通过 `slotId` 绑定素材（素材、相机图标）。品牌 logo、胶卷装饰只在选了素材槽时用，见 ``OverlayLayer/usesAssetSlot``。
         public var usesAssetSlot: Bool { self == .asset || self == .cameraBadge }
         /// 是否有文本内容。
         public var usesText: Bool { self == .text || self == .metadataText }
@@ -39,6 +39,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
     public var opacity: Double
     public var zIndex: Int
     /// `asset` / `cameraBadge` 图层绑定的素材槽；有 `cameraMatch` 时是匹配不到时的默认素材。
+    /// 品牌 logo、胶卷装饰选了素材槽（`slot`）时也用它（D-139）；改回自动或内置时保留，方便再切回来。
     public var slotId: String?
     /// 按 EXIF 相机品牌 / 型号改用别的素材槽（D-111，只用于素材图层）。旧预设没有这个字段时为空。
     public var cameraMatch: [CameraMatchRule]
@@ -196,5 +197,17 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         try c.encodeIfPresent(logo, forKey: .logo)
         try c.encodeIfPresent(filmIcon, forKey: .filmIcon)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
+    }
+}
+
+extension OverlayLayer {
+    /// 这个图层是否从素材槽取图：素材、相机图标图层，以及选了素材槽（`slot`）的品牌 logo、胶卷装饰（D-139）。
+    public var usesAssetSlot: Bool {
+        switch type {
+        case .asset, .cameraBadge: true
+        case .brandLogo: logo?.brand == BrandLogoStyle.fromSlot
+        case .filmIcon: filmIcon?.film == FilmIconStyle.fromSlot
+        case .text, .metadataText: false
+        }
     }
 }

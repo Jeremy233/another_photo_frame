@@ -1,4 +1,5 @@
 import Foundation
+import PhotoFrameCore
 import Testing
 @testable import PhotoFrameStorage
 
@@ -70,5 +71,51 @@ struct BuiltInWatermarksTests {
         #expect(BuiltInWatermarks.filmBrand(forFilmName: "Kodak Vision3 50D")?.id == "kodak")
         #expect(BuiltInWatermarks.filmBrand(forFilmName: "Fujifilm Superia 200")?.id == "fujifilm")
         #expect(BuiltInWatermarks.filmBrand(forFilmName: "Ilford Pan F") == nil)
+    }
+
+    @Test("内置素材：31 个 logo（Nikon 有字标和标志）+ 29 个胶卷图标，ID 固定、不重复（D-139）")
+    func builtInAssets() throws {
+        let all = BuiltInAsset.all
+        #expect(all.count == 31 + 29)
+        #expect(Set(all.map(\.id)).count == all.count)
+        #expect(all.allSatisfy { $0.data != nil })
+        let nikon = try #require(BuiltInAsset.asset(path: "cameras/nikon/nikon.svg"))
+        #expect(nikon.title == "Nikon 字标" && nikon.format == .svg)
+        // 由路径算出：以后的版本也是同一个 ID（绑定存的就是它）。
+        #expect(nikon.id == BuiltInAsset.stableId("cameras/nikon/nikon.svg"))
+        #expect(nikon.id.uuidString.dropFirst(14).first == "8", "RFC 9562 第 8 版")
+        #expect(BuiltInAsset.asset(id: nikon.id) == nikon)
+        #expect(BuiltInAsset.asset(contentURL: nikon.contentURL) == nikon)
+        #expect(BuiltInAsset.asset(contentURL: URL(filePath: "/tmp/cameras/nikon/nikon.svg")) == nil)
+        #expect(all.filter(\.isClassicBrand).count == 13)
+        #expect(all.last?.title == BuiltInWatermarks.films.last?.name)
+    }
+
+    @Test("内置素材能绑定到素材槽：预设本地、用户默认、单任务都能解析，内容地址给渲染器（D-139）")
+    func builtInAssetBinding() throws {
+        let root = TempRoot()
+        let lib = root.library()
+        var preset = samplePreset(slots: [AssetSlot(slotId: "camera.badge"), AssetSlot(slotId: "signature", acceptedFormats: [.png])])
+        preset.layers.append(OverlayLayer(layerId: "logo", type: .brandLogo, slotId: "logo", logo: BrandLogoStyle(brand: BrandLogoStyle.fromSlot)))
+        preset.assetSlots.append(AssetSlot(slotId: "logo"))
+        let entry = try lib.presets.add(preset)
+        let leica = try #require(BuiltInAsset.asset(path: "cameras/leica/leica.svg"))
+        let portra = try #require(BuiltInAsset.all.first { $0.title == "Kodak Portra 400" })
+
+        try lib.bindForPreset(entry.preset.presetId, slotId: "logo", assetId: leica.id)
+        try lib.bindByDefault(slotId: "camera.badge", assetId: portra.id)
+        #expect(throws: LibraryError.self) { try lib.bindForPreset(entry.preset.presetId, slotId: "signature", assetId: leica.id) }
+
+        let resolved = try lib.resolveSlots(for: entry.preset, jobBindings: ["signature": UUID()])
+        #expect(resolved.resolution.resolved["logo"]?.asset == leica.record)
+        #expect(resolved.resolution.resolved["camera.badge"]?.asset == portra.record)
+        #expect(resolved.files["logo"]?.url == leica.contentURL)
+        #expect(!resolved.resolution.warnings.contains { if case .staleBinding(slotId: "logo", _, _) = $0 { true } else { false } })
+        #expect(lib.assets.asset(withId: portra.id) == portra.record && lib.assets.snapshot().asset(withId: leica.id) != nil)
+
+        // 改回自动后不再解析这个槽。
+        var auto = entry.preset
+        auto.layers[2].logo?.brand = BrandLogoStyle.automatic
+        #expect(try lib.resolveSlots(for: auto, jobBindings: ["signature": UUID()]).resolution.resolved["logo"] == nil)
     }
 }

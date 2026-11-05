@@ -64,7 +64,7 @@ public struct LocalLibrary: Sendable {
     /// 「设为本用户默认绑定」。默认绑定跨预设生效，只检查素材存在。`assetId == nil` 清除绑定。
     public func bindByDefault(slotId: String, assetId: UUID?) throws(LibraryError) {
         guard ExportPreset.isValidIdentifier(slotId) else { throw .unknownSlot(slotId) }
-        if let assetId { _ = try assets.info(assetId) }
+        if let assetId, BuiltInAsset.asset(id: assetId) == nil { _ = try assets.info(assetId) }
         try bindings.setDefaultBinding(slotId: slotId, assetId: assetId)
     }
 
@@ -74,7 +74,8 @@ public struct LocalLibrary: Sendable {
     public func makeSlotResolver() -> (resolver: SlotResolver, warnings: [LibraryWarning]) {
         let loaded = bindings.load()
         let listing = assets.list()
-        return (SlotResolver(library: InMemoryAssetLibrary(listing.assets.map(\.record)), bindings: loaded.table),
+        // 内置素材也能绑定（D-139）。
+        return (SlotResolver(library: InMemoryAssetLibrary(BuiltInAsset.records + listing.assets.map(\.record)), bindings: loaded.table),
                 loaded.warnings + listing.warnings)
     }
 
@@ -99,9 +100,10 @@ public struct LocalLibrary: Sendable {
     // MARK: - 内部
 
     private func checkAsset(_ id: UUID, fits slot: AssetSlot) throws(LibraryError) {
-        let info = try assets.info(id)
-        guard slot.acceptedFormats.contains(info.format) else {
-            throw .incompatibleAsset(slotId: slot.slotId, format: info.format)
+        let format: AssetSlot.Format
+        if let builtIn = BuiltInAsset.asset(id: id) { format = builtIn.format } else { format = try assets.info(id).format }
+        guard slot.acceptedFormats.contains(format) else {
+            throw .incompatibleAsset(slotId: slot.slotId, format: format)
         }
     }
 }

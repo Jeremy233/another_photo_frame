@@ -152,15 +152,20 @@ extension ExportPreset {
                     error("invalid_slides", "\(path).slides", "页码不能为负")
                 }
             }
-            if layer.type.usesAssetSlot {
+            if layer.usesAssetSlot {
                 if let slotId = layer.slotId {
                     usedSlots.insert(slotId)
                     if !assetSlots.contains(where: { $0.slotId == slotId }) {
                         error("unknown_slot_reference", "\(path).slotId", "装饰引用了不存在的素材槽：\(slotId)")
                     }
+                } else if !layer.type.usesAssetSlot {
+                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 装饰选了素材槽（slot）时必须指定 slotId")
                 } else if layer.cameraMatch.isEmpty {
                     error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 装饰必须指定 slotId 或 cameraMatch")
                 }
+            } else if let slotId = layer.slotId, layer.type == .brandLogo || layer.type == .filmIcon {
+                // 改回自动或内置时留着的素材槽（D-139）：不用，但槽本身要存在。
+                usedSlots.insert(slotId)
             } else if layer.slotId != nil {
                 warning("ignored_field", "\(path).slotId", "\(layer.type.rawValue) 装饰不使用 slotId")
             }

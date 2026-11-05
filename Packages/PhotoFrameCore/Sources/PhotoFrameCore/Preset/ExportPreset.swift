@@ -77,6 +77,6 @@ public struct ExportPreset: Hashable, Sendable, Codable, Identifiable {
 
     /// 被启用图层引用的素材槽 ID。
     public var referencedSlotIds: Set<String> {
-        Set(layers.filter { $0.enabled && $0.type.usesAssetSlot }.compactMap(\.slotId))
+        Set(layers.filter { $0.enabled && $0.usesAssetSlot }.compactMap(\.slotId))
     }
 }

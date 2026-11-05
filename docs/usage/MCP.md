@@ -376,3 +376,4 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 | D-124 | 本地库位置规则，与 GUI、CLI 相同（见 CLI.md「本地库」） |
 | D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图）；`preview_export` 的 `dynamicRange` 仍只有 `sdr` / `hdr` |
 | D-135 | 导出和预览工具的 `metadata`：手填胶卷、相机品牌 / 型号、光圈、快门、ISO，优先于 EXIF，与 GUI、CLI 相同 |
+| D-139 | 预设的 `logo.brand` / `filmIcon.film` 可以写 `slot`，画图层素材槽里的素材 |

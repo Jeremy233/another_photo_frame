@@ -39,4 +39,26 @@ struct MetadataOverrideTests {
         let camera = ExportChecks.camera(of: URL(filePath: "/x/missing.tif"), overrides: ["make": " Leica ", "model": ""])
         #expect(camera.make == "Leica" && camera.model == nil)
     }
+
+    @Test("单任务绑定内置素材（D-139）：解析时不算失效绑定，渲染器拿到内置素材的内容地址")
+    func builtInAssetBinding() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "BuiltInBinding-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = LocalLibrary(root: root, platforms: try PlatformCatalogStore.builtIn())
+        var preset = Self.preset
+        preset.layers[0].logo = BrandLogoStyle(brand: BrandLogoStyle.fromSlot)
+        preset.layers[0].slotId = "logo"
+        preset.assetSlots = [AssetSlot(slotId: "logo", label: "品牌 logo")]
+        let leica = try #require(BuiltInAsset.asset(path: "cameras/leica/leica.svg"))
+
+        let (slots, warnings) = try ExportChecks.resolveSlots(library.slotResolver(), preset: preset, bindings: ["logo": leica.id],
+                                                              source: URL(filePath: "/x/scan.tif"))
+        #expect(warnings.isEmpty, "\(warnings)")
+        #expect(slots?.resolved["logo"]?.asset.assetId == leica.id)
+        let request = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: PhotoSource(fileURL: URL(filePath: "/x/scan.tif")),
+                                       preset: preset, slots: slots)
+        let job = RenderingBackend(assets: library).renderJob(request, outputDirectory: URL(filePath: "/tmp"))
+        #expect(job.assets["logo"] == RenderAsset(fileURL: leica.contentURL, format: .svg))
+    }
 }
+
