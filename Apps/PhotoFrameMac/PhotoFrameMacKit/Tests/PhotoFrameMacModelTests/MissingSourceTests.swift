@@ -33,13 +33,18 @@ import Testing
     }
 
     @Test func boundedCheckGivesUpOnHangingCalls() async {
+        // 卡住的调用最多等 10 秒，量完就放开。超时的回调在 utility 队列上，满负荷并行跑测试时可能晚好几百毫秒，
+        // 所以只要求远早于 10 秒放弃（以前卡 2 秒、要求 1 秒内，机器很忙时会失败）。
+        let release = DispatchSemaphore(value: 0)
         let start = ContinuousClock.now
         let result = await SourceFiles.bounded(.milliseconds(50), default: false) {
-            Thread.sleep(forTimeInterval: 2)
+            _ = release.wait(timeout: .now() + 10)
             return true
         }
+        let elapsed = ContinuousClock.now - start
+        release.signal()
         #expect(result == false)
-        #expect(ContinuousClock.now - start < .seconds(1))
+        #expect(elapsed < .seconds(5), "\(elapsed)")
         #expect(await SourceFiles.bounded(.seconds(1), default: 0) { 7 } == 7)
     }
 

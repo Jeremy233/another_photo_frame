@@ -99,6 +99,15 @@ public enum BuiltInWatermarks {
         return films.first { normalizedFilmName($0.name) == key }
     }
 
+    /// 胶片厂（``Film/maker``，文件夹名，全小写）在界面上的写法：照这个厂的胶卷名开头怎么写（`CineStill 400D` → CineStill），
+    /// 不另记一张表；没有这个厂的胶卷时首字母大写。
+    public static func makerName(_ maker: String) -> String {
+        for film in films where film.maker == maker && film.name.lowercased().hasPrefix(maker.lowercased()) {
+            return String(film.name.prefix(maker.count))
+        }
+        return maker.capitalized
+    }
+
     /// 胶卷名以某个内置品牌开头时的品牌（胶卷没有图标时用它的 logo，D-134）。
     public static func filmBrand(forFilmName name: String) -> Brand? {
         let lower = name.trimmingCharacters(in: .whitespaces).lowercased()

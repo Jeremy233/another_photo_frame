@@ -56,7 +56,7 @@ enum MCPResources {
         - `filmIcon` 图层（内置胶卷图标，D-134）：设置写在 `filmIcon` 里（缺少时用默认值）：
           `film`（`"auto"` 默认，按源图手填的胶卷；或下面的胶卷 ID；或 `"slot"`，图标用图层 `slotId` 素材槽里的素材，D-139）、
           `show`（`iconAndText` 默认 / `icon` / `text`）、
-          `iconSizePx`（图标边长，默认 72）、`noIcon`（胶卷没有图标时：`brandLogo` 默认，用胶卷品牌的 logo；`text`；`none`）；
+          `iconSizePx`（图标边长，默认 72）、`noIcon`（胶卷没有图标时：`brandLogo` 默认，用胶卷品牌的 logo；`text`；`none`，整个不画，文字也不画）；
           文字样式写在图层的 `text` 里，模板默认 `{film}`。源图没填胶卷时不画
         - `assetSlots[]`：`slotId`、`kind`、`required`、`label`、`acceptedFormats`（`png` / `svg`）；不含位置和本地路径
         - `output`：`format`（`jpeg` / `png`）、`quality`（1…100）、`colorSpace`、`dynamicRange`（`auto` 跟随源图：源图是 HDR 且格式是 JPEG 时输出 HDR，否则 SDR，新建和内置预设的默认值；`sdr` / `hdr` 强制，D-125）、

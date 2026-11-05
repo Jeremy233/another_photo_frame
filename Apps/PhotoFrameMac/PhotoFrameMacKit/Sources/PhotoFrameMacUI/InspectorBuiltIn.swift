@@ -38,13 +38,14 @@ struct BrandLogoRows: View {
             InspectorRow { Hint("只影响同时有字标和标志的品牌，目前是 Nikon") }
         }
         NumberField(title: "高度", value: binding(\.heightPx))
-        InspectorPicker("颜色", selection: binding(\.colorMode)) {
+        InspectorPicker("颜色", selection: Binding(get: { style.colorMode },
+                                                   set: { workbench.setBrandLogoColorMode($0, forLayer: layer.layerId) })) {
             Text("原色").tag(BrandLogoStyle.ColorMode.original)
             Text("自动（随背景深浅）").tag(BrandLogoStyle.ColorMode.auto)
             Text("自定").tag(BrandLogoStyle.ColorMode.custom)
         }
         if style.colorMode == .custom {
-            ColorField(title: "自定颜色", value: Binding(get: { style.color ?? PresetColor(hex: "#1A1A1A") },
+            ColorField(title: "自定颜色", value: Binding(get: { style.color ?? BrandLogoStyle.defaultCustomColor },
                                                       set: { v in if let v { update { $0.color = v } } }))
         }
         InspectorRow { Hint(colorNote) }
@@ -103,7 +104,7 @@ struct FilmIconRows: View {
         InspectorPicker("来源", selection: source) {
             Text("自动（按源图填的胶卷）").tag(FilmIconStyle.automatic)
             ForEach(choices.makers, id: \.maker) { group in
-                Section(group.maker.capitalized) { ForEach(group.films) { Text($0.title).tag($0.id) } }
+                Section(BuiltInWatermarks.makerName(group.maker)) { ForEach(group.films) { Text($0.title).tag($0.id) } }
             }
             if !choices.user.isEmpty {
                 Section("用户") { ForEach(choices.user) { Text($0.title).tag(AssetSourceTag.tag($0.id)) } }
@@ -118,22 +119,20 @@ struct FilmIconRows: View {
             Text("只有图标").tag(FilmIconStyle.Show.icon)
             Text("只有文字").tag(FilmIconStyle.Show.text)
         }
-        if style.show != .text, style.film != FilmIconStyle.fromSlot {
+        if style.offersNoIconChoice {
             InspectorPicker("没有图标时", selection: binding(\.noIcon)) {
                 Text("用胶卷品牌 logo").tag(FilmIconStyle.NoIcon.brandLogo)
                 Text("只显示文字").tag(FilmIconStyle.NoIcon.text)
                 Text("不显示").tag(FilmIconStyle.NoIcon.none)
             }
+        }
+        if style.offersIconSize {
             NumberField(title: "图标大小", value: binding(\.iconSizePx))
         }
         if style.show != .icon {
             InspectorTextField("文字", text: Binding(
-                get: { layer.text?.template ?? FilmIconStyle.defaultTemplate },
-                set: { v in workbench.updateLayer(layer.layerId) { l in
-                    var t = l.text ?? TextStyle(template: FilmIconStyle.defaultTemplate)
-                    t.template = v
-                    l.text = t
-                } }), prompt: FilmIconStyle.defaultTemplate)
+                get: { layer.displayedTextStyle.template ?? FilmIconStyle.defaultTemplate },
+                set: { v in workbench.updateTextStyle(layer.layerId) { $0.template = v } }), prompt: FilmIconStyle.defaultTemplate)
         }
     }
 
@@ -258,7 +257,7 @@ private struct FilmMenu: View {
     var body: some View {
         Menu {
             ForEach(Self.makers, id: \.self) { maker in
-                Section(maker.capitalized) {
+                Section(BuiltInWatermarks.makerName(maker)) {
                     ForEach(BuiltInWatermarks.films.filter { $0.maker == maker }) { film in
                         Button(film.name) { pick(film.name) }
                     }

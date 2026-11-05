@@ -129,8 +129,9 @@ import Testing
         let wb = f.workbench
         let ids = await wb.addSources([try f.photo("W.jpg")])
         let id = try #require(ids.first)
-        // 不调用 settle：后台检查做完后自己从工作表里移除。
-        for _ in 0..<500 where wb.sourceItem(id)?.inspection == nil && wb.sourceItem(id)?.inspectionError == nil {
+        // 不调用 settle：后台工作做完后自己从工作表里移除。加入源图时有两件后台工作（检查源图、记下识别信息和书签），
+        // 机器忙时后一件可能比检查晚做完，所以等工作表空了再看，不只等检查结果。
+        for _ in 0..<500 where !wb.work.isEmpty || (wb.sourceItem(id)?.inspection == nil && wb.sourceItem(id)?.inspectionError == nil) {
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(wb.sourceItem(id)?.inspection != nil)

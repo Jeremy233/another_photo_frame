@@ -59,7 +59,8 @@ public struct BuiltInAsset: Hashable, Sendable, Identifiable {
         guard url.scheme == urlScheme else { return nil }
         return asset(path: String(url.path.drop { $0 == "/" }))
     }
-    public static var records: [AssetRecord] { all.map(\.record) }
+    /// 每次建素材表（校验任务、解析素材槽）都要用，算一次就够了。
+    public static let records: [AssetRecord] = all.map(\.record)
 
     init(kind: Kind, title: String, path: String) {
         self.kind = kind

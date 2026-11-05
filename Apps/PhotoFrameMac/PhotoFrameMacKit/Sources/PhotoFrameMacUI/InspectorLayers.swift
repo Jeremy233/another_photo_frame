@@ -100,11 +100,7 @@ private struct LayerSection: View {
     private func text(_ path: WritableKeyPath<TextStyle, String?>) -> Binding<String> {
         Binding(
             get: { layer.text?[keyPath: path] ?? "" },
-            set: { value in workbench.updateLayer(layer.layerId) { l in
-                var style = l.text ?? TextStyle()
-                style[keyPath: path] = value
-                l.text = style
-            } })
+            set: { value in workbench.updateTextStyle(layer.layerId) { $0[keyPath: path] = value } })
     }
 }
 
@@ -132,14 +128,10 @@ private struct TextStyleRows: View {
         }
     }
 
-    private var style: TextStyle { layer.text ?? TextStyle() }
+    private var style: TextStyle { layer.displayedTextStyle }
 
     private func update(_ body: (inout TextStyle) -> Void) {
-        workbench.updateLayer(layer.layerId) { l in
-            var s = l.text ?? TextStyle()
-            body(&s)
-            l.text = s
-        }
+        workbench.updateTextStyle(layer.layerId, body)
     }
 }
 

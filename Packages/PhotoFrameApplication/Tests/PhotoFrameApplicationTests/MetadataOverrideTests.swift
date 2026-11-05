@@ -38,6 +38,9 @@ struct MetadataOverrideTests {
         #expect(job.metadataOverrides == ["make": "Leica"])
         let camera = ExportChecks.camera(of: URL(filePath: "/x/missing.tif"), overrides: ["make": " Leica ", "model": ""])
         #expect(camera.make == "Leica" && camera.model == nil)
+        // 品牌、型号都手填了：不读文件，去掉首尾空白。
+        #expect(ExportChecks.camera(of: URL(filePath: "/x/missing.tif"), overrides: ["make": " Leica ", "model": " M6\n"])
+            == CameraIdentity(make: "Leica", model: "M6"))
     }
 
     @Test("单任务绑定内置素材（D-139）：解析时不算失效绑定，渲染器拿到内置素材的内容地址")
