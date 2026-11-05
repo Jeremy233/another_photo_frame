@@ -48,6 +48,8 @@
 - 不要提交构建产物、个人照片、导出结果或任何密钥（`.gitignore` 已经排除了常见情况）。
 - 修改行为规则时，同步更新规范或对应 Package 的 README，并在 PR 里说明。
 - 提交的代码以 [GNU GPL v3.0](../LICENSE) 或更高版本授权，你提交的贡献同样按该许可证授权。
+- 提交贡献即表示你同意：除 GPL 之外，你还授予项目作者 Jeremy233 一项永久、全球、免费、不可撤销的许可，可以把包含你贡献的版本通过应用商店（例如 Mac App Store）按该商店的条款分发。这是因为应用商店的条款与 GPL 冲突；源码仍会按 GPL 公开。
+- 你保证自己有权提交这些贡献。
 
 ### 报告问题
 
@@ -100,6 +102,8 @@ The repository holds only code and presets. Presets must not embed assets either
 - Do not commit build products, personal photos, exports or any secrets (`.gitignore` covers the common cases).
 - When you change a behavior rule, update the spec or the package README as well and say so in the PR.
 - Code is licensed under the [GNU GPL v3.0](../LICENSE) or later, and contributions you submit are licensed under the same terms.
+- By submitting a contribution you agree that, in addition to the GPL, you grant the project author Jeremy233 a perpetual, worldwide, royalty-free, irrevocable license to distribute versions that include your contribution through app stores (such as the Mac App Store) under that store's terms. App store terms conflict with the GPL; the source code stays public under the GPL.
+- You confirm that you have the right to submit the contribution.
 
 ### Reporting issues
 
