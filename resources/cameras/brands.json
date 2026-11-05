@@ -374,5 +374,63 @@
    "logo": "konica/konica.svg",
    "dark": "konica/konica-rev.svg"
   }
+ },
+ {
+  "id": "linhof",
+  "name": "Linhof",
+  "text": "Linhof",
+  "kind": "color",
+  "ratio": 2.4194,
+  "match": [
+   "linhof"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "linhof/linhof.svg"
+  }
+ },
+ {
+  "id": "chamonix",
+  "name": "Chamonix",
+  "text": "CHAMONIX",
+  "kind": "mono",
+  "ratio": 3.9647,
+  "match": [
+   "chamonix"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "chamonix/chamonix.svg"
+  }
+ },
+ {
+  "id": "wista",
+  "name": "Wista",
+  "text": "WISTA",
+  "kind": "mono",
+  "ratio": 6.315,
+  "match": [
+   "wista"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "wista/wista.svg"
+  }
+ },
+ {
+  "id": "plaubel",
+  "name": "Plaubel",
+  "text": "PLAUBEL",
+  "kind": "color",
+  "ratio": 9.0803,
+  "match": [
+   "plaubel",
+   "makina"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "plaubel/plaubel.svg",
+   "dark": "plaubel/plaubel-rev.svg"
+  }
  }
 ]

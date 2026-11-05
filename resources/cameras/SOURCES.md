@@ -13,6 +13,10 @@
 | Hasselblad | https://www.hasselblad.com/assets/icons/logo-white.svg |
 | Kodak | 红黄版 `kodak/kodak.svg`：图形取自 https://www.kodak.com/ 页头内嵌 SVG，颜色和留白照用户提供的 Kodak.png（红 #E30613、黄 #FAB617）。单色版 `kodak/kodak-mono.svg` 是同一图形 |
 | Konica Minolta | https://www.konicaminolta.us/wp-content/themes/wp-bootstrap-starter-child/assets/img/identity01g.svg |
+| Linhof | https://linhof.com/wp-content/uploads/2019/01/LINHOF_logo.png （官网页头，只有 300px 的 PNG），描成矢量（红 #FF0004）。官网另有一个带王冠的盾形徽章 `Linhof_wappen1.png`，细节多、分辨率低，没用 |
+| Chamonix | https://www.chamonixviewcamera.com/ 页头的 2500px PNG（`商标 (1).png`），描成矢量（深灰 #332C2B） |
+| Wista | 第三方：官网 https://www.wista.co.jp/ 只有很小的 GIF，从一份 WISTA 45 产品目录封面扫描（Yahoo!拍卖的商品图）上裁出 WISTA 字样，校正 0.3° 倾斜后描成矢量。印刷扫描描出来的边缘不如官方矢量平整，以后找到更好的来源再换 |
+| Plaubel | https://www.plaubel.com/Plaubel-Logo.gif （Plaubel GmbH 官网，4295px），描成矢量：黑色 PLAUBEL 字样和灰、红、灰三条斜块。`plaubel-rev.svg` 是黑字换成白字的版本。EXIF 或手填相机里含 makina 也认成 Plaubel |
 | Leica | https://leica-camera.com/themes/custom/leica_redesign_theme/logo.svg |
 | Mamiya | 第三方：https://seeklogo.com/vector-logo/322331/mamiya 的 600px PNG，描成矢量（红 #FC001B）。mamiya-op.co.jp 上的是 Mamiya-OP 公司的标志，没用 |
 | Contax | 第三方：https://freebiesupply.com/logos/contax-logo/ 的 SVG，去掉透明底框 |
@@ -33,7 +37,7 @@
 | Yashica | https://www.yashica.com/ 页头 PNG（只有 PNG） |
 | Zeiss | https://www.zeiss.com/etc.clientlibs/zeiss-aem-app/jupiter/clientlibs/jupiter-components.app/resources/assets/icons/symbols/zeiss-logo.svg |
 
-深色画布用的白字版（各品牌文件夹里的 `*-rev` 文件）：Fujifilm、Konica Minolta、Minolta、Konica 是同一文件把黑色字改成白色（彩色部分不变，和 Fujifilm 官方反白用法一致）；Olympus 是把深蓝字改成白色。用「原色」时，深色画布上自动换成这几个版本。
+深色画布用的白字版（各品牌文件夹里的 `*-rev` 文件）：Fujifilm、Konica Minolta、Minolta、Konica、Plaubel 是同一文件把黑色字改成白色（彩色部分不变，和 Fujifilm 官方反白用法一致）；Olympus 是把深蓝字改成白色。用「原色」时，深色画布上自动换成这几个版本。
 
 Kodak 的红黄标志在「原色」和「自动」下都保持红黄配色，只有「自定」颜色时换成同形状的单色版 `kodak-mono.svg`。
 
@@ -41,7 +45,7 @@ Kodak 的红黄标志在「原色」和「自动」下都保持红黄配色，�
 
 `docs/design/mockups/brand-preview.html` 一次展示全部品牌元素：每个 logo 和变体在四种情况（原色 / 自动 × 白底 / 深底）下的样子、同高并排对比、品牌文字的三种样式。
 
-Minolta、Konica 并入 Konica Minolta 后退出相机业务，没有官网，logo 取自维基共享资源。Mamiya、Contax、Bronica、Minolta、Konica 都来自第三方网站，不是品牌官方文件，正式放进 App 前最好再找更可靠的来源。
+Minolta、Konica 并入 Konica Minolta 后退出相机业务，没有官网，logo 取自维基共享资源。Mamiya、Contax、Bronica、Minolta、Konica、Wista 都来自第三方网站，不是品牌官方文件，正式放进 App 前最好再找更可靠的来源。
 
 ## brands.json
 
