@@ -1,0 +1,205 @@
+[
+ {
+  "name": "Kodak Portra 160",
+  "id": "kodak-portra-160",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-portra-160.svg"
+ },
+ {
+  "name": "Kodak Portra 400",
+  "id": "kodak-portra-400",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-portra-400.svg"
+ },
+ {
+  "name": "Kodak Portra 800",
+  "id": "kodak-portra-800",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-portra-800.svg"
+ },
+ {
+  "name": "Kodak Gold 200",
+  "id": "kodak-gold-200",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-gold-200.svg"
+ },
+ {
+  "name": "Kodak Ektar 100",
+  "id": "kodak-ektar-100",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-ektar-100.svg"
+ },
+ {
+  "name": "Kodak ColorPlus 200",
+  "id": "kodak-colorplus-200",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-colorplus-200.svg"
+ },
+ {
+  "name": "Kodak Ultramax 400",
+  "id": "kodak-ultramax-400",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-ultramax-400.svg"
+ },
+ {
+  "name": "Kodak ProImage 100",
+  "id": "kodak-proimage-100",
+  "maker": "kodak",
+  "process": "C-41",
+  "icon": "kodak/kodak-proimage-100.svg"
+ },
+ {
+  "name": "Kodak Ektachrome E100",
+  "id": "kodak-ektachrome-e100",
+  "maker": "kodak",
+  "process": "E-6",
+  "icon": "kodak/kodak-ektachrome-e100.svg"
+ },
+ {
+  "name": "Kodak T-Max 100",
+  "id": "kodak-tmax-100",
+  "maker": "kodak",
+  "process": "B&W",
+  "icon": "kodak/kodak-tmax-100.svg"
+ },
+ {
+  "name": "Kodak T-Max 400",
+  "id": "kodak-tmax-400",
+  "maker": "kodak",
+  "process": "B&W",
+  "icon": "kodak/kodak-tmax-400.svg"
+ },
+ {
+  "name": "Kodak T-Max P3200",
+  "id": "kodak-tmax-p3200",
+  "maker": "kodak",
+  "process": "B&W",
+  "icon": "kodak/kodak-tmax-p3200.svg"
+ },
+ {
+  "name": "Kodak Tri-X 320",
+  "id": "kodak-trix-320",
+  "maker": "kodak",
+  "process": "B&W",
+  "icon": "kodak/kodak-trix-320.svg"
+ },
+ {
+  "name": "Kodak Tri-X 400",
+  "id": "kodak-trix-400",
+  "maker": "kodak",
+  "process": "B&W",
+  "icon": "kodak/kodak-trix-400.svg"
+ },
+ {
+  "name": "Kodak Vision3 250D",
+  "id": "kodak-vision3-250d",
+  "maker": "kodak",
+  "process": "ECN-2",
+  "icon": "kodak/kodak-vision3-250d.svg"
+ },
+ {
+  "name": "Kodak Vision3 500T",
+  "id": "kodak-vision3-500t",
+  "maker": "kodak",
+  "process": "ECN-2",
+  "icon": "kodak/kodak-vision3-500t.svg"
+ },
+ {
+  "name": "Fujifilm Velvia 50",
+  "id": "fujifilm-velvia-50",
+  "maker": "fujifilm",
+  "process": "E-6",
+  "icon": "fujifilm/fujifilm-velvia-50.svg"
+ },
+ {
+  "name": "Fujifilm Provia 100F",
+  "id": "fujifilm-provia-100f",
+  "maker": "fujifilm",
+  "process": "E-6",
+  "icon": "fujifilm/fujifilm-provia-100f.svg"
+ },
+ {
+  "name": "Fujifilm Pro 400H",
+  "id": "fujifilm-pro-400h",
+  "maker": "fujifilm",
+  "process": "C-41",
+  "icon": "fujifilm/fujifilm-pro-400h.svg"
+ },
+ {
+  "name": "Fujifilm 400",
+  "id": "fujifilm-400",
+  "maker": "fujifilm",
+  "process": "C-41",
+  "icon": "fujifilm/fujifilm-400.svg"
+ },
+ {
+  "name": "Fujifilm C200",
+  "id": "fujifilm-c200",
+  "maker": "fujifilm",
+  "process": "C-41",
+  "icon": "fujifilm/fujifilm-c200.svg"
+ },
+ {
+  "name": "Ilford HP5 Plus",
+  "id": "ilford-hp5-plus",
+  "maker": "ilford",
+  "process": "B&W",
+  "icon": "ilford/ilford-hp5-plus.svg"
+ },
+ {
+  "name": "Ilford FP4 Plus",
+  "id": "ilford-fp4-plus",
+  "maker": "ilford",
+  "process": "B&W",
+  "icon": "ilford/ilford-fp4-plus.svg"
+ },
+ {
+  "name": "Ilford Delta 3200",
+  "id": "ilford-delta-3200",
+  "maker": "ilford",
+  "process": "B&W",
+  "icon": "ilford/ilford-delta-3200.svg"
+ },
+ {
+  "name": "Kentmere Pan 100",
+  "id": "kentmere-pan-100",
+  "maker": "kentmere",
+  "process": "B&W",
+  "icon": "kentmere/kentmere-pan-100.svg"
+ },
+ {
+  "name": "CineStill 400D",
+  "id": "cinestill-400d",
+  "maker": "cinestill",
+  "process": "C-41",
+  "icon": "cinestill/cinestill-400d.svg"
+ },
+ {
+  "name": "CineStill 800T",
+  "id": "cinestill-800t",
+  "maker": "cinestill",
+  "process": "C-41",
+  "icon": "cinestill/cinestill-800t.svg"
+ },
+ {
+  "name": "CineStill 50D",
+  "id": "cinestill-50d",
+  "maker": "cinestill",
+  "process": "C-41",
+  "icon": "cinestill/cinestill-50d.svg"
+ },
+ {
+  "name": "Lomography 400",
+  "id": "lomography-400",
+  "maker": "lomography",
+  "process": "C-41",
+  "icon": "lomography/lomography-400.svg"
+ }
+]
