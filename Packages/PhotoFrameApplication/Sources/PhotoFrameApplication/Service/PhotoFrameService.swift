@@ -14,16 +14,33 @@ public struct ExportRequest: Hashable, Sendable, Codable {
     public var assetBindings: [String: UUID]
     /// 没有 ICC 的源图按什么色彩空间解释（D-04），作用于本请求的每个任务。
     public var sourceColorOverride: SourceColorOverride?
+    /// 手填的元数据（D-135），作用于本请求的每个任务，优先于源图的 EXIF。
+    public var metadataOverrides: [String: String]
 
     public init(
         sourceIds: [SourceID], presets: [ExportPreset], destination: ExportDestination, assetBindings: [String: UUID] = [:],
-        sourceColorOverride: SourceColorOverride? = nil
+        sourceColorOverride: SourceColorOverride? = nil, metadataOverrides: [String: String] = [:]
     ) {
         self.sourceIds = sourceIds
         self.presets = presets
         self.destination = destination
         self.assetBindings = assetBindings
         self.sourceColorOverride = sourceColorOverride
+        self.metadataOverrides = metadataOverrides
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sourceIds, presets, destination, assetBindings, sourceColorOverride, metadataOverrides
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sourceIds = try c.decode([SourceID].self, forKey: .sourceIds)
+        presets = try c.decode([ExportPreset].self, forKey: .presets)
+        destination = try c.decode(ExportDestination.self, forKey: .destination)
+        assetBindings = try c.decode([String: UUID].self, forKey: .assetBindings)
+        sourceColorOverride = try c.decodeIfPresent(SourceColorOverride.self, forKey: .sourceColorOverride)
+        metadataOverrides = try c.decodeIfPresent([String: String].self, forKey: .metadataOverrides) ?? [:]
     }
 }
 
@@ -511,7 +528,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 warnings += attempt { () throws(ApplicationError) in try ExportChecks.checkPreset(preset, platform: platform) } ?? []
                 if let destinationError { errors.append(destinationError) }
                 let slots = attempt { () throws(ApplicationError) in
-                    try ExportChecks.resolveSlots(&resolver, preset: preset, bindings: request.assetBindings, source: source.fileURL)
+                    try ExportChecks.resolveSlots(&resolver, preset: preset, bindings: request.assetBindings, source: source.fileURL,
+                                                  overrides: request.metadataOverrides)
                 }
                 warnings += slots?.1 ?? []
 
@@ -519,7 +537,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
                 var outputs: [ValidationItem.PlannedFile] = []
                 if errors.isEmpty, let analyzer {
                     let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: preset,
-                                               platform: platform, slots: slots?.0, sourceColorOverride: request.sourceColorOverride)
+                                               platform: platform, slots: slots?.0, sourceColorOverride: request.sourceColorOverride,
+                                               metadataOverrides: request.metadataOverrides)
                     do {
                         let plan = try await analyzer.plan(job)
                         warnings += plan.warnings
@@ -591,9 +610,11 @@ public actor LocalPhotoFrameService: PhotoFrameService {
         let presetWarnings = try ExportChecks.checkPreset(request.preset, platform: platform)
         var resolver = LazySlotResolver(configuration)
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            &resolver, preset: request.preset, bindings: request.assetBindings, source: source.fileURL)
+            &resolver, preset: request.preset, bindings: request.assetBindings, source: source.fileURL,
+            overrides: request.metadataOverrides)
         let job = JobRenderRequest(jobId: JobID(), attemptId: AttemptID(), source: source, preset: request.preset,
-                                   platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride)
+                                   platform: platform, slots: slots, sourceColorOverride: request.sourceColorOverride,
+                                   metadataOverrides: request.metadataOverrides)
         do {
             var preview = try await analyzer.preview(job, options: request.options)
             var modeWarnings: [ApplicationWarning] = []
@@ -634,7 +655,8 @@ public actor LocalPhotoFrameService: PhotoFrameService {
             }
             for preset in request.presets {
                 specs.append(JobSpec(source: source, preset: preset, destination: request.destination,
-                                     assetBindings: request.assetBindings, sourceColorOverride: request.sourceColorOverride))
+                                     assetBindings: request.assetBindings, sourceColorOverride: request.sourceColorOverride,
+                                     metadataOverrides: request.metadataOverrides))
             }
         }
         return await queue.submit(specs).map(\.jobId)

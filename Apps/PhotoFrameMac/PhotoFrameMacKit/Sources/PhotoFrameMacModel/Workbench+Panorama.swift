@@ -30,7 +30,7 @@ extension Workbench {
             guard let draft = presetEditor?.draft else { return }
             let count = manual ? automaticSlideCount(draft, source: previewSubject.flatMap { sourceItem($0.sourceId) }, validation: nil) : nil
             setField(\.panorama.tileCount, count.map { .fixed($0) } ?? .auto)
-        case .source, .location, .none:
+        case .source, .sources, .location, .none:
             break
         }
     }
@@ -42,7 +42,7 @@ extension Workbench {
         let pairs: [(ExportPreset, SourceItem?)] = switch subject {
         case .jobs: jobs.map { ($0.preset, sourceItem($0.sourceId)) }
         case .preset: presetEditor.map { [($0.draft, previewSubject.flatMap { sourceItem($0.sourceId) })] } ?? []
-        case .source, .location, .none: []
+        case .source, .sources, .location, .none: []
         }
         var values: [Int] = []
         for (preset, source) in pairs {

@@ -110,7 +110,7 @@ extension Workbench {
                 if !item.isMissing, let error = item.inspectionError { issues.append(JobIssue(error)) }
                 issues += (item.inspection?.warnings.map(JobIssue.init) ?? []) + item.notices
             }
-        case .preset, .location, .none:
+        case .preset, .sources, .location, .none:
             break
         }
         guard preview.subject == previewSubject else { return issues }

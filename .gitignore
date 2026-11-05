@@ -39,6 +39,9 @@ credentials*
 # Documentation illustrations and their shared synthetic sample
 !docs/design/illustrations/**/*.png
 
+# 内置素材：品牌 logo 和胶卷图标（不是照片原片；有几个 logo 只有 PNG）
+!resources/**
+
 # Xcode / Swift build output and per-user state
 build/
 DerivedData/
@@ -55,3 +58,6 @@ Apps/PhotoFrameMac/Config/Signing.local.xcconfig
 
 # macOS Finder 元数据（放在最后，避免被上面的例外规则重新包含）
 .DS_Store
+
+# Python
+__pycache__/

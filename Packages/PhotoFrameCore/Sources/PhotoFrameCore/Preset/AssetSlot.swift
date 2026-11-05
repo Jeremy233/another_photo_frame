@@ -1,6 +1,14 @@
 /// 文字图层的内容与样式（§7.1）。字体样式字段 `fontWeight`、`italic`、`letterSpacingPx` 由 D-111 加入，
 /// 旧预设缺少时取默认值（常规、非斜体、0），schemaVersion 不变。
 public struct TextStyle: Hashable, Sendable, Codable {
+    /// 文字颜色从哪里来（D-133）。旧预设没有这个字段时是 `custom`，只在 `auto` 时写出。
+    public enum ColorMode: String, Hashable, Sendable, Codable, CaseIterable {
+        /// 用 `color`。
+        case custom
+        /// 按画布背景深浅用深色或浅色（同 `brandLogo` 的「自动」）。
+        case auto
+    }
+
     /// 字重，取值与系统字重一一对应。找不到对应字重时渲染用最接近的。
     public enum FontWeight: String, Hashable, Sendable, Codable, CaseIterable {
         case ultraLight, thin, light, regular, medium, semibold, bold, heavy, black
@@ -19,6 +27,7 @@ public struct TextStyle: Hashable, Sendable, Codable {
     /// 行距倍数。
     public var lineHeight: Double
     public var color: PresetColor
+    public var colorMode: ColorMode
     public var paddingPx: Int
     public var extensions: ExtensionFields
 
@@ -32,6 +41,7 @@ public struct TextStyle: Hashable, Sendable, Codable {
         letterSpacingPx: Double = 0,
         lineHeight: Double = 1.2,
         color: PresetColor = PresetColor(hex: "#3A3A38"),
+        colorMode: ColorMode = .custom,
         paddingPx: Int = 0,
         extensions: ExtensionFields = [:]
     ) {
@@ -44,12 +54,13 @@ public struct TextStyle: Hashable, Sendable, Codable {
         self.letterSpacingPx = letterSpacingPx
         self.lineHeight = lineHeight
         self.color = color
+        self.colorMode = colorMode
         self.paddingPx = paddingPx
         self.extensions = extensions
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case content, template, fontFamily, fontWeight, italic, fontSizePx, letterSpacingPx, lineHeight, color, paddingPx
+        case content, template, fontFamily, fontWeight, italic, fontSizePx, letterSpacingPx, lineHeight, color, colorMode, paddingPx
     }
 
     public init(from decoder: any Decoder) throws {
@@ -63,6 +74,7 @@ public struct TextStyle: Hashable, Sendable, Codable {
         letterSpacingPx = try c.decodeIfPresent(Double.self, forKey: .letterSpacingPx) ?? 0
         lineHeight = try c.decodeIfPresent(Double.self, forKey: .lineHeight) ?? 1.2
         color = try c.decodeIfPresent(PresetColor.self, forKey: .color) ?? PresetColor(hex: "#3A3A38")
+        colorMode = try c.decodeIfPresent(ColorMode.self, forKey: .colorMode) ?? .custom
         paddingPx = try c.decodeIfPresent(Int.self, forKey: .paddingPx) ?? 0
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
@@ -78,6 +90,7 @@ public struct TextStyle: Hashable, Sendable, Codable {
         try c.encode(letterSpacingPx, forKey: .letterSpacingPx)
         try c.encode(lineHeight, forKey: .lineHeight)
         try c.encode(color, forKey: .color)
+        if colorMode != .custom { try c.encode(colorMode, forKey: .colorMode) }
         try c.encode(paddingPx, forKey: .paddingPx)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
     }

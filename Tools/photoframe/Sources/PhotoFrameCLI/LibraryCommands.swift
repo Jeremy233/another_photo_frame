@@ -250,12 +250,14 @@ enum AssetCategoryArgument: String, CaseIterable, ExpressibleByArgument {
     case signature
     case watermark
     case cameraBadge = "camera-badge"
+    case filmIcon = "film-icon"
 
     init(_ category: AssetCategory) {
         switch category {
         case .signature: self = .signature
         case .watermark: self = .watermark
         case .cameraBadge: self = .cameraBadge
+        case .filmIcon: self = .filmIcon
         }
     }
 
@@ -264,6 +266,7 @@ enum AssetCategoryArgument: String, CaseIterable, ExpressibleByArgument {
         case .signature: .signature
         case .watermark: .watermark
         case .cameraBadge: .cameraBadge
+        case .filmIcon: .filmIcon
         }
     }
 }
@@ -282,7 +285,7 @@ struct AssetCommand: AsyncParsableCommand {
             commandName: "list", abstract: "列出素材（不输出文件路径）。",
             discussion: "每行：assetId、名称、分组、格式、尺寸。")
 
-        @Option(help: ArgumentHelp("只列这个分组。", valueName: "signature|watermark|camera-badge"))
+        @Option(help: ArgumentHelp("只列这个分组。", valueName: "signature|watermark|camera-badge|film-icon"))
         var category: AssetCategoryArgument?
 
         @Flag(help: "stdout 输出 JSON。")
@@ -313,7 +316,7 @@ struct AssetCommand: AsyncParsableCommand {
         @Argument(help: ArgumentHelp("PNG 或 SVG 文件。", valueName: "文件"))
         var file: String
 
-        @Option(help: ArgumentHelp("分组（只用于整理，不限制绑定，D-89）。", valueName: "signature|watermark|camera-badge"))
+        @Option(help: ArgumentHelp("分组（只用于整理，不限制绑定，D-89）。", valueName: "signature|watermark|camera-badge|film-icon"))
         var category: AssetCategoryArgument
 
         @Option(help: ArgumentHelp("显示名称，默认取文件名。", valueName: "名称"))
@@ -379,7 +382,7 @@ struct AssetCommand: AsyncParsableCommand {
         @Argument(help: ArgumentHelp("素材：assetId 或名称。", valueName: "素材"))
         var asset: String
 
-        @Argument(help: ArgumentHelp("新分组。", valueName: "signature|watermark|camera-badge"))
+        @Argument(help: ArgumentHelp("新分组。", valueName: "signature|watermark|camera-badge|film-icon"))
         var category: AssetCategoryArgument
 
         @Flag(help: "stdout 输出 JSON。")

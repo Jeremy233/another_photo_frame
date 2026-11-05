@@ -128,6 +128,23 @@ import Testing
         #expect(wb.presets(in: .user).map(\.name).sorted() == ["新预设", "新预设 2"])
     }
 
+    @Test("左栏「用户」组：自己保存的和导入的合在一起，按名称自然排序（D-138、D-82）")
+    func userGroupMergesSavedAndImported() async throws {
+        let f = try Fixture()
+        let wb = f.workbench
+        await wb.load()
+        await wb.newPreset()
+        await wb.newPreset()
+        await wb.newPreset()
+        let names = wb.presets(in: .user).map(\.name).sorted()
+        #expect(names == ["新预设", "新预设 2", "新预设 3"])
+        let moved = try #require(wb.presets(in: .user).first { $0.name == "新预设 2" })
+        await wb.movePreset(moved.presetId, to: .imported)
+        #expect(wb.presets(in: .imported).map(\.name) == ["新预设 2"])
+        #expect(wb.userPresets.map(\.name) == ["新预设", "新预设 2", "新预设 3"])
+        #expect(!wb.userPresets.contains { $0.origin == .builtIn })
+    }
+
     @Test func saveJobAsPreset() async throws {
         let f = try Fixture()
         await f.workbench.load()

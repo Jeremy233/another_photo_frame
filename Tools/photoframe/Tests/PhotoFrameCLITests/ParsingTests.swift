@@ -41,6 +41,36 @@ struct ParsingTests {
         #expect(!list.json)
     }
 
+    @Test("export / preview 的手填元数据（D-135）：只传填了的字段，值原样保留")
+    func metadataArguments() async throws {
+        let export = try #require(try RootCommand.parseAsRoot([
+            "export", "scan.tif", "--preset", "x", "-o", "o", "--film", "Kodak Portra 400", "--camera-make", "Mamiya",
+            "--camera-model", "7 II", "--aperture", "8", "--shutter", "1/250", "--iso", "400",
+        ]) as? ExportCommand)
+        #expect(export.metadata.overrides == [
+            "film": "Kodak Portra 400", "make": "Mamiya", "model": "7 II", "aperture": "8", "shutter": "1/250", "iso": "400",
+        ])
+        // 空的（只有空白的也算）不传，留给 EXIF；填了的不改写（单位由渲染层补）
+        let preview = try #require(try RootCommand.parseAsRoot([
+            "preview", "scan.tif", "--preset", "x", "-o", "p", "--film", " Ilford HP5 Plus", "--iso", "", "--aperture", "  ",
+            "--shutter", "1/60s",
+        ]) as? PreviewCommand)
+        #expect(preview.metadata.overrides == ["film": " Ilford HP5 Plus", "shutter": "1/60s"])
+        let none = try #require(try RootCommand.parseAsRoot(["export", "a.tif", "--preset", "x", "-o", "o"]) as? ExportCommand)
+        #expect(none.metadata.overrides.isEmpty)
+        let noPreview = try #require(try RootCommand.parseAsRoot(["preview", "a.tif", "--preset", "x", "-o", "o"]) as? PreviewCommand)
+        #expect(noPreview.metadata.overrides.isEmpty)
+
+        let box = try Sandbox()
+        for command in ["export", "preview"] {
+            let help = await runCLI([command, "--help"], in: box.root)
+            #expect(help.status == 0)
+            for option in ["--film", "--camera-make", "--camera-model", "--aperture", "--shutter", "--iso", "优先于源图的", "胶片扫描"] {
+                #expect(help.stdout.value.contains(option), "\(command) --help 缺少 \(option)")
+            }
+        }
+    }
+
     @Test("用法错误：退出码 2，信息只写 stderr", arguments: [
         ["export", "a.tif", "--preset", "x"],                    // 缺 --output
         ["export", "a.tif", "-o", "out"],                        // 缺 --preset
@@ -52,6 +82,8 @@ struct ParsingTests {
         ["asset", "import", "x.png"],                            // 缺 --category
         ["asset", "import", "x.png", "--category", "logo"],
         ["export", "a.png", "--preset", "x", "-o", "o", "--bind", "noequals"],
+        ["export", "a.png", "--preset", "x", "-o", "o", "--film"],         // 缺值
+        ["preview", "a.png", "--preset", "x", "-o", "o", "--lens", "50mm"], // D-135 只有六项
         ["mcp", "serve", "--max-active-jobs", "0"],
         ["preset", "set", "x", "canvas.minMarginPx"],            // 路径和值不成对
     ])

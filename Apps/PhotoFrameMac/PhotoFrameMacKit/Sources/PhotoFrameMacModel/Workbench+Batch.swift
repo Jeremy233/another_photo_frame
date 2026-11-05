@@ -305,7 +305,7 @@ extension Workbench {
             // 内置预设在内存里的绑定（还没另存）也显示为预设本地。
             if let asset = presetBindingDrafts[id]?[slotId] { return (asset, .preset) }
             return persistedBinding(slotId, presetId: id)
-        case .source, .location, .none:
+        case .source, .sources, .location, .none:
             return nil
         }
     }
@@ -338,7 +338,7 @@ extension Workbench {
                 try await service.bindAsset(assetId, slotId: slotId, preset: reference(id))
                 setLibrary(bindings: await service.listBindings().bindings)
             }
-        case .source, .location, .none:
+        case .source, .sources, .location, .none:
             break
         }
     }
@@ -375,7 +375,8 @@ extension Workbench {
         ExportRequest(
             sourceIds: [job.sourceId], presets: [job.preset],
             destination: ExportDestination(rootDirectory: job.destination, naming: job.naming, conflictPolicy: policy),
-            assetBindings: job.assetBindings, sourceColorOverride: sourceItem(job.sourceId)?.colorOverride)
+            assetBindings: job.assetBindings, sourceColorOverride: sourceItem(job.sourceId)?.colorOverride,
+            metadataOverrides: sourceItem(job.sourceId)?.metadataOverrides ?? [:])
     }
 
     /// 改动后重新校验（输出尺寸、页数、作品目录、警告），用于任务列表。

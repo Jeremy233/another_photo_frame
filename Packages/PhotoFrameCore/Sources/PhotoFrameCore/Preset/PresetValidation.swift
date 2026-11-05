@@ -152,15 +152,20 @@ extension ExportPreset {
                     error("invalid_slides", "\(path).slides", "页码不能为负")
                 }
             }
-            if layer.type.usesAssetSlot {
+            if layer.usesAssetSlot {
                 if let slotId = layer.slotId {
                     usedSlots.insert(slotId)
                     if !assetSlots.contains(where: { $0.slotId == slotId }) {
                         error("unknown_slot_reference", "\(path).slotId", "装饰引用了不存在的素材槽：\(slotId)")
                     }
+                } else if !layer.type.usesAssetSlot {
+                    error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 装饰选了素材槽（slot）时必须指定 slotId")
                 } else if layer.cameraMatch.isEmpty {
                     error("missing_slot_reference", "\(path).slotId", "\(layer.type.rawValue) 装饰必须指定 slotId 或 cameraMatch")
                 }
+            } else if let slotId = layer.slotId, layer.type == .brandLogo || layer.type == .filmIcon {
+                // 改回自动或内置时留着的素材槽（D-139）：不用，但槽本身要存在。
+                usedSlots.insert(slotId)
             } else if layer.slotId != nil {
                 warning("ignored_field", "\(path).slotId", "\(layer.type.rawValue) 装饰不使用 slotId")
             }
@@ -178,7 +183,33 @@ extension ExportPreset {
                     error("unknown_slot_reference", "\(rulePath).slotId", "相机匹配规则引用了不存在的素材槽：\(rule.slotId)")
                 }
             }
-            if layer.type.usesText {
+            if layer.type == .brandLogo {
+                let logo = layer.logo ?? BrandLogoStyle()
+                if logo.brand.trimmingCharacters(in: .whitespaces).isEmpty {
+                    error("invalid_logo", "\(path).logo.brand", "品牌不能为空；自动匹配写 auto")
+                }
+                if !(logo.heightPx > 0) || !(logo.heightPx <= Double(Self.maxPixelExtent)) {
+                    error("invalid_logo", "\(path).logo.heightPx", "logo 高度必须在 0…\(Self.maxPixelExtent) px 之间")
+                }
+                if let color = logo.color { checkColor(color, "\(path).logo.color") }
+                if logo.colorMode == .custom, logo.color == nil {
+                    error("invalid_logo", "\(path).logo.color", "颜色为 custom 时必须写 color")
+                }
+            } else if layer.logo != nil {
+                warning("ignored_field", "\(path).logo", "\(layer.type.rawValue) 装饰不使用 logo")
+            }
+            if layer.type == .filmIcon {
+                let film = layer.filmIcon ?? FilmIconStyle()
+                if film.film.trimmingCharacters(in: .whitespaces).isEmpty {
+                    error("invalid_film_icon", "\(path).filmIcon.film", "胶卷不能为空；自动匹配写 auto")
+                }
+                if !(film.iconSizePx > 0) || !(film.iconSizePx <= Double(Self.maxPixelExtent)) {
+                    error("invalid_film_icon", "\(path).filmIcon.iconSizePx", "图标大小必须在 0…\(Self.maxPixelExtent) px 之间")
+                }
+            } else if layer.filmIcon != nil {
+                warning("ignored_field", "\(path).filmIcon", "\(layer.type.rawValue) 装饰不使用 filmIcon")
+            }
+            if layer.type.usesTextStyle {
                 if let text = layer.text {
                     let limit = Double(Self.maxPixelExtent)
                     if !(text.fontSizePx > 0) {
@@ -200,7 +231,7 @@ extension ExportPreset {
                         error("invalid_text", "\(path).text.paddingPx", "内边距不能超过 \(Self.maxPixelExtent) px")
                     }
                     checkColor(text.color, "\(path).text.color")
-                } else {
+                } else if layer.type.usesText {
                     warning("empty_text", "\(path).text", "文字装饰没有内容")
                 }
             }

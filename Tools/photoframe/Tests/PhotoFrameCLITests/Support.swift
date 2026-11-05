@@ -178,13 +178,17 @@ struct FailingRenderer: JobRenderer {
 }
 
 /// 转发到真正的服务，只在 `submit` 之前调用 `beforeSubmit`：用来把提交卡住，或模拟提交期间按下 Ctrl-C。
+/// `beforePreview` 在 `renderPreview` 之前调用（记录预览请求）。
 final class HookedService: PhotoFrameService {
     let base: any PhotoFrameService
     let beforeSubmit: @Sendable (ExportRequest) async -> Void
+    let beforePreview: @Sendable (ExportPreviewRequest) async -> Void
 
-    init(_ base: any PhotoFrameService, beforeSubmit: @escaping @Sendable (ExportRequest) async -> Void) {
+    init(_ base: any PhotoFrameService, beforePreview: @escaping @Sendable (ExportPreviewRequest) async -> Void = { _ in },
+         beforeSubmit: @escaping @Sendable (ExportRequest) async -> Void) {
         self.base = base
         self.beforeSubmit = beforeSubmit
+        self.beforePreview = beforePreview
     }
 
     func submit(_ request: ExportRequest) async throws(ApplicationError) -> [JobID] {
@@ -229,7 +233,10 @@ final class HookedService: PhotoFrameService {
     func listBindings() async -> CatalogBindingList { await base.listBindings() }
     func inspectSource(_ source: SourceReference) async throws(ApplicationError) -> SourceInspection { try await base.inspectSource(source) }
     func validate(_ request: ExportRequest) async throws(ApplicationError) -> ValidationResult { try await base.validate(request) }
-    func renderPreview(_ request: ExportPreviewRequest) async throws(ApplicationError) -> ExportPreview { try await base.renderPreview(request) }
+    func renderPreview(_ request: ExportPreviewRequest) async throws(ApplicationError) -> ExportPreview {
+        await beforePreview(request)
+        return try await base.renderPreview(request)
+    }
     func addSource(_ fileURL: URL) async throws(ApplicationError) -> PhotoSource { try await base.addSource(fileURL) }
     func sources() async -> [PhotoSource] { await base.sources() }
     func start() async { await base.start() }

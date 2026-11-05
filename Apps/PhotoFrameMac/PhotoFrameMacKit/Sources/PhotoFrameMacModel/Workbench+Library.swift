@@ -44,6 +44,15 @@ extension Workbench {
         presets.filter { $0.origin.kind == group.kind }
     }
 
+    /// 左栏「用户」组（D-138）：自己保存的和导入的预设合在一起，按 D-82 排序（名称自然排序，同名按 ID）。
+    public var userPresets: [CatalogPresetSummary] {
+        presets.filter { $0.origin.kind == CatalogPresetOrigin.user.kind || $0.origin.kind == CatalogPresetOrigin.imported.kind }
+            .sorted { a, b in
+                let c = a.name.localizedStandardCompare(b.name)
+                return c != .orderedSame ? c == .orderedAscending : a.presetId.uuidString < b.presetId.uuidString
+            }
+    }
+
     public func preset(_ id: UUID) -> CatalogPresetSummary? { presets.first { $0.presetId == id } }
 
     func reference(_ id: UUID) -> PresetReference { .library(id.uuidString) }

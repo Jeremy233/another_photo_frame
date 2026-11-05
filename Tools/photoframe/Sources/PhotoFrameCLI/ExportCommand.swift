@@ -15,6 +15,7 @@ struct ExportCommand: AsyncParsableCommand {
         discussion: """
             输出到 <输出目录>/<平台>/<源文件名>_<Standard|Panorama>/00_Cover.jpg、01_Slide.jpg…。
             作品目录已存在时默认加 _v2、_v3…；--overwrite 只替换本软件之前导出的目录（D-49）。
+            \(MetadataOptions.discussion)作用于本次的每张图。
             stdout 每行一个写出的文件路径（--json 时为结构化结果）；进度写到 stderr。
             """)
 
@@ -33,6 +34,9 @@ struct ExportCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("bind"), help: JobBinding.help)
     var bindings: [JobBinding] = []
+
+    @OptionGroup
+    var metadata: MetadataOptions
 
     @Flag(help: "作品目录已存在时替换本软件之前导出的目录，而不是加版本后缀（D-49）。")
     var overwrite = false
@@ -90,7 +94,7 @@ struct ExportCommand: AsyncParsableCommand {
         let request = ExportRequest(
             sourceIds: sourceIds, presets: presets,
             destination: ExportDestination(rootDirectory: env.resolvePath(output), conflictPolicy: overwrite ? .overwrite : .versionSuffix),
-            assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override)
+            assetBindings: assetBindings, sourceColorOverride: assumeProfile?.override, metadataOverrides: metadata.overrides)
 
         // 3. 校验
         let validation: ValidationResult

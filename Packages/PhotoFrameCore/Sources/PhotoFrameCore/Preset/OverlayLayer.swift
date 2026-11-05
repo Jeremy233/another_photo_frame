@@ -4,15 +4,22 @@
 /// 与几何计算共用；渲染前用 ``geometry(contentSize:)`` 转成 ``OverlayGeometry``，再交给 ``OverlayPlacement`` 计算位置。
 ///
 /// JSON 字段：`layerId`、`type`、`enabled`、`visibleOn`、`slides`、`anchor`、`reference`、`side`、
-/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）、`cameraMatch`（D-111）。
+/// `offsetPx`、`sizePx`、`maxBoundsPx`、`opacity`、`zIndex`、`slotId`、`text`（D-25、D-41）、`cameraMatch`（D-111）、
+/// `logo`（`brandLogo` 装饰）、`filmIcon`（`filmIcon` 装饰，D-137）。
 public struct OverlayLayer: Hashable, Sendable, Codable {
     public enum LayerType: String, Hashable, Sendable, Codable, CaseIterable {
         case text, asset, metadataText, cameraBadge
+        /// 内置品牌 logo（D-132）。
+        case brandLogo
+        /// 内置胶卷图标和胶卷文字（D-134）。
+        case filmIcon
 
-        /// 是否需要通过 `slotId` 绑定本地素材。
+        /// 这类图层是否总是通过 `slotId` 绑定素材（素材、相机图标）。品牌 logo、胶卷装饰只在选了素材槽时用，见 ``OverlayLayer/usesAssetSlot``。
         public var usesAssetSlot: Bool { self == .asset || self == .cameraBadge }
         /// 是否有文本内容。
         public var usesText: Bool { self == .text || self == .metadataText }
+        /// 是否用 `text` 的字体样式（文字装饰，以及胶卷装饰的文字部分）。
+        public var usesTextStyle: Bool { usesText || self == .filmIcon }
     }
 
     public var layerId: String
@@ -32,11 +39,16 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
     public var opacity: Double
     public var zIndex: Int
     /// `asset` / `cameraBadge` 图层绑定的素材槽；有 `cameraMatch` 时是匹配不到时的默认素材。
+    /// 品牌 logo、胶卷装饰选了素材槽（`slot`）时也用它（D-139）；改回自动或内置时保留，方便再切回来。
     public var slotId: String?
     /// 按 EXIF 相机品牌 / 型号改用别的素材槽（D-111，只用于素材图层）。旧预设没有这个字段时为空。
     public var cameraMatch: [CameraMatchRule]
     /// `text` / `metadataText` 图层的文字与样式。
     public var text: TextStyle?
+    /// `brandLogo` 装饰的设置；缺少时用默认值。
+    public var logo: BrandLogoStyle?
+    /// `filmIcon` 装饰的设置；缺少时用默认值。
+    public var filmIcon: FilmIconStyle?
     public var extensions: ExtensionFields
 
     public init(
@@ -54,6 +66,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         slotId: String? = nil,
         cameraMatch: [CameraMatchRule] = [],
         text: TextStyle? = nil,
+        logo: BrandLogoStyle? = nil,
+        filmIcon: FilmIconStyle? = nil,
         extensions: ExtensionFields = [:]
     ) {
         self.layerId = layerId
@@ -70,6 +84,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         self.slotId = slotId
         self.cameraMatch = cameraMatch
         self.text = text
+        self.logo = logo
+        self.filmIcon = filmIcon
         self.extensions = extensions
     }
 
@@ -93,7 +109,7 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case layerId, type, enabled, visibleOn, slides, anchor, reference, side
-        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, cameraMatch, text
+        case offsetPx, sizePx, maxBoundsPx, opacity, zIndex, slotId, cameraMatch, text, logo, filmIcon
     }
 
     enum VisibleOn: String, Codable {
@@ -145,6 +161,8 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         slotId = try c.decodeIfPresent(String.self, forKey: .slotId)
         cameraMatch = try c.decodeIfPresent([CameraMatchRule].self, forKey: .cameraMatch) ?? []
         text = try c.decodeIfPresent(TextStyle.self, forKey: .text)
+        logo = try c.decodeIfPresent(BrandLogoStyle.self, forKey: .logo)
+        filmIcon = try c.decodeIfPresent(FilmIconStyle.self, forKey: .filmIcon)
         extensions = try ExtraFieldsCoding.decode(from: decoder, known: CodingKeys.self)
     }
 
@@ -176,6 +194,20 @@ public struct OverlayLayer: Hashable, Sendable, Codable {
         try c.encodeIfPresent(slotId, forKey: .slotId)
         if !cameraMatch.isEmpty { try c.encode(cameraMatch, forKey: .cameraMatch) }
         try c.encodeIfPresent(text, forKey: .text)
+        try c.encodeIfPresent(logo, forKey: .logo)
+        try c.encodeIfPresent(filmIcon, forKey: .filmIcon)
         try ExtraFieldsCoding.encode(extensions, known: CodingKeys.self, to: encoder)
+    }
+}
+
+extension OverlayLayer {
+    /// 这个图层是否从素材槽取图：素材、相机图标图层，以及选了素材槽（`slot`）的品牌 logo、胶卷装饰（D-139）。
+    public var usesAssetSlot: Bool {
+        switch type {
+        case .asset, .cameraBadge: true
+        case .brandLogo: logo?.brand == BrandLogoStyle.fromSlot
+        case .filmIcon: filmIcon?.film == FilmIconStyle.fromSlot
+        case .text, .metadataText: false
+        }
     }
 }

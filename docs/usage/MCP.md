@@ -163,7 +163,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `category` | `signature` / `watermark` / `camera-badge` | 只列这一组 |
+| `category` | `signature` / `watermark` / `camera-badge` / `film-icon` | 只列这一组 |
 
 返回 `{assets: [...], warnings}`，与 `photoframe asset list --json` 相同：名称、分组、格式、尺寸、字节数、sha256、导入时间。
 **不含文件路径和文件内容**（§11.4）。MCP 不提供导入素材（那需要读任意文件），请在 GUI 或 CLI 里导入（D-103）。
@@ -180,6 +180,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `overwrite` | bool，默认 false | 显式允许覆盖（D-49），见「覆盖」 |
 | `assumeProfile` | `srgb` / `display-p3` / `adobe-rgb` / `prophoto-rgb` / `rec2020` | 没有 ICC 的源图按什么解释（D-75，与 GUI「按此解释」相同） |
 | `bindings` | object | 单任务素材绑定 `{slotId: assetId 或素材名称}`（D-14 最高优先级） |
+| `metadata` | object | 手填元数据（D-135）：`film`、`make`、`model`、`aperture`、`shutter`、`iso`，都是 string，优先于源图的 EXIF，作用于每张源图。见下文「手填元数据」 |
 
 输出位置与 CLI 相同：`<outputDirectory>/<平台>/<源文件名>_<Standard|Panorama>[_vN]/00_Cover.jpg、01_Slide.jpg…`。
 
@@ -219,7 +220,7 @@ claude mcp add photoframe -- /Users/me/bin/photoframe mcp serve --allow-read /Us
 | `dynamicRange` | string，默认 `sdr` | `hdr` 时，导出实际写 HDR 的页是带 gain map 的 JPEG（D-106），见下 |
 | `outputDirectory` | string | 给了就写成文件（在允许写入的目录内）；省略时以图片内容直接返回（D-102） |
 | `overwrite` | bool，默认 false | 替换已存在的同名预览文件；否则 `preview.file_exists`，什么都不写 |
-| `assumeProfile`、`bindings` | | 同导出 |
+| `assumeProfile`、`bindings`、`metadata` | | 同导出 |
 
 与导出同一条渲染管线，按预览尺寸缩小，写成 sRGB PNG（不带元数据，D-74）。`dynamicRange: "hdr"` 时，导出实际写 HDR 的页改为带 gain map 的
 JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看到的是 SDR 版本）；其余页仍是 PNG；没有一页是 HDR 时警告 `preview.output_sdr` 并说明原因（预设输出 SDR，或预设跟随源图（`auto`，D-125）而源图不是 HDR、格式是 PNG）。
@@ -227,6 +228,30 @@ JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看
 `files[]` 是 `{role, position, width, height, exportWidth, exportHeight, dynamicRange, hdrHeadroom?, path?}`，写文件时有 `path`；
 `positions` 是导出会写出的全部轮播位置。
 直接返回时，每页一个 `image/png`（HDR 页 `image/jpeg`）内容块，总量不超过 8 MiB（超过时报 `mcp.limit_exceeded`，减小 `maxEdge`、`pages`，或改写文件，上限见 D-101）。
+
+### 手填元数据：`metadata`（D-135）
+
+胶片扫描通常没有 EXIF，`validate_export`、`create_export_job`、`preview_export` 都可以带 `metadata` 手填胶卷、相机和拍摄参数，
+与 GUI 右栏「胶卷、相机与参数」、CLI 的 `--film`、`--camera-make`……相同（[CLI.md](CLI.md)「手填元数据」）。
+
+| 字段 | CLI 选项 | 用在哪里 |
+|---|---|---|
+| `film` | `--film` | `{film}` 和胶卷图层（`filmIcon`）；内置胶卷按名称匹配（只比字母和数字、不分大小写），也可以写别的胶卷 |
+| `make` | `--camera-make` | `{make}`、`{camera}`；品牌 logo（`brandLogo`）和 `{brand}` 按它和型号认品牌 |
+| `model` | `--camera-model` | `{model}`、`{camera}`、认品牌 |
+| `aperture` | `--aperture` | `{aperture}`；只写数字时补成 `f/…`（`"8"` → `f/8`） |
+| `shutter` | `--shutter` | `{shutter}`；只写数字时补上 `s`（`"1/250"` → `1/250s`） |
+| `iso` | `--iso` | `{iso}`；只写数字时补成 `ISO …`（`"400"` → `ISO 400`） |
+
+- 值都是字符串（`"iso": 400` 报 `mcp.invalid_arguments`），每项最多 200 个字符，原样传给渲染，单位由渲染时补上。
+- 只有这六个字段：别的字段（例如 `lens`、大小写不同的 `Film`）报 `mcp.invalid_arguments`，什么都不做。
+- 没写的字段、空字符串和 `null` 都当作没填，照常取 EXIF。
+
+```json
+{"images": ["/Users/me/Pictures/Scans/Roll12_08.tif"], "presets": ["instagram-standard"],
+ "outputDirectory": "/Users/me/Pictures/Social Exports",
+ "metadata": {"film": "Kodak Portra 400", "make": "Mamiya", "model": "7 II", "aperture": "8", "shutter": "1/250", "iso": "400"}}
+```
 
 ### 字段路径（D-93、D-99）
 
@@ -261,7 +286,7 @@ JPEG（与 HDR 导出同一种编码，底图就是 SDR 预览，所以模型看
 | URI | 类型 | 内容 |
 |---|---|---|
 | `photoframe://access` | JSON | 允许读取 / 写入的目录（真实路径）和各项上限 |
-| `photoframe://docs/preset-schema` | Markdown | 预设字段说明和字段路径写法 |
+| `photoframe://docs/preset-schema` | Markdown | 预设字段说明（含 `brandLogo`、`filmIcon` 图层、文字的 `colorMode`、模板占位符和内置品牌 / 胶卷 ID）和字段路径写法 |
 | `photoframe://platforms` | JSON | 平台能力表（画布、轮播上限、输出格式、HDR） |
 | `photoframe://presets` | JSON | 与 `list_presets` 相同的只读摘要 |
 | `photoframe://presets/{presetId}` | JSON | 一个预设的完整内容（模板；也接受名称和短名称） |
@@ -350,3 +375,5 @@ swift test --scratch-path "$TMPDIR/photoframe-build" --filter "MCP|Preset"
 | D-106 | `preview_export` 的 `dynamicRange: "hdr"`：HDR 页返回 gain map JPEG |
 | D-124 | 本地库位置规则，与 GUI、CLI 相同（见 CLI.md「本地库」） |
 | D-125 | 预设 `output.dynamicRange` 增加 `auto`（跟随源图）；`preview_export` 的 `dynamicRange` 仍只有 `sdr` / `hdr` |
+| D-135 | 导出和预览工具的 `metadata`：手填胶卷、相机品牌 / 型号、光圈、快门、ISO，优先于 EXIF，与 GUI、CLI 相同 |
+| D-139 | 预设的 `logo.brand` / `filmIcon.film` 可以写 `slot`，画图层素材槽里的素材 |

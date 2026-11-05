@@ -70,7 +70,7 @@ public struct RenderingBackend: JobRenderer, ImageAnalyzer {
             sourceURL: request.source.fileURL, preset: preset,
             assets: assetFiles, skippedLayerIds: skipped,
             outputDirectory: outputDirectory, sourceColorOverride: request.sourceColorOverride,
-            maxCarouselItems: request.platform?.maxCarouselItems)
+            maxCarouselItems: request.platform?.maxCarouselItems, metadataOverrides: request.metadataOverrides)
     }
 
     // MARK: - ImageAnalyzer

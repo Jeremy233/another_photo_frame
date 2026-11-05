@@ -200,7 +200,7 @@ public struct SlotResolver: Sendable {
     ) throws(SlotResolutionError) -> SlotResolution {
         var warnings: [SlotResolutionWarning] = []
         let slotsById = Dictionary(preset.assetSlots.map { ($0.slotId, $0) }, uniquingKeysWith: { first, _ in first })
-        let layers = preset.layers.filter { $0.enabled && $0.type.usesAssetSlot }
+        let layers = preset.layers.filter { $0.enabled && $0.usesAssetSlot }
         var candidates: [String: [String]] = [:]
         for layer in layers {
             candidates[layer.layerId] = layer.slotCandidates(for: camera).filter { slotsById[$0] != nil }

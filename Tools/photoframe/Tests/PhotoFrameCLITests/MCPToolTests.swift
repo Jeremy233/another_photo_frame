@@ -244,6 +244,66 @@ struct MCPToolTests {
         #expect(try await h.call("preview_export", args).code == "mcp.invalid_arguments")
     }
 
+    @Test("metadata（D-135）：导出和预览把填了的字段原样传给服务；不认识的字段、类型不对、超长都报参数错误")
+    func metadataArgument() async throws {
+        let submitted = Locked<[[String: String]]>([])
+        let previewed = Locked<[[String: String]]>([])
+        let h = try await MCPHarness.start(wrap: { base in
+            HookedService(base, beforePreview: { previewed.value.append($0.metadataOverrides) },
+                          beforeSubmit: { submitted.value.append($0.metadataOverrides) })
+        })
+        defer { Task { await h.stop() } }
+
+        // schema：六个字符串字段，不接受别的字段
+        let (tools, _) = try await h.client.listTools()
+        for name in ["validate_export", "create_export_job", "preview_export"] {
+            let schema = tools.first { $0.name == name }?.inputSchema.objectValue?["properties"]?.objectValue?["metadata"]?.objectValue ?? [:]
+            #expect(schema["type"]?.stringValue == "object", "\(name)")
+            #expect(schema["additionalProperties"]?.boolValue == false, "\(name)")
+            #expect(Set((schema["properties"]?.objectValue ?? [:]).keys) == ["film", "make", "model", "aperture", "shutter", "iso"], "\(name)")
+        }
+
+        let url = try h.photo("in/Scan.jpg")
+        let expected = ["film": "Kodak Portra 400", "make": "Mamiya", "model": "7 II", "aperture": "8", "shutter": "1/250", "iso": "400"]
+        var args = exportArguments([url], output: h.outputs)
+        args["metadata"] = .object(expected.mapValues { .string($0) })
+        let valid = try await h.call("validate_export", args)
+        #expect(valid.ok && valid["valid"]?.boolValue == true, "\(valid.text)")
+        let created = try await h.call("create_export_job", args)
+        #expect(created.ok, "\(created.text)")
+        let job = try await h.waitForJob(created["jobs"]?.arrayValue?.first?.objectValue?["jobId"]?.stringValue ?? "")
+        #expect(job["status"]?.stringValue == "completed", "\(job)")
+        #expect(submitted.value == [expected])
+
+        // 空字符串和 null 当作没填（用 EXIF）
+        var preview: [String: Value] = ["image": .string(url.path), "preset": .string("instagram-standard"), "maxEdge": .int(200), "pages": .array([.int(0)])]
+        preview["metadata"] = .object(["film": .string("Ilford HP5 Plus"), "iso": .string(""), "make": .null])
+        let shown = try await h.call("preview_export", preview)
+        #expect(shown.ok, "\(shown.text)")
+        #expect(previewed.value == [["film": "Ilford HP5 Plus"]])
+
+        let bad: [Value] = [
+            .object(["lens": .string("50mm")]),                                // D-135 只有六项
+            .object(["film": .string("Portra"), "Film": .string("Portra")]),    // 字段名区分大小写
+            .object(["iso": .int(400)]),                                       // 值必须是字符串
+            .object(["film": .string(String(repeating: "x", count: PhotoFrameMCPServer.maxMetadataLength + 1))]),
+            .string("Kodak Portra 400"),
+            .array([.string("film")]),
+        ]
+        for value in bad {
+            args["metadata"] = value
+            preview["metadata"] = value
+            for (tool, arguments) in [("validate_export", args), ("create_export_job", args), ("preview_export", preview)] {
+                let reply = try await h.call(tool, arguments)
+                #expect(reply.isError && reply.code == "mcp.invalid_arguments", "\(tool) \(value)：\(reply.text)")
+            }
+        }
+        let unknown = try await h.call("validate_export", args.merging(["metadata": .object(["lens": .string("50mm")])]) { $1 })
+        #expect(unknown.object["error"]?.objectValue?["message"]?.stringValue?.contains("lens") == true, "\(unknown.text)")
+        // 被拒绝的调用没有提交或渲染任何东西
+        #expect(submitted.value.count == 1 && previewed.value.count == 1)
+    }
+
     @Test("create_export_job → get_job_status → 文件落盘；版本后缀与显式覆盖")
     func exportJob() async throws {
         let h = try await MCPHarness.start()
@@ -427,7 +487,12 @@ struct MCPToolTests {
         #expect(accessJSON.objectValue?["writeDirectories"]?.arrayValue?.first?.stringValue == h.outputs.path)
 
         let schema = try await h.client.readResource(uri: MCPResources.presetSchema)
-        #expect(schema.first?.text?.contains("layers[+]") == true)
+        let schemaText = schema.first?.text ?? ""
+        #expect(schemaText.contains("layers[+]"))
+        // D-132–D-135：内置品牌 logo、胶卷图层、文字的自动颜色、新的占位符和内置 ID
+        for word in ["`brandLogo`", "`filmIcon`", "`logo`", "`noIcon`", "`colorMode`", "{brand}", "{film}", "`metadata`", "hasselblad", "kodak-portra-400"] {
+            #expect(schemaText.contains(word), "字段说明缺少 \(word)")
+        }
         let platforms = try await h.client.readResource(uri: MCPResources.platforms)
         #expect(platforms.first?.text?.contains("instagram") == true)
         let presets = try await h.client.readResource(uri: MCPResources.presets)

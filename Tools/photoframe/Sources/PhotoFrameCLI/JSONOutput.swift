@@ -259,7 +259,7 @@ struct PresetRefResultJSON: Encodable {
 struct AssetJSON: Encodable {
     var assetId: String
     var name: String
-    /// `signature`、`watermark`、`camera-badge`。
+    /// `signature`、`watermark`、`camera-badge`、`film-icon`。
     var category: String
     var format: String
     var width: Int

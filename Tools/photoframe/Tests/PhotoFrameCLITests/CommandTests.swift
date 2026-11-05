@@ -433,4 +433,29 @@ struct ExportCommandTests {
             #expect(await service.queue.configuration.maxConcurrentJobs == expected)
         }
     }
+
+    @Test("手填元数据（D-135）：export、preview 把填了的字段原样放进请求的 metadataOverrides")
+    func metadataOverrides() async throws {
+        let box = try Sandbox()
+        try box.photo("Scan.jpg", width: 600, height: 400)
+        let submitted = Locked<[[String: String]]>([])
+        let previewed = Locked<[[String: String]]>([])
+        let factory: CLIEnvironment.ServiceFactory = { options throws(ApplicationError) in
+            HookedService(try LocalPhotoFrameService.makeDefault(options),
+                          beforePreview: { previewed.value.append($0.metadataOverrides) },
+                          beforeSubmit: { submitted.value.append($0.metadataOverrides) })
+        }
+        let metadata = ["--film", "Kodak Portra 400", "--camera-make", "Mamiya", "--camera-model", "7 II",
+                        "--aperture", "8", "--shutter", "1/250", "--iso", "400"]
+        let export = await runCLI(["export", "Scan.jpg", "--preset", "xhs-standard", "-o", "Exports", "-q"] + metadata,
+                                  in: box.root, service: factory)
+        #expect(export.status == 0, "\(export.stderr.value)")
+        let expected = ["film": "Kodak Portra 400", "make": "Mamiya", "model": "7 II", "aperture": "8", "shutter": "1/250", "iso": "400"]
+        #expect(submitted.value == [expected])
+
+        let preview = await runCLI(["preview", "Scan.jpg", "--preset", "xhs-standard", "-o", "Previews", "--max-edge", "200",
+                                    "--film", "Ilford HP5 Plus", "--iso", ""], in: box.root, service: factory)
+        #expect(preview.status == 0, "\(preview.stderr.value)")
+        #expect(previewed.value == [["film": "Ilford HP5 Plus"]])
+    }
 }

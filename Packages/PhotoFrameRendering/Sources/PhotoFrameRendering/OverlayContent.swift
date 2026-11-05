@@ -4,6 +4,7 @@ import CoreText
 import Foundation
 import ImageIO
 import PhotoFrameCore
+import PhotoFrameStorage
 
 /// 一个图层的绘制内容：先给出自然尺寸（交给 `OverlayLayer.geometry(contentSize:)`），
 /// 再按 Core 解析出的最终尺寸绘制成工作空间里的 CIImage（extent = (0, 0, size)）。
@@ -14,10 +15,13 @@ enum OverlayContent {
     case text(TextBlock)
     case bitmap(CGImage)
     case vector(RestrictedSVG)
+    /// 内置品牌 logo、胶卷图标和文字（D-132、D-134）。
+    case composite(CompositeArt)
 
     var naturalSize: PixelSize {
         switch self {
         case .text(let t): t.naturalSize
+        case .composite(let c): c.naturalSize
         case .bitmap(let img): PixelSize(width: img.width, height: img.height)
         case .vector(let svg):
             // 素材导入时已限制尺寸；绕过导入的文件（例如被替换）也不能因为超大或非有限的尺寸让整数转换崩溃。
@@ -33,6 +37,16 @@ enum OverlayContent {
     // MARK: - 准备
 
     static func load(asset: RenderAsset) throws(RenderError) -> OverlayContent {
+        // 绑定到素材槽的内置素材（D-139）：内容在程序里，SVG 按受信任模式解析（D-137）。
+        if let builtIn = BuiltInAsset.asset(contentURL: asset.fileURL) {
+            guard let data = builtIn.data else {
+                throw RenderError(code: "render.builtin_missing", message: "内置素材缺失：\(builtIn.path)")
+            }
+            switch try OverlayPlanner.loadGraphic(data, name: builtIn.path) {
+            case .vector(let svg): return .vector(svg)
+            case .bitmap(let image): return .bitmap(image)
+            }
+        }
         let data: Data
         do { data = try Data(contentsOf: asset.fileURL, options: .mappedIfSafe) } catch {
             throw RenderError(code: "render.asset_unreadable", message: "无法读取素材 \(asset.fileURL.lastPathComponent)")
@@ -74,6 +88,11 @@ enum OverlayContent {
             return try Self.draw(size: target) { ctx in
                 if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
                 svg.draw(in: ctx, box: CGRect(x: 0, y: 0, width: size.width, height: size.height))
+            }
+        case .composite(let art):
+            return try Self.draw(size: target) { ctx in
+                if pixels != nil { ctx.scaleBy(x: sx, y: sy) }
+                art.draw(in: ctx, box: size, alignment: alignment)
             }
         case .bitmap(let full):
             // 等比放进图层框并居中，不变形。缩小超过一半时先降采样到目标的两倍，避免双线性混叠。

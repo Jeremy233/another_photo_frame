@@ -312,13 +312,15 @@ public actor JobQueue {
 
         var resolver = LazySlotResolver(configuration)
         let (slots, slotWarnings) = try ExportChecks.resolveSlots(
-            &resolver, preset: spec.preset, bindings: spec.assetBindings, source: spec.source.fileURL)
+            &resolver, preset: spec.preset, bindings: spec.assetBindings, source: spec.source.fileURL,
+            overrides: spec.metadataOverrides)
         warnings += slotWarnings
         if !warnings.isEmpty {
             update(id, attemptId) { $0.warnings += warnings }
         }
         return JobRenderRequest(jobId: id, attemptId: attemptId, source: spec.source, preset: spec.preset, platform: platform,
-                                slots: slots, sourceColorOverride: spec.sourceColorOverride)
+                                slots: slots, sourceColorOverride: spec.sourceColorOverride,
+                                metadataOverrides: spec.metadataOverrides)
     }
 
     private func handleRenderProgress(_ update: JobRenderProgress, _ id: JobID, _ attemptId: AttemptID) {

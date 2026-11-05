@@ -1,0 +1,436 @@
+[
+ {
+  "id": "nikon",
+  "name": "Nikon",
+  "text": "Nikon",
+  "kind": "mono",
+  "ratio": 3.4397,
+  "match": [
+   "nikon"
+  ],
+  "classic": false,
+  "altKind": "emblem",
+  "altRatio": 1.0,
+  "files": {
+   "logo": "nikon/nikon.svg",
+   "alt": "nikon/nikon-emblem.svg"
+  }
+ },
+ {
+  "id": "canon",
+  "name": "Canon",
+  "text": "Canon",
+  "kind": "color",
+  "ratio": 4.6083,
+  "match": [
+   "canon"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "canon/canon.svg"
+  }
+ },
+ {
+  "id": "sony",
+  "name": "Sony",
+  "text": "SONY",
+  "kind": "mono",
+  "ratio": 5.4272,
+  "match": [
+   "sony"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "sony/sony.svg"
+  }
+ },
+ {
+  "id": "fujifilm",
+  "name": "Fujifilm",
+  "text": "FUJIFILM",
+  "kind": "color",
+  "ratio": 5.6825,
+  "match": [
+   "fujifilm",
+   "fuji photo"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "fujifilm/fujifilm.svg",
+   "dark": "fujifilm/fujifilm-rev.svg"
+  }
+ },
+ {
+  "id": "leica",
+  "name": "Leica",
+  "text": "Leica",
+  "kind": "emblem",
+  "ratio": 1.0,
+  "match": [
+   "leica"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "leica/leica.svg"
+  }
+ },
+ {
+  "id": "hasselblad",
+  "name": "Hasselblad",
+  "text": "HASSELBLAD",
+  "kind": "mono",
+  "ratio": 11.4612,
+  "match": [
+   "hasselblad"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "hasselblad/hasselblad.svg"
+  }
+ },
+ {
+  "id": "panasonic",
+  "name": "Panasonic",
+  "text": "Panasonic",
+  "kind": "mono",
+  "ratio": 6.2089,
+  "match": [
+   "panasonic"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "panasonic/panasonic.svg"
+  }
+ },
+ {
+  "id": "om",
+  "name": "OM System",
+  "text": "OM SYSTEM",
+  "kind": "mono",
+  "ratio": 8.073,
+  "match": [
+   "om digital",
+   "om system"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "om/om.svg"
+  }
+ },
+ {
+  "id": "pentax",
+  "name": "Pentax",
+  "text": "PENTAX",
+  "kind": "mono",
+  "ratio": 4.9407,
+  "match": [
+   "pentax"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "pentax/pentax.svg"
+  }
+ },
+ {
+  "id": "ricoh",
+  "name": "Ricoh",
+  "text": "RICOH",
+  "kind": "color",
+  "ratio": 5.3025,
+  "match": [
+   "ricoh"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "ricoh/ricoh.svg"
+  }
+ },
+ {
+  "id": "sigma",
+  "name": "Sigma",
+  "text": "SIGMA",
+  "kind": "mono",
+  "ratio": 4.1185,
+  "match": [
+   "sigma"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "sigma/sigma.svg"
+  }
+ },
+ {
+  "id": "dji",
+  "name": "DJI",
+  "text": "dji",
+  "kind": "mono",
+  "ratio": 1.6833,
+  "match": [
+   "dji"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "dji/dji.svg"
+  }
+ },
+ {
+  "id": "apple",
+  "name": "Apple",
+  "text": "Apple",
+  "kind": "mono",
+  "ratio": 0.8155,
+  "match": [
+   "apple"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "apple/apple.svg"
+  }
+ },
+ {
+  "id": "zeiss",
+  "name": "Zeiss",
+  "text": "ZEISS",
+  "kind": "emblem",
+  "ratio": 0.9985,
+  "match": [
+   "zeiss"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "zeiss/zeiss.svg"
+  }
+ },
+ {
+  "id": "mamiya",
+  "name": "Mamiya",
+  "text": "Mamiya",
+  "kind": "color",
+  "ratio": 3.6387,
+  "match": [
+   "mamiya"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "mamiya/mamiya.svg"
+  }
+ },
+ {
+  "id": "contax",
+  "name": "Contax",
+  "text": "CONTAX",
+  "kind": "mono",
+  "ratio": 5.471,
+  "match": [
+   "contax"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "contax/contax.svg"
+  }
+ },
+ {
+  "id": "bronica",
+  "name": "Bronica",
+  "text": "BRONICA",
+  "kind": "mono",
+  "ratio": 4.1503,
+  "match": [
+   "bronica"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "bronica/bronica.svg"
+  }
+ },
+ {
+  "id": "olympus",
+  "name": "Olympus",
+  "text": "OLYMPUS",
+  "kind": "color",
+  "ratio": 5.2,
+  "match": [
+   "olympus"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "olympus/olympus.png",
+   "dark": "olympus/olympus-rev.png"
+  }
+ },
+ {
+  "id": "kodak",
+  "name": "Kodak",
+  "text": "KODAK",
+  "kind": "emblem",
+  "ratio": 1.1093,
+  "match": [
+   "kodak"
+  ],
+  "classic": true,
+  "monoRatio": 1.1478,
+  "files": {
+   "logo": "kodak/kodak.svg",
+   "mono": "kodak/kodak-mono.svg"
+  }
+ },
+ {
+  "id": "polaroid",
+  "name": "Polaroid",
+  "text": "polaroid",
+  "kind": "mono",
+  "ratio": 3.6383,
+  "match": [
+   "polaroid"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "polaroid/polaroid.svg"
+  }
+ },
+ {
+  "id": "konicaminolta",
+  "name": "Konica Minolta",
+  "text": "KONICA MINOLTA",
+  "kind": "emblem",
+  "ratio": 7.0288,
+  "match": [
+   "konica minolta"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "konicaminolta/konicaminolta.svg",
+   "dark": "konicaminolta/konicaminolta-rev.svg"
+  }
+ },
+ {
+  "id": "rollei",
+  "name": "Rollei",
+  "text": "Rollei",
+  "kind": "mono",
+  "ratio": 3.735,
+  "match": [
+   "rollei"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "rollei/rollei.png"
+  }
+ },
+ {
+  "id": "voigtlander",
+  "name": "Voigtländer",
+  "text": "Voigtländer",
+  "kind": "mono",
+  "ratio": 4.9959,
+  "match": [
+   "voigtl"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "voigtlander/voigtlander.svg"
+  }
+ },
+ {
+  "id": "yashica",
+  "name": "Yashica",
+  "text": "YASHICA",
+  "kind": "mono",
+  "ratio": 5.6341,
+  "match": [
+   "yashica"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "yashica/yashica.png"
+  }
+ },
+ {
+  "id": "minolta",
+  "name": "Minolta",
+  "text": "MINOLTA",
+  "kind": "color",
+  "ratio": 1.1318,
+  "match": [
+   "minolta"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "minolta/minolta.svg",
+   "dark": "minolta/minolta-rev.svg"
+  }
+ },
+ {
+  "id": "konica",
+  "name": "Konica",
+  "text": "Konica",
+  "kind": "color",
+  "ratio": 6.2896,
+  "match": [
+   "konica"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "konica/konica.svg",
+   "dark": "konica/konica-rev.svg"
+  }
+ },
+ {
+  "id": "linhof",
+  "name": "Linhof",
+  "text": "Linhof",
+  "kind": "color",
+  "ratio": 2.4194,
+  "match": [
+   "linhof"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "linhof/linhof.svg"
+  }
+ },
+ {
+  "id": "chamonix",
+  "name": "Chamonix",
+  "text": "CHAMONIX",
+  "kind": "mono",
+  "ratio": 3.9647,
+  "match": [
+   "chamonix"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "chamonix/chamonix.svg"
+  }
+ },
+ {
+  "id": "wista",
+  "name": "Wista",
+  "text": "WISTA",
+  "kind": "mono",
+  "ratio": 6.315,
+  "match": [
+   "wista"
+  ],
+  "classic": false,
+  "files": {
+   "logo": "wista/wista.svg"
+  }
+ },
+ {
+  "id": "plaubel",
+  "name": "Plaubel",
+  "text": "PLAUBEL",
+  "kind": "color",
+  "ratio": 9.0803,
+  "match": [
+   "plaubel",
+   "makina"
+  ],
+  "classic": true,
+  "files": {
+   "logo": "plaubel/plaubel.svg",
+   "dark": "plaubel/plaubel-rev.svg"
+  }
+ }
+]

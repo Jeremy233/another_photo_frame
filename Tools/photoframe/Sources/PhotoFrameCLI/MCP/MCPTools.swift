@@ -19,15 +19,17 @@ enum MCPToolName: String, CaseIterable {
 }
 
 enum Schema {
-    static func object(_ properties: [String: Value], required: [String] = []) -> Value {
+    static func object(_ properties: [String: Value], required: [String] = [], description: String? = nil) -> Value {
         var o: [String: Value] = ["type": "object", "properties": .object(properties), "additionalProperties": false]
         if !required.isEmpty { o["required"] = .array(required.map { .string($0) }) }
+        if let description { o["description"] = .string(description) }
         return .object(o)
     }
 
-    static func string(_ description: String, oneOf values: [String]? = nil) -> Value {
+    static func string(_ description: String, oneOf values: [String]? = nil, maxLength: Int? = nil) -> Value {
         var o: [String: Value] = ["type": "string", "description": .string(description)]
         if let values { o["enum"] = .array(values.map { .string($0) }) }
+        if let maxLength { o["maxLength"] = .int(maxLength) }
         return .object(o)
     }
 
@@ -80,6 +82,12 @@ extension MCPToolName {
         "type": "object", "description": "单任务素材绑定：slotId → 素材（assetId 或名称），D-14 最高优先级",
         "additionalProperties": Schema.string("assetId 或素材名称"),
     ])
+    private static let metadata = Schema.object(
+        Dictionary(uniqueKeysWithValues: MetadataField.allCases.map {
+            ($0.rawValue, Schema.string($0.help.trimmingCharacters(in: CharacterSet(charactersIn: "。")),
+                                        maxLength: PhotoFrameMCPServer.maxMetadataLength))
+        }),
+        description: "手填元数据（D-135），作用于每张源图，优先于源图的 EXIF，用于没有 EXIF 的胶片扫描；空字符串当作没填（用 EXIF）")
     private static let overwrite = Schema.boolean("显式允许覆盖（D-49）：替换本软件之前导出的作品目录 / 已存在的预览文件。默认 false，加版本后缀或拒绝")
     private static let jobId = Schema.string("create_export_job 返回的 jobId")
 
@@ -91,6 +99,7 @@ extension MCPToolName {
             "overwrite": overwrite,
             "assumeProfile": assumeProfile,
             "bindings": bindings,
+            "metadata": metadata,
         ], required: ["images", "presets", "outputDirectory"])
     }
 
@@ -156,6 +165,7 @@ extension MCPToolName {
                             "overwrite": Schema.boolean("替换已存在的同名预览文件"),
                             "assumeProfile": Self.assumeProfile,
                             "bindings": Self.bindings,
+                            "metadata": Self.metadata,
                         ], required: ["image", "preset"]),
                         annotations: Tool.Annotations(destructiveHint: false, openWorldHint: false),
                         outputSchema: Schema.output(["files": Schema.anyArray, "positions": Schema.anyArray, "warnings": Schema.anyArray]))
@@ -243,6 +253,23 @@ struct MCPArguments {
         for (k, item) in o {
             guard let s = item.stringValue, !k.isEmpty, !s.isEmpty else { throw .invalidArguments("\(key) 的值应为非空字符串") }
             out[k] = s
+        }
+        return out
+    }
+
+    /// 字段固定、值都是字符串的对象（例如 `metadata`）：有 `allowed` 以外的字段、值不是字符串、值超过 `maxLength` 个字符时报参数错误。
+    /// `null` 和空字符串（只有空白的也算）当作没填，不出现在结果里；其余值原样返回。
+    func stringFields(_ key: String, allowed: [String], maxLength: Int) throws(ApplicationError) -> [String: String] {
+        guard let v = values[key], !v.isNull else { return [:] }
+        guard let o = v.objectValue else { throw .invalidArguments("\(key) 应为对象") }
+        if let unknown = o.keys.sorted().first(where: { !allowed.contains($0) }) {
+            throw .invalidArguments("\(key) 里不认识的字段 \(unknown)")
+        }
+        var out: [String: String] = [:]
+        for (k, item) in o where !item.isNull {
+            guard let s = item.stringValue else { throw .invalidArguments("\(key).\(k) 应为字符串") }
+            guard s.count <= maxLength else { throw .invalidArguments("\(key).\(k) 最多 \(maxLength) 个字符") }
+            if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { out[k] = s }
         }
         return out
     }

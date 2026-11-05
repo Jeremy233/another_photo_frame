@@ -2,11 +2,13 @@ import CryptoKit
 import Foundation
 import PhotoFrameCore
 
-/// 素材分组（UI 设计文档第 7 节：签名、水印、相机图标）。只用于整理和显示，不影响绑定。
+/// 素材分组（UI 设计文档第 7 节：签名、水印、相机图标、胶卷图标）。只用于整理和显示，不影响绑定。
 public enum AssetCategory: String, Hashable, Sendable, Codable, CaseIterable {
     case signature
     case watermark
     case cameraBadge
+    /// 自己的胶卷图标（D-136），例如从内置胶卷图标复制来改的。
+    case filmIcon
 }
 
 /// 素材元信息。**不含任何文件路径**，可以直接交给 CLI `--json` 和 MCP `list_assets`。
@@ -111,7 +113,9 @@ public struct AssetLibrary: AssetLookup, Sendable {
     }
 
     /// 内容文件的位置。**只给需要读文件的调用方**（渲染器）；素材不存在或已损坏时为 nil。
+    /// 内置素材（D-139）不是文件，给出渲染器认得的 ``BuiltInAsset/contentURL``。
     public func contentURL(for id: UUID) -> URL? {
+        if let builtIn = BuiltInAsset.asset(id: id) { return builtIn.contentURL }
         guard case .success(let info) = load(id) else { return nil }
         return contentFile(id, info.format)
     }
@@ -122,13 +126,14 @@ public struct AssetLibrary: AssetLookup, Sendable {
     // MARK: AssetLookup
 
     public func asset(withId id: UUID) -> AssetRecord? {
+        if let builtIn = BuiltInAsset.asset(id: id) { return builtIn.record }
         guard case .success(let info) = load(id) else { return nil }
         return info.record
     }
 
-    /// 读一次磁盘，得到内存中的素材表，用于一次解析多个 slot。
+    /// 读一次磁盘，得到内存中的素材表（含内置素材，D-139），用于一次解析多个 slot。
     public func snapshot() -> InMemoryAssetLibrary {
-        InMemoryAssetLibrary(list().assets.map(\.record))
+        InMemoryAssetLibrary(BuiltInAsset.records + list().assets.map(\.record))
     }
 
     // MARK: 导入

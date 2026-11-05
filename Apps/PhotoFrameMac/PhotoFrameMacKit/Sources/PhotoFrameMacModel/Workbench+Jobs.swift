@@ -197,7 +197,8 @@ extension Workbench {
                 let request = ExportRequest(
                     sourceIds: [spec.source.sourceId], presets: [spec.preset],
                     destination: ExportDestination(rootDirectory: spec.destination.rootDirectory, naming: spec.destination.naming),
-                    assetBindings: spec.assetBindings, sourceColorOverride: spec.sourceColorOverride)
+                    assetBindings: spec.assetBindings, sourceColorOverride: spec.sourceColorOverride,
+                    metadataOverrides: spec.metadataOverrides)
                 runJobIds += try await service.submit(request)
             }
         }

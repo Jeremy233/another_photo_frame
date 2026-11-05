@@ -2,9 +2,33 @@ import Foundation
 import PhotoFrameCore
 
 /// 右栏「图层」里可以添加的图层（UI 设计文档第 8.3 节）。只决定新图层的初始值，之后各字段都能改。
+///
+/// 内置装饰（D-136）：品牌 logo、品牌文字的三种样式、胶卷的三种显示方式。「相机图标」暂时不在菜单里，
+/// 但已有的相机图标图层照常显示和编辑（名字也靠这里的 `cameraBadge`）。
 public enum LayerTemplate: String, CaseIterable, Identifiable, Sendable {
     case watermark, signature, cameraBadge, exifText, text
+    case brandLogo, brandText, shotOn, cameraSettings
+    case film, filmIcon, filmText
     public var id: Self { self }
+
+    /// 「添加装饰」菜单第一层的项目（不含内置装饰）。
+    public static let assetAndTextItems: [LayerTemplate] = [.watermark, .signature, .exifText, .text]
+    /// 「添加装饰 ▸ 品牌文字」（D-133）。
+    public static let brandTextItems: [LayerTemplate] = [.brandText, .shotOn, .cameraSettings]
+    /// 「添加装饰 ▸ 胶卷」（D-134）。
+    public static let filmItems: [LayerTemplate] = [.film, .filmIcon, .filmText]
+
+    /// 品牌文字的字体样式：字距 0（D-133），颜色随画布深浅。
+    static func brandTextStyle(_ template: String, size: Double, weight: TextStyle.FontWeight, spacing: Double) -> TextStyle {
+        TextStyle(template: template, fontWeight: weight, fontSizePx: size, letterSpacingPx: spacing, colorMode: .auto)
+    }
+
+    static func filmLayer(id: String, show: FilmIconStyle.Show) -> OverlayLayer {
+        OverlayLayer(layerId: id, type: .filmIcon, anchor: .bottomRight, offset: OverlayOffset(x: 0, y: 24),
+                     text: TextStyle(template: FilmIconStyle.defaultTemplate, fontWeight: .medium, fontSizePx: 20,
+                                     letterSpacingPx: 1, colorMode: .auto),
+                     filmIcon: FilmIconStyle(show: show))
+    }
 
     func make(id: String) -> (OverlayLayer, AssetSlot?) {
         switch self {
@@ -27,6 +51,21 @@ public enum LayerTemplate: String, CaseIterable, Identifiable, Sendable {
         case .text:
             (OverlayLayer(layerId: id, type: .text, anchor: .bottomLeft, offset: OverlayOffset(x: 0, y: 16), text: TextStyle(content: "")),
              nil)
+        case .brandLogo:
+            (OverlayLayer(layerId: id, type: .brandLogo, anchor: .bottom, offset: OverlayOffset(x: 0, y: 40), logo: BrandLogoStyle()), nil)
+        case .brandText:
+            (OverlayLayer(layerId: id, type: .metadataText, anchor: .bottom, offset: OverlayOffset(x: 0, y: 16),
+                          text: Self.brandTextStyle("{brand}", size: 40, weight: .semibold, spacing: 0)), nil)
+        case .shotOn:
+            (OverlayLayer(layerId: id, type: .metadataText, anchor: .bottom, offset: OverlayOffset(x: 0, y: 16),
+                          text: Self.brandTextStyle("Shot on {camera}", size: 28, weight: .regular, spacing: 1)), nil)
+        case .cameraSettings:
+            (OverlayLayer(layerId: id, type: .metadataText, anchor: .bottom, offset: OverlayOffset(x: 0, y: 16),
+                          text: Self.brandTextStyle("{camera} · {focalLength} · {aperture} · {shutter} · {iso}",
+                                                    size: 22, weight: .regular, spacing: 1)), nil)
+        case .film: (Self.filmLayer(id: id, show: .iconAndText), nil)
+        case .filmIcon: (Self.filmLayer(id: id, show: .icon), nil)
+        case .filmText: (Self.filmLayer(id: id, show: .text), nil)
         }
     }
 }
@@ -74,8 +113,11 @@ extension Workbench {
 
     /// 当前预览源图的相机（EXIF Make / Model），用来预填相机匹配规则。
     public var previewCamera: CameraIdentity? {
-        guard let id = previewSubject?.sourceId, let metadata = sourceItem(id)?.inspection?.metadata else { return nil }
-        let camera = CameraIdentity(make: metadata["make"], model: metadata["model"])
+        guard let id = previewSubject?.sourceId, let item = sourceItem(id) else { return nil }
+        // 手填的相机（D-135）优先于 EXIF。
+        let metadata = item.inspection?.metadata ?? [:]
+        let camera = CameraIdentity(make: item.metadataOverrides["make"] ?? metadata["make"],
+                                    model: item.metadataOverrides["model"] ?? metadata["model"])
         return camera.isEmpty ? nil : camera
     }
 
